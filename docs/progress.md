@@ -34,7 +34,10 @@
   - 切換謎題：按鈕輸入 m/n/step（校驗 step < max(m,n)）。
   - 新增 `src/io/SaveManager.ts`、`GameStore.serialize/deserialize`、`GameHistory.snapshotAll/restoreAll`。
   - 新增存檔/導入/切換測試（往返、校驗、map 導入）。
-- [ ] M5 練習模式/計時模式/計時器
+- [x] M5 練習模式/計時模式/計時器
+  - 練習模式（預設）與競速模式切換按鈕；競速才有 DNF 按鈕與計時顯示。
+  - 計時狀態機 ready→running→solved|dnf（`src/feature/Timer.ts`）；首次合法移動起跑、還原自動停錶、狀態欄即時刷新時間。
+  - 計時顯示格式對照 records.format_time（厘秒 / 分:秒）。
 - [ ] M6 成績面板/虛擬鍵盤
 - [ ] M7 著色器（可選）
 - [ ] M8 驗收與文檔收口

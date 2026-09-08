@@ -11,6 +11,7 @@ const { GameStore } = require("./store/GameStore.js");
 const { COLORS, GEOMETRY } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
 const { autosave, autoload, downloadSave, importData } = require("./io/SaveManager.js");
+const { Timer, formatTime } = require("./feature/Timer.js");
 const app = document.querySelector('#app');
 // 外框（對照原版深色背景 + 選單/狀態欄配色）
 app.style.background = COLORS.background;
@@ -71,6 +72,9 @@ function showToast(text) {
 const store = new GameStore(4, 4, 2);
 const ctx = canvas.getContext('2d');
 const renderer = new BoardRenderer(ctx, 1);
+// M5：練習/計時模式 + 計時器
+let gameMode = 'practice';
+const timer = new Timer();
 // 置中（對照原版 center_map）
 function centerCamera() {
     const b = store.game.get_boundaries();
@@ -102,11 +106,15 @@ window.addEventListener('resize', () => {
 const statusSolved = document.createElement('span');
 const statusSteps = document.createElement('span');
 const statusPuzzle = document.createElement('span');
-status.append(statusSolved, statusSteps, statusPuzzle);
+const statusTimer = document.createElement('span');
+status.append(statusSolved, statusSteps, statusPuzzle, statusTimer);
 let lastStatusKey = '';
 function updateStatus() {
     const solved = store.solved;
-    const key = `${solved}|${store.cmd.stepCount}|${store.currentStep}~${store.currentM}*${store.currentN}`;
+    const timerText = gameMode === 'timed'
+        ? `計時：${formatTime(timer.state === 'ready' ? 0 : timer.elapsedMs)}`
+        : `模式：練習`;
+    const key = `${solved}|${store.cmd.stepCount}|${store.currentStep}~${store.currentM}*${store.currentN}|${timer.state}|${gameMode}`;
     if (key === lastStatusKey)
         return;
     lastStatusKey = key;
@@ -114,6 +122,8 @@ function updateStatus() {
     statusSolved.style.color = solved ? COLORS.solved : COLORS.unsolved;
     statusSteps.textContent = `步數：${store.cmd.stepCount}`;
     statusPuzzle.textContent = `謎題：${store.currentStep}~${store.currentM}*${store.currentN}`;
+    statusTimer.textContent = timerText;
+    statusTimer.style.color = timer.state === 'running' ? COLORS.timer_running : COLORS.status_text;
 }
 // on-demand 重繪（dirty flag）：互動/動畫時才重繪，避免無意義滿載 60fps
 let needsPaint = true;
@@ -138,7 +148,16 @@ const controller = new BoardController({
     store,
     onStatus: showToast,
     requestPaint: schedulePaint,
-    onChanged: () => autosave(store),
+    onChanged: () => {
+        autosave(store);
+        if (gameMode === 'timed') {
+            if (timer.state === 'ready')
+                timer.start();
+            if (store.solved && timer.state === 'running')
+                timer.solve();
+        }
+        schedulePaint();
+    },
 });
 function addButton(label, onClick) {
     const b = document.createElement('button');
@@ -151,6 +170,7 @@ function addButton(label, onClick) {
     b.style.cursor = 'pointer';
     b.addEventListener('click', onClick);
     toolbar.appendChild(b);
+    return b;
 }
 addButton('打亂', () => {
     const reply = shuffle(store.cmd, 100);
@@ -203,9 +223,28 @@ addButton('切換謎題', () => {
     renderer.animation = null;
     centerCamera();
     autosave(store);
+    timer.reset();
     schedulePaint();
     showToast(`切換謎題 ${step}~${m}*${n}`);
 });
+addButton('模式', () => {
+    gameMode = gameMode === 'practice' ? 'timed' : 'practice';
+    timer.reset();
+    syncDnfButton();
+    showToast(gameMode === 'timed' ? '模式：競速' : '模式：練習');
+    schedulePaint();
+});
+const dnfButton = addButton('DNF', () => {
+    if (gameMode === 'timed' && timer.state === 'running') {
+        timer.dnf();
+        showToast('DNF');
+        schedulePaint();
+    }
+});
+dnfButton.style.display = 'none';
+function syncDnfButton() {
+    dnfButton.style.display = gameMode === 'timed' ? '' : 'none';
+}
 // 導入檔案 input（隱藏）
 const fileInput = document.createElement('input');
 fileInput.type = 'file';
@@ -251,6 +290,14 @@ window.addEventListener('keydown', (e) => {
         schedulePaint();
     }
 });
+// 計時器顯示即時刷新（僅 running 時，直接更新文字，不全量重繪）
+setInterval(() => {
+    if (timer.isRunning) {
+        statusTimer.textContent = `計時：${formatTime(timer.elapsedMs)}`;
+        statusTimer.style.color = COLORS.timer_running;
+    }
+}, 100);
+syncDnfButton();
 schedulePaint();
 // 簡單 console 自檢（供驗收）
 console.log('[web] 初始 solved =', store.solved);
@@ -537,6 +584,65 @@ function downloadText(filename, text) {
 }
 
 return { autosave, autoload, downloadSave, importData };
+},
+    "m11": function (require) {
+/**
+ * 計時器（M5）：狀態機 ready → running → solved | dnf。
+ * 用 performance.now() 測量，elapsed 毫秒在 rAF 中刷新顯示。
+ */
+function formatTime(ms) {
+    if (ms === null)
+        return '-';
+    const total = ms / 1000;
+    const minutes = Math.floor(total / 60);
+    const sec = total - minutes * 60;
+    if (minutes > 0)
+        return `${minutes}:${sec.toFixed(2).padStart(5, '0')}`;
+    return sec.toFixed(2);
+}
+class Timer {
+    constructor() {
+        this.state = 'ready';
+        this.startMs = 0;
+        this.endMs = 0;
+    }
+    get elapsedMs() {
+        if (this.state === 'running')
+            return performance.now() - this.startMs;
+        return this.endMs - this.startMs;
+    }
+    /** 進入 ready（打亂後待開始）。 */
+    reset() {
+        this.state = 'ready';
+        this.startMs = 0;
+        this.endMs = 0;
+    }
+    /** 首次合法移動時開始計時。 */
+    start() {
+        if (this.state !== 'ready')
+            return;
+        this.state = 'running';
+        this.startMs = performance.now();
+    }
+    /** 完成（solved 自動停錶）。 */
+    solve() {
+        if (this.state !== 'running')
+            return this.elapsedMs;
+        this.endMs = performance.now();
+        this.state = 'solved';
+        return this.elapsedMs;
+    }
+    /** 手動 DNF。 */
+    dnf() {
+        this.state = 'dnf';
+        this.endMs = performance.now();
+    }
+    get isRunning() {
+        return this.state === 'running';
+    }
+}
+
+return { formatTime, Timer };
 },
     "m2": function (require) {
 /**
@@ -1450,6 +1556,7 @@ return { SliderMatrix };
   var __resolve = { "E:/program_project/py/貓九的滑塊遊戲/web/dist/main.js": "m0",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/render/BoardRenderer.js": "m1",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/io/SaveManager.js": "m10",
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/feature/Timer.js": "m11",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/render/theme.js": "m2",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/interaction/BoardController.js": "m3",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/CommandBus.js": "m4",

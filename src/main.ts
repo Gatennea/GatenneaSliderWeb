@@ -9,6 +9,7 @@ import { GameStore } from './store/GameStore.js';
 import { COLORS, GEOMETRY } from './render/theme.js';
 import { shuffle, reset, undo, redo } from './core/CommandBus.js';
 import { autosave, autoload, downloadSave, importData } from './io/SaveManager.js';
+import { Timer, formatTime } from './feature/Timer.js';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -78,6 +79,10 @@ const store = new GameStore(4, 4, 2);
 const ctx = canvas.getContext('2d')!;
 const renderer = new BoardRenderer(ctx, 1);
 
+// M5：練習/計時模式 + 計時器
+let gameMode: 'practice' | 'timed' = 'practice';
+const timer = new Timer();
+
 // 置中（對照原版 center_map）
 function centerCamera(): void {
   const b = store.game.get_boundaries();
@@ -114,18 +119,25 @@ window.addEventListener('resize', () => {
 const statusSolved = document.createElement('span');
 const statusSteps = document.createElement('span');
 const statusPuzzle = document.createElement('span');
-status.append(statusSolved, statusSteps, statusPuzzle);
+const statusTimer = document.createElement('span');
+status.append(statusSolved, statusSteps, statusPuzzle, statusTimer);
 let lastStatusKey = '';
 
 function updateStatus(): void {
   const solved = store.solved;
-  const key = `${solved}|${store.cmd.stepCount}|${store.currentStep}~${store.currentM}*${store.currentN}`;
+  const timerText =
+    gameMode === 'timed'
+      ? `計時：${formatTime(timer.state === 'ready' ? 0 : timer.elapsedMs)}`
+      : `模式：練習`;
+  const key = `${solved}|${store.cmd.stepCount}|${store.currentStep}~${store.currentM}*${store.currentN}|${timer.state}|${gameMode}`;
   if (key === lastStatusKey) return;
   lastStatusKey = key;
   statusSolved.textContent = solved ? '狀態：復原' : '狀態：未復原';
   statusSolved.style.color = solved ? COLORS.solved : COLORS.unsolved;
   statusSteps.textContent = `步數：${store.cmd.stepCount}`;
   statusPuzzle.textContent = `謎題：${store.currentStep}~${store.currentM}*${store.currentN}`;
+  statusTimer.textContent = timerText;
+  statusTimer.style.color = timer.state === 'running' ? COLORS.timer_running : COLORS.status_text;
 }
 
 // on-demand 重繪（dirty flag）：互動/動畫時才重繪，避免無意義滿載 60fps
@@ -151,10 +163,17 @@ const controller = new BoardController({
   store,
   onStatus: showToast,
   requestPaint: schedulePaint,
-  onChanged: () => autosave(store),
+  onChanged: () => {
+    autosave(store);
+    if (gameMode === 'timed') {
+      if (timer.state === 'ready') timer.start();
+      if (store.solved && timer.state === 'running') timer.solve();
+    }
+    schedulePaint();
+  },
 });
 
-function addButton(label: string, onClick: () => void): void {
+function addButton(label: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement('button');
   b.textContent = label;
   b.style.background = COLORS.button_bg;
@@ -165,6 +184,7 @@ function addButton(label: string, onClick: () => void): void {
   b.style.cursor = 'pointer';
   b.addEventListener('click', onClick);
   toolbar.appendChild(b);
+  return b;
 }
 
 addButton('打亂', () => {
@@ -218,9 +238,28 @@ addButton('切換謎題', () => {
   renderer.animation = null;
   centerCamera();
   autosave(store);
+  timer.reset();
   schedulePaint();
   showToast(`切換謎題 ${step}~${m}*${n}`);
 });
+addButton('模式', () => {
+  gameMode = gameMode === 'practice' ? 'timed' : 'practice';
+  timer.reset();
+  syncDnfButton();
+  showToast(gameMode === 'timed' ? '模式：競速' : '模式：練習');
+  schedulePaint();
+});
+const dnfButton = addButton('DNF', () => {
+  if (gameMode === 'timed' && timer.state === 'running') {
+    timer.dnf();
+    showToast('DNF');
+    schedulePaint();
+  }
+});
+dnfButton.style.display = 'none';
+function syncDnfButton(): void {
+  dnfButton.style.display = gameMode === 'timed' ? '' : 'none';
+}
 
 // 導入檔案 input（隱藏）
 const fileInput = document.createElement('input');
@@ -268,6 +307,15 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// 計時器顯示即時刷新（僅 running 時，直接更新文字，不全量重繪）
+setInterval(() => {
+  if (timer.isRunning) {
+    statusTimer.textContent = `計時：${formatTime(timer.elapsedMs)}`;
+    statusTimer.style.color = COLORS.timer_running;
+  }
+}, 100);
+
+syncDnfButton();
 schedulePaint();
 
 // 簡單 console 自檢（供驗收）
