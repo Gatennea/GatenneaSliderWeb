@@ -97,6 +97,26 @@ export function downloadSave(store: GameStore): void {
   downloadText(name, compactJsonDumps(p));
 }
 
+/** 「另存為」：優先呼叫系統檔案對話框（File System Access API），否則退回下載。 */
+export async function saveAs(store: GameStore): Promise<void> {
+  const p = store.serialize();
+  const name = `${store.currentStep}-${store.currentM}-${store.currentN}-${nowStamp()}.json`;
+  const text = compactJsonDumps(p);
+  const w = window as any;
+  if (w && typeof w.showSaveFilePicker === 'function') {
+    try {
+      const handle = await w.showSaveFilePicker({ suggestedName: name, types: [{ description: 'JSON 存檔', accept: { 'application/json': ['.json'] } }] });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      return;
+    } catch (e) {
+      // 使用者取消或其他失敗 → 退回下載
+    }
+  }
+  downloadText(name, text);
+}
+
 /** 從 JSON 或 map 文本導入。回傳結果文案。 */
 export function importData(store: GameStore, text: string): { ok: boolean; message: string } {
   const t = text.trim();

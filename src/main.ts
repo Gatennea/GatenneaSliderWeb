@@ -7,9 +7,10 @@ import { BoardController } from './interaction/BoardController.js';
 import { GameStore } from './store/GameStore.js';
 import { COLORS, GEOMETRY } from './render/theme.js';
 import { shuffle, reset, undo, redo } from './core/CommandBus.js';
-import { autosave, autoload, downloadSave, importData } from './io/SaveManager.js';
+import { autosave, autoload, downloadSave, saveAs, importData } from './io/SaveManager.js';
 import { Timer, formatTime } from './feature/Timer.js';
 import { Records, stats, puzzleKey } from './feature/Records.js';
+import type { Block } from './core/Block.js';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.style.background = COLORS.background;
@@ -573,21 +574,32 @@ function buildHistoryAnim(moveInfo: { direction: string; step: number; moved_pos
   return { start, end };
 }
 
+function blocksAtPositions(positions: [number, number][]): Set<Block> {
+  const map = new Map<string, Block>();
+  store.game.blocks.forEach((b) => map.set(`${b.row}:${b.col}`, b));
+  const set = new Set<Block>();
+  for (const pos of positions) {
+    const b = map.get(`${pos[0]}:${pos[1]}`);
+    if (b) set.add(b);
+  }
+  return set;
+}
+
 function flashMoveSelection(moveInfo: { direction: string; step: number; moved_positions: [number, number][] } | null | undefined, isUndo: boolean, afterCommit: boolean): void {
   if (!selectionAnimationEnabled || !moveInfo) return;
   const delta = DIR_DELTA_ANIM[moveInfo.direction];
   if (!delta) return;
   const step = moveInfo.step || store.currentStep;
-  const targets = new Set<string>();
+  const targets: [number, number][] = [];
   for (const pre of moveInfo.moved_positions) {
     const post: [number, number] = [pre[0] + delta[0] * step, pre[1] + delta[1] * step];
-    // 原版：播放前高亮「當時位置」，提交後高亮「終點位置」
     const pos = afterCommit ? (isUndo ? pre : post) : (isUndo ? post : pre);
-    targets.add(`${pos[0]}:${pos[1]}`);
+    targets.push(pos);
   }
-  if (targets.size === 0) return;
-  renderer.highlightCells = targets;
-  window.setTimeout(() => { renderer.highlightCells = null; schedulePaint(); }, 420);
+  const sel = blocksAtPositions(targets);
+  if (sel.size === 0) return;
+  store.game.selected = sel;
+  window.setTimeout(() => { store.game.selected.clear(); schedulePaint(); }, 420);
 }
 
 // 撤銷/重做動畫佇列（對照原版 _animation_queue + _process_next_in_queue）
@@ -638,8 +650,15 @@ function runHistoryAnimation(kind: 'undo' | 'redo', onDone: () => void): void {
   }
   if (!anim) { commit(); return; }
 
-  // 播放前高亮該步滑塊組的當前位置
-  flashMoveSelection(moveInfo, kind === 'undo', false);
+  // 播放前：把該步滑塊組設為「選中」，動畫期間跟著移動（看起來像實時操作）
+  if (moveInfo) {
+    const delta = DIR_DELTA_ANIM[moveInfo.direction];
+    const step = moveInfo.step || store.currentStep;
+    const startPositions = kind === 'undo'
+      ? moveInfo.moved_positions.map((pre) => [pre[0] + delta[0] * step, pre[1] + delta[1] * step] as [number, number])
+      : moveInfo.moved_positions;
+    store.game.selected = blocksAtPositions(startPositions);
+  }
 
   renderer.animation = { start: anim.start, end: anim.end, progress: 0, durationMs: controller.moveDurationMs };
   const t0 = performance.now();
@@ -810,7 +829,8 @@ function setGameMode(mode: 'practice' | 'timed'): void {
 interface MenuDef { label: string; items: (string | '---')[]; handler: (item: string) => void; }
 const menus: MenuDef[] = [
   { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...'], handler: (item) => {
-      if (item.includes('保存') || item.includes('另存')) { downloadSave(store); showToast('已下載存檔'); }
+      if (item.includes('另存')) { saveAs(store); showToast('另存為...'); }
+      else if (item.includes('保存')) { downloadSave(store); showToast('已下載存檔'); }
       else if (item.includes('打开')) fileInput.click();
     }
   },

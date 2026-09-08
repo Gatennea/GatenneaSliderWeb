@@ -60,10 +60,10 @@ function rewriteExports(code) {
 
   // export class X / export function X / export const X...
   code = code.replace(
-    /^export\s+(class|function|const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
-    (match, kind, name) => {
+    /^export\s+(async\s+)?(class|function|const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
+    (match, asyncKw, kind, name) => {
       exported.push(name);
-      return `${kind} ${name}`;
+      return `${asyncKw || ''}${kind} ${name}`;
     },
   );
 

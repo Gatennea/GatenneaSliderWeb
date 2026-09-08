@@ -10,7 +10,7 @@ const { BoardController } = require("./interaction/BoardController.js");
 const { GameStore } = require("./store/GameStore.js");
 const { COLORS, GEOMETRY } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
-const { autosave, autoload, downloadSave, importData } = require("./io/SaveManager.js");
+const { autosave, autoload, downloadSave, saveAs, importData } = require("./io/SaveManager.js");
 const { Timer, formatTime } = require("./feature/Timer.js");
 const { Records, stats, puzzleKey } = require("./feature/Records.js");
 const app = document.querySelector('#app');
@@ -556,6 +556,17 @@ function buildHistoryAnim(moveInfo, isUndo) {
     }
     return { start, end };
 }
+function blocksAtPositions(positions) {
+    const map = new Map();
+    store.game.blocks.forEach((b) => map.set(`${b.row}:${b.col}`, b));
+    const set = new Set();
+    for (const pos of positions) {
+        const b = map.get(`${pos[0]}:${pos[1]}`);
+        if (b)
+            set.add(b);
+    }
+    return set;
+}
 function flashMoveSelection(moveInfo, isUndo, afterCommit) {
     if (!selectionAnimationEnabled || !moveInfo)
         return;
@@ -563,17 +574,17 @@ function flashMoveSelection(moveInfo, isUndo, afterCommit) {
     if (!delta)
         return;
     const step = moveInfo.step || store.currentStep;
-    const targets = new Set();
+    const targets = [];
     for (const pre of moveInfo.moved_positions) {
         const post = [pre[0] + delta[0] * step, pre[1] + delta[1] * step];
-        // 原版：播放前高亮「當時位置」，提交後高亮「終點位置」
         const pos = afterCommit ? (isUndo ? pre : post) : (isUndo ? post : pre);
-        targets.add(`${pos[0]}:${pos[1]}`);
+        targets.push(pos);
     }
-    if (targets.size === 0)
+    const sel = blocksAtPositions(targets);
+    if (sel.size === 0)
         return;
-    renderer.highlightCells = targets;
-    window.setTimeout(() => { renderer.highlightCells = null; schedulePaint(); }, 420);
+    store.game.selected = sel;
+    window.setTimeout(() => { store.game.selected.clear(); schedulePaint(); }, 420);
 }
 // 撤銷/重做動畫佇列（對照原版 _animation_queue + _process_next_in_queue）
 const historyAnimQueue = [];
@@ -633,8 +644,15 @@ function runHistoryAnimation(kind, onDone) {
         commit();
         return;
     }
-    // 播放前高亮該步滑塊組的當前位置
-    flashMoveSelection(moveInfo, kind === 'undo', false);
+    // 播放前：把該步滑塊組設為「選中」，動畫期間跟著移動（看起來像實時操作）
+    if (moveInfo) {
+        const delta = DIR_DELTA_ANIM[moveInfo.direction];
+        const step = moveInfo.step || store.currentStep;
+        const startPositions = kind === 'undo'
+            ? moveInfo.moved_positions.map((pre) => [pre[0] + delta[0] * step, pre[1] + delta[1] * step])
+            : moveInfo.moved_positions;
+        store.game.selected = blocksAtPositions(startPositions);
+    }
     renderer.animation = { start: anim.start, end: anim.end, progress: 0, durationMs: controller.moveDurationMs };
     const t0 = performance.now();
     const frame = (now) => {
@@ -798,7 +816,11 @@ function setGameMode(mode) {
 }
 const menus = [
     { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...'], handler: (item) => {
-            if (item.includes('保存') || item.includes('另存')) {
+            if (item.includes('另存')) {
+                saveAs(store);
+                showToast('另存為...');
+            }
+            else if (item.includes('保存')) {
                 downloadSave(store);
                 showToast('已下載存檔');
             }
@@ -1325,6 +1347,26 @@ function downloadSave(store) {
     const name = `${store.currentStep}-${store.currentM}-${store.currentN}-${nowStamp()}.json`;
     downloadText(name, compactJsonDumps(p));
 }
+/** 「另存為」：優先呼叫系統檔案對話框（File System Access API），否則退回下載。 */
+async function saveAs(store) {
+    const p = store.serialize();
+    const name = `${store.currentStep}-${store.currentM}-${store.currentN}-${nowStamp()}.json`;
+    const text = compactJsonDumps(p);
+    const w = window;
+    if (w && typeof w.showSaveFilePicker === 'function') {
+        try {
+            const handle = await w.showSaveFilePicker({ suggestedName: name, types: [{ description: 'JSON 存檔', accept: { 'application/json': ['.json'] } }] });
+            const writable = await handle.createWritable();
+            await writable.write(text);
+            await writable.close();
+            return;
+        }
+        catch (e) {
+            // 使用者取消或其他失敗 → 退回下載
+        }
+    }
+    downloadText(name, text);
+}
 /** 從 JSON 或 map 文本導入。回傳結果文案。 */
 function importData(store, text) {
     const t = text.trim();
@@ -1356,7 +1398,7 @@ function downloadText(filename, text) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-return { compactJsonDumps, autosave, autoload, downloadSave, importData };
+return { compactJsonDumps, autosave, autoload, downloadSave, saveAs, importData };
 },
     "m11": function (require) {
 /**
