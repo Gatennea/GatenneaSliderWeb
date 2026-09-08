@@ -1844,6 +1844,7 @@ return { COLORS, GEOMETRY, easeOut, TEXT };
  */
 const { selectBlock, selectGap } = require("../core/CommandBus.js");
 const { isValidDirectionForGap } = require("../core/rules.js");
+const DRAG_MOVE_THRESHOLD = 18;
 const DIRECTION_KEYS = {
     w: 'w',
     W: 'w',
@@ -1858,8 +1859,29 @@ const DIRECTION_KEYS = {
     ArrowLeft: 'a',
     ArrowRight: 'd',
 };
-/** 拖動判定為「移動」的最低位移（px） */
-const DRAG_MOVE_THRESHOLD = 18;
+const GAP_ABBR = ['d', 'l', 'r', 'd', 'u', 'r', 'l', 'u'];
+const DIR_ABBR = ['r', 'u', 'u', 'l', 'l', 'd', 'd', 'r'];
+function directGestureFromDrag(row, col, dx, dy) {
+    const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    const sector = Math.floor(angle / 45) % 8;
+    const gapAbbr = GAP_ABBR[sector];
+    const moveAbbr = DIR_ABBR[sector];
+    let gap;
+    if (gapAbbr === 'd') {
+        gap = { type: 'h', line: row }; // 下沿：row 到 row+1 之間
+    }
+    else if (gapAbbr === 'u') {
+        gap = { type: 'h', line: row - 1 }; // 上沿：row-1 到 row 之間
+    }
+    else if (gapAbbr === 'l') {
+        gap = { type: 'v', line: col - 1 }; // 左沿
+    }
+    else {
+        gap = { type: 'v', line: col }; // 右沿
+    }
+    const direction = moveAbbr === 'r' ? 'd' : moveAbbr === 'l' ? 'a' : moveAbbr === 'u' ? 'w' : 's';
+    return { gap, direction };
+}
 class BoardController {
     constructor(ui) {
         /** 右側面板「滑動動畫」開關；關閉時移動瞬間完成 */
@@ -2012,13 +2034,25 @@ class BoardController {
         const direction = Math.abs(dx) > Math.abs(dy)
             ? (dx > 0 ? 'd' : 'a')
             : (dy > 0 ? 's' : 'w');
-        if (store.cmd.selectedGap && startBlock && overThreshold) {
-            if (!store.cmd.selectedBlock) {
-                const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
-                if (!reply.ok)
-                    return;
+        if (startBlock && overThreshold) {
+            if (store.cmd.selectedGap) {
+                if (!store.cmd.selectedBlock) {
+                    const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
+                    if (!reply.ok)
+                        return;
+                }
+                this.animateMove(direction);
             }
-            this.animateMove(direction);
+            else {
+                // 無縫隙時：依拖拽角度直接判定縫隙/方向（8 區）
+                const gesture = directGestureFromDrag(startBlock.row, startBlock.col, dx, dy);
+                if (gesture) {
+                    store.cmd.selectedGap = gesture.gap;
+                    const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
+                    if (reply.ok)
+                        this.animateMove(gesture.direction);
+                }
+            }
         }
         else if (this.drag.pan) {
             // 平移鏡頭（已在 move 期間跟手，這裡確保最終位置一致）
