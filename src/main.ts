@@ -81,34 +81,109 @@ const stZoom = document.createElement('span');
 status.append(stSolved, stSteps, stTimer, stPuzzle, stZoom);
 
 // ---------- 浮動面板 ----------
+// ---------- 浮動面板（可拖動） ----------
 const vkPanel = document.createElement('div');
 vkPanel.style.position = 'fixed';
 vkPanel.style.left = '12px';
-vkPanel.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
+vkPanel.style.top = '40px';
 vkPanel.style.background = COLORS.dialog_bg;
 vkPanel.style.border = `1px solid ${COLORS.dialog_border}`;
 vkPanel.style.borderRadius = '6px';
-vkPanel.style.padding = '10px';
 vkPanel.style.zIndex = '500';
 vkPanel.style.display = 'none';
+vkPanel.style.padding = '0';
+vkPanel.style.overflow = 'hidden';
 app.appendChild(vkPanel);
+
+const vkHeader = document.createElement('div');
+vkHeader.style.display = 'flex';
+vkHeader.style.alignItems = 'center';
+vkHeader.style.justifyContent = 'space-between';
+vkHeader.style.background = '#3c3c48';
+vkHeader.style.padding = '4px 8px';
+vkHeader.style.cursor = 'move';
+vkHeader.style.userSelect = 'none';
+const vkTitle = document.createElement('span');
+vkTitle.textContent = '虚拟键盘';
+vkTitle.style.color = '#fff';
+vkTitle.style.fontSize = '13px';
+const vkClose = document.createElement('span');
+vkClose.textContent = '×';
+vkClose.style.color = '#fff';
+vkClose.style.cursor = 'pointer';
+vkClose.style.padding = '0 4px';
+vkHeader.append(vkTitle, vkClose);
+vkPanel.appendChild(vkHeader);
+const vkBody = document.createElement('div');
+vkBody.style.padding = '8px';
+vkBody.style.background = 'rgba(40,40,48,0.94)';
+vkPanel.appendChild(vkBody);
+vkClose.addEventListener('click', () => { vkPanel.style.display = 'none'; });
 
 const recordsPanel = document.createElement('div');
 recordsPanel.style.position = 'fixed';
 recordsPanel.style.right = '12px';
-recordsPanel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
+recordsPanel.style.top = '40px';
 recordsPanel.style.width = '260px';
 recordsPanel.style.maxHeight = '60vh';
-recordsPanel.style.overflowY = 'auto';
 recordsPanel.style.background = COLORS.dialog_bg;
 recordsPanel.style.border = `1px solid ${COLORS.dialog_border}`;
 recordsPanel.style.borderRadius = '6px';
-recordsPanel.style.padding = '10px';
-recordsPanel.style.fontSize = '13px';
-recordsPanel.style.color = COLORS.dialog_text;
-recordsPanel.style.display = 'none';
 recordsPanel.style.zIndex = '500';
+recordsPanel.style.display = 'none';
+recordsPanel.style.padding = '0';
+recordsPanel.style.overflow = 'hidden';
 app.appendChild(recordsPanel);
+
+const recordsHeader = document.createElement('div');
+recordsHeader.style.display = 'flex';
+recordsHeader.style.alignItems = 'center';
+recordsHeader.style.justifyContent = 'space-between';
+recordsHeader.style.background = '#3c3c48';
+recordsHeader.style.padding = '4px 8px';
+recordsHeader.style.cursor = 'move';
+recordsHeader.style.userSelect = 'none';
+const recordsTitle = document.createElement('span');
+recordsTitle.textContent = '成绩';
+recordsTitle.style.color = '#fff';
+recordsTitle.style.fontSize = '13px';
+const recordsClose = document.createElement('span');
+recordsClose.textContent = '×';
+recordsClose.style.color = '#fff';
+recordsClose.style.cursor = 'pointer';
+recordsClose.style.padding = '0 4px';
+recordsHeader.append(recordsTitle, recordsClose);
+recordsPanel.appendChild(recordsHeader);
+const recordsBody = document.createElement('div');
+recordsBody.style.padding = '10px';
+recordsBody.style.maxHeight = 'calc(60vh - 28px)';
+recordsBody.style.overflowY = 'auto';
+recordsPanel.appendChild(recordsBody);
+recordsClose.addEventListener('click', () => { recordsPanel.style.display = 'none'; });
+
+function makeDraggable(panel: HTMLElement, header: HTMLElement): void {
+  let dragging = false;
+  let ox = 0;
+  let oy = 0;
+  header.addEventListener('mousedown', (e) => {
+    if ((e.target as HTMLElement) === header.querySelector('span:last-child')) return;
+    dragging = true;
+    ox = e.clientX - panel.offsetLeft;
+    oy = e.clientY - panel.offsetTop;
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    panel.style.left = `${e.clientX - ox}px`;
+    panel.style.top = `${e.clientY - oy}px`;
+    panel.style.right = 'auto';
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+}
+makeDraggable(vkPanel, vkHeader);
+makeDraggable(recordsPanel, recordsHeader);
+
+
 
 // ---------- Toast ----------
 const toast = document.createElement('div');
@@ -215,11 +290,14 @@ function recordDnf(): void {
   schedulePaint();
 }
 
+// 右側開關狀態
+let selectionAnimationEnabled = true;
+
 // ---------- 右側面板開關 ----------
 type SwitchState = { key: string; label: string; get: () => boolean; set: (v: boolean) => void; el?: HTMLDivElement };
 const switchStates: SwitchState[] = [
   { key: 'animation_enabled', label: '滑动动画', get: () => controller.animationEnabled, set: (v) => { controller.animationEnabled = v; } },
-  { key: 'selection_animation_enabled', label: '选中动画', get: () => true, set: () => {} },
+  { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
   { key: 'coloring_enabled', label: '着色', get: () => false, set: () => {} },
   { key: 'chain_hint_enabled', label: '连锁', get: () => false, set: () => {} },
   { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { gameMode = v ? 'timed' : 'practice'; timer.reset(); showToast(v ? '模式：竞速' : '模式：练习'); schedulePaint(); } },
@@ -251,10 +329,19 @@ switchStates.forEach((s) => {
 });
 
 // ---------- 右側面板垂直滑條：縮放 / 速度 ----------
+// 原版：缩放條在左、速度條在右，兩條並排於面板上方
+const sliderArea = document.createElement('div');
+sliderArea.style.flex = '1 1 auto';
+sliderArea.style.minHeight = '0';
+sliderArea.style.display = 'flex';
+sliderArea.style.flexDirection = 'row';
+sliderArea.style.order = '-1';
+sliderArea.style.gap = '8px';
+rightPanel.appendChild(sliderArea);
+
 function makeSlider(label: string, onChange: (ratio: number) => void): { track: HTMLDivElement; knob: HTMLDivElement } {
   const wrap = document.createElement('div');
   wrap.style.flex = '1 1 auto';
-  wrap.style.order = '-1';
   wrap.style.display = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.alignItems = 'center';
@@ -278,7 +365,7 @@ function makeSlider(label: string, onChange: (ratio: number) => void): { track: 
   knob.style.borderRadius = '3px';
   track.appendChild(knob);
   wrap.append(lab, track);
-  rightPanel.appendChild(wrap);
+  sliderArea.appendChild(wrap);
 
   function updateFromY(clientY: number): void {
     const rect = track.getBoundingClientRect();
@@ -307,12 +394,10 @@ const speedSlider = makeSlider('速度', (ratio) => {
 });
 
 // ---------- 虛擬鍵盤浮動面板 ----------
+let stickyOn = false;
+
 function buildVK(): void {
-  vkPanel.innerHTML = '';
-  const grid = document.createElement('div');
-  grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = 'repeat(3, 44px)';
-  grid.style.gap = '4px';
+  vkBody.innerHTML = '';
   const btn = (t: string, cb: () => void) => {
     const b = document.createElement('button');
     b.textContent = t;
@@ -320,26 +405,83 @@ function buildVK(): void {
     b.style.color = '#fff';
     b.style.border = 'none';
     b.style.borderRadius = '4px';
-    b.style.padding = '6px 0';
+    b.style.padding = '5px 0';
     b.style.cursor = 'pointer';
+    b.style.fontSize = '13px';
     b.addEventListener('click', cb);
     return b;
   };
-  grid.appendChild(btn('W', () => controller.move('w')));
-  grid.appendChild(btn('A', () => controller.move('a')));
-  grid.appendChild(btn('S', () => controller.move('s')));
-  grid.appendChild(btn('D', () => controller.move('d')));
-  const row = document.createElement('div');
-  row.style.display = 'flex';
-  row.style.gap = '4px';
-  row.style.marginTop = '6px';
-  row.append(
-    btn('撤销', handleUndo),
-    btn('重做', handleRedo),
-    btn('打乱', handleShuffle),
-    btn('重置', handleReset),
-  );
-  vkPanel.append(grid, row);
+
+  // 方向鍵區（原版十字排列）
+  const pad = document.createElement('div');
+  pad.style.display = 'grid';
+  pad.style.gridTemplateColumns = 'repeat(3, 44px)';
+  pad.style.gap = '4px';
+  const padEmpty = document.createElement('span');
+  padEmpty.textContent = '';
+  pad.appendChild(padEmpty);
+  pad.appendChild(btn('↑', () => controller.move('w')));
+  pad.appendChild(padEmpty.cloneNode(false));
+  pad.appendChild(btn('←', () => controller.move('a')));
+  pad.appendChild(btn('↓', () => controller.move('s')));
+  pad.appendChild(btn('→', () => controller.move('d')));
+
+  // 動作列（粘滞 / 撤銷 / 重做）
+  const actionRow = document.createElement('div');
+  actionRow.style.display = 'flex';
+  actionRow.style.gap = '4px';
+  actionRow.style.marginTop = '6px';
+  const stickyBtn = btn('粘滞:单步', () => {
+    stickyOn = !stickyOn;
+    stickyBtn.textContent = stickyOn ? '粘滞:连续' : '粘滞:单步';
+    showToast(stickyOn ? '粘滞：连续' : '粘滞：单步');
+  });
+  const undoBtn = btn('撤销', () => {
+    if (stickyOn) {
+      const iv = window.setInterval(() => {
+        if (!store.cmd.history.canUndo) { window.clearInterval(iv); return; }
+        handleUndo();
+      }, 200);
+    } else handleUndo();
+  });
+  const redoBtn = btn('重做', () => {
+    if (stickyOn) {
+      const iv = window.setInterval(() => {
+        if (!store.cmd.history.canRedo) { window.clearInterval(iv); return; }
+        handleRedo();
+      }, 200);
+    } else handleRedo();
+  });
+  actionRow.append(stickyBtn, undoBtn, redoBtn);
+
+  // 跳到某步（輸入步數 + 跳到）
+  const jumpRow = document.createElement('div');
+  jumpRow.style.display = 'flex';
+  jumpRow.style.gap = '4px';
+  jumpRow.style.marginTop = '6px';
+  const jumpInput = document.createElement('input');
+  jumpInput.type = 'number';
+  jumpInput.min = '0';
+  jumpInput.value = String(store.cmd.stepCount);
+  jumpInput.style.width = '52px';
+  jumpInput.style.background = COLORS.input_bg;
+  jumpInput.style.color = COLORS.input_text;
+  jumpInput.style.border = '1px solid ' + COLORS.border;
+  jumpInput.style.borderRadius = '4px';
+  jumpInput.style.padding = '4px';
+  const jumpBtn = btn('跳到', () => {
+    const idx = Number(jumpInput.value);
+    if (!Number.isInteger(idx)) { showToast('請輸入步數'); return; }
+    if (store.cmd.history.jumpTo(store.game, idx)) {
+      store.cmd.stepCount = idx;
+      autosave(store);
+      schedulePaint();
+      showToast('已跳到第 ' + idx + ' 步');
+    } else showToast('步數超出範圍');
+  });
+  jumpRow.append(jumpInput, jumpBtn);
+
+  vkBody.append(pad, actionRow, jumpRow);
 }
 
 function toggleVK(): void {
@@ -354,22 +496,22 @@ function renderRecordsPanel(): void {
   const key = puzzleKey(store.currentM, store.currentN, store.currentStep);
   const list = records.get(key);
   const s = stats(list);
-  recordsPanel.innerHTML = '';
+  recordsBody.innerHTML = '';
   const t = document.createElement('div');
   t.textContent = `成績：${key}`;
   t.style.marginBottom = '6px';
   t.style.color = COLORS.dialog_title;
-  recordsPanel.appendChild(t);
+  recordsBody.appendChild(t);
   const sum = document.createElement('div');
   const fmt = (v: number | 'DNF' | null) => v === null ? '-' : v === 'DNF' ? 'DNF' : formatTime(v);
   sum.textContent = `次數 ${s.count} ｜ 最佳 ${fmt(s.best)} ｜ 最差 ${fmt(s.worst)} ｜ DNF ${s.dnf_count} ｜ Ao5 ${fmt(s.ao5)} ｜ Ao12 ${fmt(s.ao12)}`;
-  recordsPanel.appendChild(sum);
+  recordsBody.appendChild(sum);
   if (list.length === 0) {
     const empty = document.createElement('div');
     empty.style.color = '#888';
     empty.style.marginTop = '6px';
     empty.textContent = '尚無成績記錄';
-    recordsPanel.appendChild(empty);
+    recordsBody.appendChild(empty);
     return;
   }
   list.slice().reverse().forEach((r) => {
@@ -378,7 +520,7 @@ function renderRecordsPanel(): void {
     row.style.borderBottom = `1px solid ${COLORS.separator}`;
     row.textContent = `${r.dnf ? 'DNF' : formatTime(r.time_ms)}（${r.moves}步）`;
     if (r.dnf) row.style.color = '#cc6666';
-    recordsPanel.appendChild(row);
+    recordsBody.appendChild(row);
   });
 }
 
@@ -396,7 +538,7 @@ function handleUndo(): void {
   const r = undo(store.cmd);
   if (!r.ok) { showToast(r.message); return; }
   const after = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
-  if (controller.animationEnabled && before.length === after.length) controller.playTransition(before, after);
+  if (controller.animationEnabled && selectionAnimationEnabled && before.length === after.length) controller.playTransition(before, after);
   autosave(store); schedulePaint(); showToast(r.message);
 }
 

@@ -69,6 +69,9 @@ export class GameStore {
     this.game = new SliderMatrix(m, n);
     if (typeof p.map === 'string' && p.map.trim().length > 0) {
       this.game.import_map(p.map);
+      // import_map 會依 map 邊界覆寫 m/n，這裡恢復謎題原始尺寸
+      this.game.m = m;
+      this.game.n = n;
     }
     this.cmd = createContext(this.game, step);
     this.cmd.stepCount = p.step_count ?? 0;

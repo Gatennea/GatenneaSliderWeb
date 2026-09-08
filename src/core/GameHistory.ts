@@ -60,6 +60,14 @@ export class GameHistory {
     return true;
   }
 
+  /** 直接跳到指定歷史步（虛擬鍵盤「跳到某步」用）。 */
+  jumpTo(game: SliderMatrix, index: number): boolean {
+    if (!Number.isInteger(index) || index < 0 || index >= this.entries.length) return false;
+    this.index = index;
+    this.apply(game, this.entries[this.index]);
+    return true;
+  }
+
   /** 匯出全部快照（供存檔）。 */
   snapshotAll(): { blocks: [number, number][] }[] {
     return this.entries.map((e) => ({ blocks: e.blocks.map(([r, c]) => [r, c]) }));

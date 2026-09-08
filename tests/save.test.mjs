@@ -3,7 +3,7 @@
  */
 import { GameStore } from '../dist/store/GameStore.js';
 import { SliderMatrix } from '../dist/core/SliderMatrix.js';
-import { createContext, selectGap, selectBlock, move } from '../dist/core/CommandBus.js';
+import { createContext, selectGap, selectBlock, move, undo } from '../dist/core/CommandBus.js';
 
 export const cases = [
   {
@@ -28,6 +28,24 @@ export const cases = [
       if (g2.currentM !== 4 || g2.currentN !== 4 || g2.currentStep !== 2) throw new Error('還原 puzzle 不符');
       if (g2.cmd.stepCount !== 1) throw new Error('還原 stepCount 不符');
       if (g2.game.export_map() !== p.map) throw new Error('還原 map 不符');
+    },
+  },
+  {
+    name: '載入存檔後可撤銷（歷史快照還原）',
+    run() {
+      const g = new GameStore(4, 4, 2);
+      const ctx = g.cmd;
+      selectGap(ctx, 'h', 1);
+      selectBlock(ctx, 0, 0);
+      move(ctx, 'd');
+      const p = g.serialize();
+      const g2 = new GameStore();
+      g2.deserialize(p);
+      if (g2.cmd.history.length < 2) throw new Error('載入後歷史應有至少 2 筆');
+      const r = undo(g2.cmd);
+      if (!r.ok) throw new Error('載入後應可撤銷');
+      if (g2.cmd.stepCount !== 0) throw new Error('撤銷後步數應為 0');
+      if (!g2.game.is_solved()) throw new Error('撤銷後應回到復原態');
     },
   },
   {
