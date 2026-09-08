@@ -604,8 +604,18 @@ function runHistoryAnimation(kind: 'undo' | 'redo'): void {
     showToast(r.message);
   };
 
-  if (!controller.animationEnabled || !moveInfo) { commit(); return; }
-  const anim = buildHistoryAnim(moveInfo, kind === 'undo');
+  if (!controller.animationEnabled) { commit(); return; }
+
+  // 優先：用 move_info 只動「該步滑塊組」
+  let anim = moveInfo ? buildHistoryAnim(moveInfo, kind === 'undo') : null;
+  // fallback：無 move_info 時做整版過場，確保仍有動畫
+  if (!anim) {
+    const target = kind === 'undo' ? hist.undoTarget() : hist.redoTarget();
+    if (target) {
+      const start = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
+      anim = { start, end: target.blocks };
+    }
+  }
   if (!anim) { commit(); return; }
 
   renderer.animation = { start: anim.start, end: anim.end, progress: 0, durationMs: controller.moveDurationMs };

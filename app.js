@@ -590,11 +590,20 @@ function runHistoryAnimation(kind) {
         schedulePaint();
         showToast(r.message);
     };
-    if (!controller.animationEnabled || !moveInfo) {
+    if (!controller.animationEnabled) {
         commit();
         return;
     }
-    const anim = buildHistoryAnim(moveInfo, kind === 'undo');
+    // 優先：用 move_info 只動「該步滑塊組」
+    let anim = moveInfo ? buildHistoryAnim(moveInfo, kind === 'undo') : null;
+    // fallback：無 move_info 時做整版過場，確保仍有動畫
+    if (!anim) {
+        const target = kind === 'undo' ? hist.undoTarget() : hist.redoTarget();
+        if (target) {
+            const start = store.game.blocks.map((b) => [b.row, b.col]);
+            anim = { start, end: target.blocks };
+        }
+    }
     if (!anim) {
         commit();
         return;
@@ -1944,6 +1953,14 @@ class GameHistory {
     /** 目前快照的 move_info（最後一步如何到達目前版面；undo 用它反向動畫）。 */
     currentMoveInfo() {
         return this.entries[this.index]?.move_info ?? null;
+    }
+    /** undo 目標（上一筆）快照的 blocks；無可撤銷回 null。 */
+    undoTarget() {
+        return this.canUndo ? this.entries[this.index - 1] : null;
+    }
+    /** redo 目標（下一筆）快照的 blocks；無可重做回 null。 */
+    redoTarget() {
+        return this.canRedo ? this.entries[this.index + 1] : null;
     }
     /** 下一個 redo 目標快照的 move_info。 */
     nextMoveInfo() {

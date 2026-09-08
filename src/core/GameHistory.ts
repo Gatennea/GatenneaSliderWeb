@@ -60,6 +60,16 @@ export class GameHistory {
     return this.entries[this.index]?.move_info ?? null;
   }
 
+  /** undo 目標（上一筆）快照的 blocks；無可撤銷回 null。 */
+  undoTarget(): { blocks: [number, number][] } | null {
+    return this.canUndo ? this.entries[this.index - 1] : null;
+  }
+
+  /** redo 目標（下一筆）快照的 blocks；無可重做回 null。 */
+  redoTarget(): { blocks: [number, number][] } | null {
+    return this.canRedo ? this.entries[this.index + 1] : null;
+  }
+
   /** 下一個 redo 目標快照的 move_info。 */
   nextMoveInfo(): MoveInfo | null {
     return this.entries[this.index + 1]?.move_info ?? null;
