@@ -1,0 +1,16 @@
+{
+  "name": "gatennea-slider-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "貓九的滑塊遊戲 — 網頁體驗版（零構建工具，tsc + 原生 ES modules）",
+  "scripts": {
+    "build": "node node_modules/typescript/lib/tsc.js && node scripts/bundle.mjs",
+    "serve": "node scripts/serve.mjs",
+    "dev": "node scripts/dev-server.mjs",
+    "test": "node scripts/run-tests.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
