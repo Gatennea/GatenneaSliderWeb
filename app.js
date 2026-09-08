@@ -584,7 +584,15 @@ function flashMoveSelection(moveInfo, isUndo, afterCommit) {
     if (sel.size === 0)
         return;
     store.game.selected = sel;
-    window.setTimeout(() => { store.game.selected.clear(); schedulePaint(); }, 420);
+    // 選中動畫也要顯示該步選中的縫隙（紅線），對照原版 _flash_move_selection
+    if (moveInfo.gap_type !== undefined && moveInfo.gap_line !== undefined) {
+        store.cmd.selectedGap = { type: moveInfo.gap_type, line: moveInfo.gap_line };
+    }
+    window.setTimeout(() => {
+        store.game.selected.clear();
+        store.cmd.selectedGap = null;
+        schedulePaint();
+    }, 420);
 }
 // 撤銷/重做動畫佇列（對照原版 _animation_queue + _process_next_in_queue）
 const historyAnimQueue = [];
@@ -652,6 +660,9 @@ function runHistoryAnimation(kind, onDone) {
             ? moveInfo.moved_positions.map((pre) => [pre[0] + delta[0] * step, pre[1] + delta[1] * step])
             : moveInfo.moved_positions;
         store.game.selected = blocksAtPositions(startPositions);
+        if (moveInfo.gap_type !== undefined && moveInfo.gap_line !== undefined) {
+            store.cmd.selectedGap = { type: moveInfo.gap_type, line: moveInfo.gap_line };
+        }
     }
     renderer.animation = { start: anim.start, end: anim.end, progress: 0, durationMs: controller.moveDurationMs };
     const t0 = performance.now();

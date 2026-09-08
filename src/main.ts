@@ -585,7 +585,7 @@ function blocksAtPositions(positions: [number, number][]): Set<Block> {
   return set;
 }
 
-function flashMoveSelection(moveInfo: { direction: string; step: number; moved_positions: [number, number][] } | null | undefined, isUndo: boolean, afterCommit: boolean): void {
+function flashMoveSelection(moveInfo: { direction: string; step: number; moved_positions: [number, number][]; gap_type?: 'h' | 'v'; gap_line?: number } | null | undefined, isUndo: boolean, afterCommit: boolean): void {
   if (!selectionAnimationEnabled || !moveInfo) return;
   const delta = DIR_DELTA_ANIM[moveInfo.direction];
   if (!delta) return;
@@ -599,7 +599,15 @@ function flashMoveSelection(moveInfo: { direction: string; step: number; moved_p
   const sel = blocksAtPositions(targets);
   if (sel.size === 0) return;
   store.game.selected = sel;
-  window.setTimeout(() => { store.game.selected.clear(); schedulePaint(); }, 420);
+  // 選中動畫也要顯示該步選中的縫隙（紅線），對照原版 _flash_move_selection
+  if (moveInfo.gap_type !== undefined && moveInfo.gap_line !== undefined) {
+    store.cmd.selectedGap = { type: moveInfo.gap_type, line: moveInfo.gap_line };
+  }
+  window.setTimeout(() => {
+    store.game.selected.clear();
+    store.cmd.selectedGap = null;
+    schedulePaint();
+  }, 420);
 }
 
 // 撤銷/重做動畫佇列（對照原版 _animation_queue + _process_next_in_queue）
@@ -658,6 +666,9 @@ function runHistoryAnimation(kind: 'undo' | 'redo', onDone: () => void): void {
       ? moveInfo.moved_positions.map((pre) => [pre[0] + delta[0] * step, pre[1] + delta[1] * step] as [number, number])
       : moveInfo.moved_positions;
     store.game.selected = blocksAtPositions(startPositions);
+    if (moveInfo.gap_type !== undefined && moveInfo.gap_line !== undefined) {
+      store.cmd.selectedGap = { type: moveInfo.gap_type, line: moveInfo.gap_line };
+    }
   }
 
   renderer.animation = { start: anim.start, end: anim.end, progress: 0, durationMs: controller.moveDurationMs };
