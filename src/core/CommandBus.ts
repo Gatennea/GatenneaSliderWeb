@@ -89,9 +89,7 @@ export function move(ctx: CommandContext, direction: Direction): Reply {
   }
 
   ctx.game.commit_move(finalPositions);
-  ctx.game.selected.clear();
-  ctx.selectedGap = null;
-  ctx.selectedBlock = null;
+  // 對照原版：移動後保留縫隙/滑塊組選中，以便連續滑動
   ctx.stepCount += 1;
   ctx.history.save_snapshot(ctx.game);
   return { ok: true, message: `移動 ${direction}` };
@@ -131,7 +129,7 @@ export function shuffle(ctx: CommandContext, attempts = 100): Reply {
 export function reset(ctx: CommandContext): Reply {
   const m = ctx.game.m;
   const n = ctx.game.n;
-  ctx.game = new SliderMatrix(m, n);
+  ctx.game.resetTo(m, n);
   ctx.selectedGap = null;
   ctx.selectedBlock = null;
   ctx.stepCount = 0;

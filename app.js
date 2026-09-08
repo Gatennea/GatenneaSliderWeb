@@ -41,9 +41,9 @@ app.appendChild(content);
 const canvas = document.createElement('canvas');
 canvas.style.flex = '1 1 auto';
 canvas.style.display = 'block';
-canvas.style.width = '100%';
+canvas.style.width = 'auto';
 canvas.style.height = '100%';
-canvas.style.touchAction = 'none';
+canvas.style.minWidth = '0';
 content.appendChild(canvas);
 const rightPanel = document.createElement('div');
 rightPanel.style.width = '132px';
@@ -237,6 +237,7 @@ switchStates.forEach((s) => {
 function makeSlider(label, onChange) {
     const wrap = document.createElement('div');
     wrap.style.flex = '1 1 auto';
+    wrap.style.order = '-1';
     wrap.style.display = 'flex';
     wrap.style.flexDirection = 'column';
     wrap.style.alignItems = 'center';
@@ -418,24 +419,104 @@ function handleReset() {
     schedulePaint();
 }
 function handleCustomPuzzle() {
-    const m = Number(window.prompt('列數 m（例如 4）', String(store.currentM)));
-    const n = Number(window.prompt('行數 n（例如 5）', String(store.currentN)));
-    const step = Number(window.prompt('步距 step（需 < max(m,n)）', String(store.currentStep)));
-    if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) {
-        showToast('輸入需為整數');
-        return;
-    }
-    if (step >= Math.max(m, n)) {
-        showToast(`step 需 < max(m,n)=${Math.max(m, n)}`);
-        return;
-    }
-    store.newPuzzle(m, n, step);
-    renderer.animation = null;
-    centerCamera();
-    autosave(store);
-    timer.reset();
-    schedulePaint();
-    showToast(`切換謎題 ${step}~${m}*${n}`);
+    // 用自訂頁面表單取代瀏覽器內建 prompt
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0,0,0,0.55)';
+    overlay.style.zIndex = '2000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.addEventListener('click', () => overlay.remove());
+    const box = document.createElement('div');
+    box.style.background = COLORS.dialog_bg;
+    box.style.border = `1px solid ${COLORS.dialog_border}`;
+    box.style.borderRadius = '8px';
+    box.style.padding = '18px';
+    box.style.width = '260px';
+    box.style.color = COLORS.dialog_text;
+    box.style.fontSize = '13px';
+    box.addEventListener('click', (e) => e.stopPropagation());
+    const title = document.createElement('div');
+    title.textContent = '自訂謎題';
+    title.style.marginBottom = '12px';
+    title.style.fontWeight = 'bold';
+    box.appendChild(title);
+    const fields = [
+        ['列數 m', String(store.currentM)],
+        ['行數 n', String(store.currentN)],
+        ['步距 step', String(store.currentStep)],
+    ];
+    const inputs = [];
+    fields.forEach(([label, value]) => {
+        const lab = document.createElement('label');
+        lab.style.display = 'block';
+        lab.style.marginBottom = '8px';
+        const span = document.createElement('span');
+        span.textContent = label;
+        span.style.display = 'block';
+        const input = document.createElement('input');
+        input.value = value;
+        input.type = 'number';
+        input.style.width = '100%';
+        input.style.boxSizing = 'border-box';
+        input.style.background = COLORS.input_bg;
+        input.style.color = COLORS.input_text;
+        input.style.border = `1px solid ${COLORS.dialog_border}`;
+        input.style.borderRadius = '4px';
+        input.style.padding = '6px';
+        inputs.push(input);
+        lab.append(span, input);
+        box.appendChild(lab);
+    });
+    const btnRow = document.createElement('div');
+    btnRow.style.display = 'flex';
+    btnRow.style.gap = '8px';
+    btnRow.style.justifyContent = 'flex-end';
+    btnRow.style.marginTop = '12px';
+    const ok = document.createElement('button');
+    ok.textContent = '確定';
+    ok.style.background = COLORS.button_bg;
+    ok.style.color = '#fff';
+    ok.style.border = 'none';
+    ok.style.borderRadius = '4px';
+    ok.style.padding = '6px 14px';
+    ok.style.cursor = 'pointer';
+    const cancel = document.createElement('button');
+    cancel.textContent = '取消';
+    cancel.style.background = COLORS.input_bg;
+    cancel.style.color = '#fff';
+    cancel.style.border = `1px solid ${COLORS.border}`;
+    cancel.style.borderRadius = '4px';
+    cancel.style.padding = '6px 14px';
+    cancel.style.cursor = 'pointer';
+    cancel.addEventListener('click', () => overlay.remove());
+    ok.addEventListener('click', () => {
+        const m = Number(inputs[0].value);
+        const n = Number(inputs[1].value);
+        const step = Number(inputs[2].value);
+        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) {
+            showToast('輸入需為整數');
+            return;
+        }
+        if (step >= Math.max(m, n)) {
+            showToast(`step 需 < max(m,n)=${Math.max(m, n)}`);
+            return;
+        }
+        store.newPuzzle(m, n, step);
+        renderer.animation = null;
+        centerCamera();
+        autosave(store);
+        timer.reset();
+        schedulePaint();
+        showToast(`切換謎題 ${step}~${m}*${n}`);
+        overlay.remove();
+    });
+    btnRow.append(cancel, ok);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    app.appendChild(overlay);
 }
 function handlePresetPuzzle(label) {
     const m = Number(label.split('*')[0].split('~')[1]);
@@ -595,6 +676,11 @@ window.addEventListener('keydown', (e) => {
         return;
     }
     if (ctrl && key === 'y') {
+        e.preventDefault();
+        handleRedo();
+        return;
+    }
+    if (ctrl && key === 'x') {
         e.preventDefault();
         handleRedo();
         return;
@@ -1392,11 +1478,8 @@ class BoardController {
             return e ? [e[0], e[1]] : [b.row, b.col];
         });
         if (!this.animationEnabled) {
-            // 關閉動畫：瞬間提交
+            // 關閉動畫：瞬間提交；保留選中以便連續滑動
             store.game.commit_move(finalPositions);
-            store.game.selected.clear();
-            cmd.selectedGap = null;
-            cmd.selectedBlock = null;
             cmd.stepCount += 1;
             cmd.history.save_snapshot(store.game);
             this.notify(`移動 ${direction}`);
@@ -1418,11 +1501,8 @@ class BoardController {
             }
             else {
                 renderer.animation = null;
-                // 提交（對照 CommandBus.move 的 commit 尾巴；先 commit 再存快照）
+                // 提交（對照 CommandBus.move 的 commit 尾巴；保留選中以便連續滑動）
                 store.game.commit_move(finalPositions);
-                store.game.selected.clear();
-                cmd.selectedGap = null;
-                cmd.selectedBlock = null;
                 cmd.stepCount += 1;
                 cmd.history.save_snapshot(store.game);
                 this.notify(`移動 ${direction}`);
@@ -1451,7 +1531,6 @@ return { BoardController };
  * 把求解器掛到 Web Worker 時沿用原版指令協定。
  */
 const { GameHistory } = require("./GameHistory.js");
-const { SliderMatrix } = require("./SliderMatrix.js");
 const { isValidDirectionForGap } = require("./rules.js");
 function createContext(game, step) {
     const ctx = {
@@ -1506,9 +1585,7 @@ function move(ctx, direction) {
         return { ok: false, message: '移動不合法（碰撞或斷連）' };
     }
     ctx.game.commit_move(finalPositions);
-    ctx.game.selected.clear();
-    ctx.selectedGap = null;
-    ctx.selectedBlock = null;
+    // 對照原版：移動後保留縫隙/滑塊組選中，以便連續滑動
     ctx.stepCount += 1;
     ctx.history.save_snapshot(ctx.game);
     return { ok: true, message: `移動 ${direction}` };
@@ -1544,7 +1621,7 @@ function shuffle(ctx, attempts = 100) {
 function reset(ctx) {
     const m = ctx.game.m;
     const n = ctx.game.n;
-    ctx.game = new SliderMatrix(m, n);
+    ctx.game.resetTo(m, n);
     ctx.selectedGap = null;
     ctx.selectedBlock = null;
     ctx.stepCount = 0;
@@ -1650,6 +1727,110 @@ class Block {
 return { Block };
 },
     "m7": function (require) {
+/**
+ * 規則常量（對照 game.py / 術語規定.md）
+ *
+ * - h 縫隙（橫向，row 之間）只能 a/d（左右）
+ * - v 縫隙（縱向，col 之間）只能 w/s（上下）
+ * - side 邊界：above/left 含 line（<=），below/right 不含（>）
+ */
+const DIRECTION_DELTA = {
+    w: [-1, 0],
+    s: [1, 0],
+    a: [0, -1],
+    d: [0, 1],
+};
+/** h 縫隙的合法移動方向 */
+const VALID_DIRECTIONS_FOR_GAP = {
+    h: ['a', 'd'],
+    v: ['w', 's'],
+};
+function isValidDirectionForGap(gap, dir) {
+    return VALID_DIRECTIONS_FOR_GAP[gap].includes(dir);
+}
+/**
+ * mod 不變量：step > 1 時，每次合法移動使每塊的 (r % step, c % step) 永不變。
+ * 互動邏輯不依賴它，但務必保留此假設（日後接求解器/著色/連鎖時共用）。
+ */
+function modGroupOf(r, c, step) {
+    return ((r % step) * step + (c % step)) >>> 0;
+}
+
+return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modGroupOf };
+},
+    "m8": function (require) {
+/**
+ * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
+ * M1 先放核心狀態；計時/面板等後續里程碑再加。
+ */
+const { createContext } = require("../core/CommandBus.js");
+const { SliderMatrix } = require("../core/SliderMatrix.js");
+class GameStore {
+    constructor(m = 4, n = 4, step = 2) {
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.game = new SliderMatrix(m, n);
+        this.cmd = createContext(this.game, step);
+    }
+    get solved() {
+        return this.game.is_solved();
+    }
+    get selectedGap() {
+        return this.cmd.selectedGap;
+    }
+    get selectedCells() {
+        return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
+    }
+    /** 便捷方法：轉換謎題（對照 new {m,n,step}）。 */
+    newPuzzle(m, n, step) {
+        if (step >= Math.max(m, n))
+            return false;
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.game = new SliderMatrix(m, n);
+        this.cmd = createContext(this.game, step);
+        return true;
+    }
+    /** 序列化為可存檔的 JSON 結構（體驗版用 map 文本當核心，不照搬原版 matrix/bounds）。 */
+    serialize() {
+        return {
+            version: 1,
+            puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
+            step_count: this.cmd.stepCount,
+            map: this.game.export_map(),
+            history: this.cmd.history.snapshotAll(),
+        };
+    }
+    /** 由序列化結構還原。 */
+    deserialize(p) {
+        const m = p.puzzle?.m ?? this.currentM;
+        const n = p.puzzle?.n ?? this.currentN;
+        const step = p.puzzle?.step ?? this.currentStep;
+        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step))
+            return false;
+        if (step >= Math.max(m, n))
+            return false;
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.game = new SliderMatrix(m, n);
+        if (typeof p.map === 'string' && p.map.trim().length > 0) {
+            this.game.import_map(p.map);
+        }
+        this.cmd = createContext(this.game, step);
+        this.cmd.stepCount = p.step_count ?? 0;
+        if (Array.isArray(p.history)) {
+            this.cmd.history.restoreAll(p.history);
+        }
+        return true;
+    }
+}
+
+return { GameStore };
+},
+    "m9": function (require) {
 /**
  * 滑塊矩陣核心邏輯（對照 game.py::SliderMatrix 逐函數移植）
  *
@@ -1913,6 +2094,18 @@ class SliderMatrix {
         }
         return true;
     }
+    /** 原地重設為 m×n 實心矩形（reset 用，避免外部 store 持有舊引用）。 */
+    resetTo(m, n) {
+        this.m = m;
+        this.n = n;
+        this.blocks = [];
+        this.selected.clear();
+        for (let i = 0; i < m; i++) {
+            for (let j = 0; j < n; j++) {
+                this.blocks.push(new Block([i, j]));
+            }
+        }
+    }
     /** 快照當前版面（供 GameHistory 使用）。 */
     snapshot() {
         return { blocks: this.blocks.map((b) => [b.row, b.col]) };
@@ -1925,110 +2118,6 @@ class SliderMatrix {
 }
 
 return { SliderMatrix };
-},
-    "m8": function (require) {
-/**
- * 規則常量（對照 game.py / 術語規定.md）
- *
- * - h 縫隙（橫向，row 之間）只能 a/d（左右）
- * - v 縫隙（縱向，col 之間）只能 w/s（上下）
- * - side 邊界：above/left 含 line（<=），below/right 不含（>）
- */
-const DIRECTION_DELTA = {
-    w: [-1, 0],
-    s: [1, 0],
-    a: [0, -1],
-    d: [0, 1],
-};
-/** h 縫隙的合法移動方向 */
-const VALID_DIRECTIONS_FOR_GAP = {
-    h: ['a', 'd'],
-    v: ['w', 's'],
-};
-function isValidDirectionForGap(gap, dir) {
-    return VALID_DIRECTIONS_FOR_GAP[gap].includes(dir);
-}
-/**
- * mod 不變量：step > 1 時，每次合法移動使每塊的 (r % step, c % step) 永不變。
- * 互動邏輯不依賴它，但務必保留此假設（日後接求解器/著色/連鎖時共用）。
- */
-function modGroupOf(r, c, step) {
-    return ((r % step) * step + (c % step)) >>> 0;
-}
-
-return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modGroupOf };
-},
-    "m9": function (require) {
-/**
- * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
- * M1 先放核心狀態；計時/面板等後續里程碑再加。
- */
-const { createContext } = require("../core/CommandBus.js");
-const { SliderMatrix } = require("../core/SliderMatrix.js");
-class GameStore {
-    constructor(m = 4, n = 4, step = 2) {
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.game = new SliderMatrix(m, n);
-        this.cmd = createContext(this.game, step);
-    }
-    get solved() {
-        return this.game.is_solved();
-    }
-    get selectedGap() {
-        return this.cmd.selectedGap;
-    }
-    get selectedCells() {
-        return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
-    }
-    /** 便捷方法：轉換謎題（對照 new {m,n,step}）。 */
-    newPuzzle(m, n, step) {
-        if (step >= Math.max(m, n))
-            return false;
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.game = new SliderMatrix(m, n);
-        this.cmd = createContext(this.game, step);
-        return true;
-    }
-    /** 序列化為可存檔的 JSON 結構（體驗版用 map 文本當核心，不照搬原版 matrix/bounds）。 */
-    serialize() {
-        return {
-            version: 1,
-            puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
-            step_count: this.cmd.stepCount,
-            map: this.game.export_map(),
-            history: this.cmd.history.snapshotAll(),
-        };
-    }
-    /** 由序列化結構還原。 */
-    deserialize(p) {
-        const m = p.puzzle?.m ?? this.currentM;
-        const n = p.puzzle?.n ?? this.currentN;
-        const step = p.puzzle?.step ?? this.currentStep;
-        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step))
-            return false;
-        if (step >= Math.max(m, n))
-            return false;
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.game = new SliderMatrix(m, n);
-        if (typeof p.map === 'string' && p.map.trim().length > 0) {
-            this.game.import_map(p.map);
-        }
-        this.cmd = createContext(this.game, step);
-        this.cmd.stepCount = p.step_count ?? 0;
-        if (Array.isArray(p.history)) {
-            this.cmd.history.restoreAll(p.history);
-        }
-        return true;
-    }
-}
-
-return { GameStore };
 } };
   var __cache = {};
   function __load(id) {
@@ -2048,9 +2137,9 @@ return { GameStore };
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/CommandBus.js": "m4",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/GameHistory.js": "m5",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/Block.js": "m6",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/SliderMatrix.js": "m7",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/rules.js": "m8",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/store/GameStore.js": "m9" };
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/rules.js": "m7",
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/store/GameStore.js": "m8",
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/SliderMatrix.js": "m9" };
   function __resolvedId(fromId, spec) {
     var fromAbs = null;
     for (var k in __resolve) { if (__resolve[k] === fromId) { fromAbs = k; break; } }

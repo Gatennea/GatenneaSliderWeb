@@ -311,6 +311,19 @@ export class SliderMatrix {
     return true;
   }
 
+  /** 原地重設為 m×n 實心矩形（reset 用，避免外部 store 持有舊引用）。 */
+  resetTo(m: number, n: number): void {
+    this.m = m;
+    this.n = n;
+    this.blocks = [];
+    this.selected.clear();
+    for (let i = 0; i < m; i++) {
+      for (let j = 0; j < n; j++) {
+        this.blocks.push(new Block([i, j]));
+      }
+    }
+  }
+
   /** 快照當前版面（供 GameHistory 使用）。 */
   snapshot(): Snapshot {
     return { blocks: this.blocks.map((b) => [b.row, b.col] as [number, number]) };

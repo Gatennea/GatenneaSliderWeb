@@ -284,11 +284,8 @@ export class BoardController {
     });
 
     if (!this.animationEnabled) {
-      // 關閉動畫：瞬間提交
+      // 關閉動畫：瞬間提交；保留選中以便連續滑動
       store.game.commit_move(finalPositions);
-      store.game.selected.clear();
-      cmd.selectedGap = null;
-      cmd.selectedBlock = null;
       cmd.stepCount += 1;
       cmd.history.save_snapshot(store.game);
       this.notify(`移動 ${direction}`);
@@ -310,11 +307,8 @@ export class BoardController {
         requestAnimationFrame(frame);
       } else {
         renderer.animation = null;
-        // 提交（對照 CommandBus.move 的 commit 尾巴；先 commit 再存快照）
+        // 提交（對照 CommandBus.move 的 commit 尾巴；保留選中以便連續滑動）
         store.game.commit_move(finalPositions);
-        store.game.selected.clear();
-        cmd.selectedGap = null;
-        cmd.selectedBlock = null;
         cmd.stepCount += 1;
         cmd.history.save_snapshot(store.game);
         this.notify(`移動 ${direction}`);

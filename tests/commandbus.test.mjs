@@ -65,6 +65,36 @@ export const cases = [
     },
   },
   {
+    name: '移動後保留縫隙與滑塊組選中，可連續滑動',
+    run() {
+      const ctx = createContext(new SliderMatrix(4, 4), 2);
+      selectGap(ctx, 'h', 1);
+      selectBlock(ctx, 0, 0);
+      if (!move(ctx, 'd').ok) throw new Error('第一次 d 應成功');
+      if (!ctx.selectedGap || ctx.selectedGap.type !== 'h' || ctx.selectedGap.line !== 1) {
+        throw new Error('移動後應保留縫隙選中');
+      }
+      if (!ctx.selectedBlock) throw new Error('移動後應保留滑塊組選中');
+      if (!move(ctx, 'a').ok) throw new Error('不重選可直接反向移動');
+      if (ctx.stepCount !== 2) throw new Error('連續兩步 stepCount 應為 2');
+    },
+  },
+  {
+    name: 'reset 回到復原狀態並清空歷史',
+    run() {
+      const ctx = createContext(new SliderMatrix(4, 4), 2);
+      selectGap(ctx, 'h', 1);
+      selectBlock(ctx, 0, 0);
+      move(ctx, 'd');
+      const r = reset(ctx);
+      if (!r.ok) throw new Error('reset 應成功');
+      if (!ctx.game.is_solved()) throw new Error('reset 後應為復原狀態');
+      if (ctx.stepCount !== 0) throw new Error('reset 後步數應為 0');
+      if (ctx.history.length !== 1) throw new Error('reset 後歷史應只有初始快照');
+      if (ctx.selectedGap || ctx.selectedBlock) throw new Error('reset 後應清除選中');
+    },
+  },
+  {
     name: '選中縫隙時移動方向受限（h 只能 a/d）',
     run() {
       const ctx = createContext(new SliderMatrix(4, 4), 2);
