@@ -65,6 +65,9 @@ export class BoardController {
   animationEnabled = true;
   /** 右側面板「速度」滑條控制的移動動畫時長（ms） */
   moveDurationMs = 180;
+  private pinchDist = 0;
+  private pinchZoom = 1;
+  private pinchActive = false;
 
   constructor(ui: BoardControllerUI) {
     this.ui = ui;
@@ -117,20 +120,40 @@ export class BoardController {
     window.addEventListener('mouseup', () => this.onPointerUp());
 
     // 觸控
+    const dist = (a: Touch, b: Touch): number =>
+      Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
     c.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      if (e.touches.length >= 2) {
+        this.pinchDist = dist(e.touches[0], e.touches[1]);
+        this.pinchZoom = this.ui.renderer.zoom;
+        this.pinchActive = true;
+        return;
+      }
       const t = e.touches[0];
       const rect = c.getBoundingClientRect();
       this.onPointerDown(t.clientX - rect.left, t.clientY - rect.top);
     }, { passive: false });
     c.addEventListener('touchmove', (e) => {
       e.preventDefault();
+      if (e.touches.length >= 2 && this.pinchActive && this.pinchDist > 0) {
+        const d = dist(e.touches[0], e.touches[1]);
+        const factor = d / this.pinchDist;
+        this.ui.renderer.zoom = Math.max(0.1, Math.min(4, this.pinchZoom * factor));
+        this.ui.requestPaint?.();
+        return;
+      }
       const t = e.touches[0];
       const rect = c.getBoundingClientRect();
       this.onPointerMove(t.clientX - rect.left, t.clientY - rect.top);
     }, { passive: false });
     c.addEventListener('touchend', (e) => {
       e.preventDefault();
+      if (this.pinchActive) {
+        if (e.touches.length < 2) this.pinchActive = false;
+        return;
+      }
       this.onPointerUp();
     }, { passive: false });
 

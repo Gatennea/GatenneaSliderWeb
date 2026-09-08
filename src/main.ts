@@ -290,7 +290,7 @@ canvas.addEventListener('wheel', (e) => {
   const sy = e.clientY - rect.top;
   const [wx, wy] = renderer.screenToWorld(sx, sy);
   const factor = e.deltaY < 0 ? 1.1 : 0.9;
-  renderer.zoom = Math.max(0.5, Math.min(4, renderer.zoom * factor));
+  renderer.zoom = Math.max(0.1, Math.min(4, renderer.zoom * factor));
   // 以鼠標位置為中心：縮放後讓同一世界點仍留在鼠標下
   renderer.cameraX = sx - wx * renderer.zoom;
   renderer.cameraY = sy - wy * renderer.zoom;
@@ -401,7 +401,7 @@ function makeSlider(label: string, onChange: (ratio: number) => void): { track: 
 }
 
 const zoomSlider = makeSlider('缩放', (ratio) => {
-  renderer.zoom = Math.max(0.5, Math.min(4, 0.5 + ratio * 3.5));
+  renderer.zoom = Math.max(0.1, Math.min(4, 0.1 + ratio * 3.9));
   centerCamera();
   schedulePaint();
 });
