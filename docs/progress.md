@@ -1,4 +1,4 @@
-# 進度追蹤與原版問題清單
+﻿# 進度追蹤與原版問題清單
 
 > 每個里程碑完成後勾選；發現原版疑似 bug 時填入「原版問題清單」，不直接改原版程式。
 
@@ -40,9 +40,9 @@
   - 計時顯示格式對照 records.format_time（厘秒 / 分:秒）。
 - [x] M6 成績面板/虛擬鍵盤
   - 成績：`src/feature/Records.ts` 按 puzzle 分組存 localStorage；競速完成/DNF 自動入榜；成績面板顯示 count/best/worst/dnf/ao5/ao12 與逐筆列表（AoN 對照 records.py）。
-  - 虛擬鍵盤：螢幕 W/A/S/D + 撤銷/打亂/重置按鈕（行動裝置可用；方向經 `BoardController.move`）。
-- [ ] M7 著色器（可選）
-- [ ] M8 驗收與文檔收口
+  - 虛擬鍵盤：浮動面板（預設隱藏，設置選單可切換）含 W/A/S/D + 撤銷/打亂/重置按鈕。
+  - 界面重構：改採用原版風格的下拉選單欄（文件/編輯/謎題/宏定義/設置/幫助），操作放進對應選單，移除下排工具列。
+  - 修正 reset 語義：回到復原狀態並清空歷史（對照原版 `reset_puzzle → new_puzzle`）。
 
 > M1 驗收：`npm test` 全過（10/10）；`npm run build` 產出單檔 `app.js`，雙擊 `index.html`（file://）即可看到初始版面。
 > 環境備註：受限環境禁止 Node spawn 子進程（esbuild/vitest/`node --test` 均 EPERM），因此改為零 spawn 方案：`tsc` 以 in-process 模式編譯（`node node_modules/typescript/lib/tsc.js`），測試用自寫 in-process runner，打包用自寫 in-process `scripts/bundle.mjs`（產出非 module 的 `app.js`，規避 file:// 的 CORS 限制）。

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 體驗版入口（M2：三連互動）
  * 深色外框 + 選單/狀態欄，Canvas 棋盤，鍵盤/滑鼠/觸控操作。
  */
@@ -23,16 +23,137 @@ app.style.display = 'flex';
 app.style.flexDirection = 'column';
 app.style.fontFamily = 'system-ui, sans-serif';
 
-const menu = document.createElement('div');
-menu.style.height = `${GEOMETRY.menu_bar_height}px`;
-menu.style.background = COLORS.menu_bg;
-menu.style.borderBottom = `1px solid ${COLORS.border}`;
-menu.style.display = 'flex';
-menu.style.alignItems = 'center';
-menu.style.paddingLeft = '10px';
-menu.style.color = COLORS.menu_text;
-menu.textContent = '文件   編輯   謎題   宏   設置';
-app.appendChild(menu);
+// 頂部選單欄（對照原版：文件/編輯/謎題/宏定義/設置/幫助）
+const menuBar = document.createElement('div');
+menuBar.style.height = `${GEOMETRY.menu_bar_height}px`;
+menuBar.style.background = COLORS.menu_bg;
+menuBar.style.borderBottom = `1px solid ${COLORS.border}`;
+menuBar.style.display = 'flex';
+menuBar.style.alignItems = 'center';
+menuBar.style.paddingLeft = '10px';
+menuBar.style.color = COLORS.menu_text;
+menuBar.id = 'menuBar';
+app.appendChild(menuBar);
+
+interface MenuDef { label: string; items: (string | '---')[]; handler: (item: string) => void; }
+const menus: MenuDef[] = [
+  { label: '文件', items: ['打開 Ctrl+O', '保存 Ctrl+S', '另存為...'], handler: (item) => {
+      if (item === '保存 Ctrl+S' || item === '另存為...') { downloadSave(store); showToast(item === '保存 Ctrl+S' ? '已保存' : '已下載存檔'); }
+      else if (item === '打開 Ctrl+O') fileInput.click();
+    }
+  },
+  { label: '編輯', items: ['撤銷 Ctrl+Z', '重做 Ctrl+X', '打亂 Alt+S', '重置 Ctrl+R'], handler: (item) => {
+      if (item.startsWith('撤銷')) { const r = undo(store.cmd); showToast(r.message); autosave(store); schedulePaint(); }
+      else if (item.startsWith('重做')) { const r = redo(store.cmd); showToast(r.message); autosave(store); schedulePaint(); }
+      else if (item.startsWith('打亂')) {
+        const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
+        showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); timer.reset(); schedulePaint();
+      }
+      else if (item.startsWith('重置')) {
+        const r = reset(store.cmd); showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); timer.reset(); schedulePaint();
+      }
+    }
+  },
+  { label: '謎題', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '自定義...', '模式:練習', '模式:競速'], handler: (item) => {
+      if (item === '自定義...') {
+        const m = Number(window.prompt('列數 m（例如 4）', String(store.currentM)));
+        const n = Number(window.prompt('行數 n（例如 5）', String(store.currentN)));
+        const step = Number(window.prompt('步距 step（需 < max(m,n)）', String(store.currentStep)));
+        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) { showToast('輸入需為整數'); return; }
+        if (step >= Math.max(m, n)) { showToast(`step 需 < max(m,n)=${Math.max(m, n)}`); return; }
+        store.newPuzzle(m, n, step); renderer.animation = null; centerCamera(); autosave(store); timer.reset(); schedulePaint();
+        showToast(`切換謎題 ${step}~${m}*${n}`);
+      } else if (item === '模式:練習') { gameMode = 'practice'; timer.reset(); showToast('模式：練習'); schedulePaint(); }
+      else if (item === '模式:競速') { gameMode = 'timed'; timer.reset(); showToast('模式：競速'); schedulePaint(); }
+      else if (item !== '---') {
+        const parts = item.split('~');
+        const step = Number(parts[0]);
+        const dims = parts[1].split('*');
+        const m = Number(dims[0]), n = Number(dims[1]);
+        store.newPuzzle(m, n, step); renderer.animation = null; centerCamera(); autosave(store); timer.reset(); schedulePaint();
+        showToast(`切換謎題 ${step}~${m}*${n}`);
+      }
+    }
+  },
+  { label: '宏定義', items: ['錄製', '執行', '刪除'], handler: () => showToast('體驗版不含宏定義') },
+  { label: '設置', items: ['虛擬鍵盤', '成績面板'], handler: (item) => {
+      if (item === '虛擬鍵盤') {
+        const vis = vkPanel.style.display === 'none';
+        vkPanel.style.display = vis ? '' : 'none';
+        showToast(vis ? '已開啟虛擬鍵盤' : '已關閉虛擬鍵盤');
+      } else if (item === '成績面板') {
+        const vis = recordsPanel.style.display === 'none';
+        recordsPanel.style.display = vis ? '' : 'none';
+        if (vis) renderRecordsPanel();
+        showToast(vis ? '已開啟成績面板' : '已關閉成績面板');
+      }
+    }
+  },
+  { label: '幫助', items: ['關於'], handler: () => showToast('貓九的滑塊遊戲 網頁體驗版 v0.1') },
+];
+
+let activeMenu: { idx: number; el: HTMLDivElement } | null = null;
+
+function buildMenu(): void {
+  menuBar.innerHTML = '';
+  menus.forEach((menu, idx) => {
+    const btn = document.createElement('div');
+    btn.textContent = menu.label;
+    btn.style.padding = '0 12px';
+    btn.style.cursor = 'pointer';
+    btn.style.fontSize = '13px';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllMenus();
+      if (activeMenu?.idx === idx) { activeMenu = null; return; }
+      const dropdown = createDropdown(idx, menu);
+      activeMenu = { idx, el: dropdown };
+      menuBar.appendChild(dropdown);
+    });
+    menuBar.appendChild(btn);
+  });
+}
+
+function createDropdown(menuIdx: number, menuDef: MenuDef): HTMLDivElement {
+  const dd = document.createElement('div');
+  dd.style.position = 'absolute';
+  dd.style.top = `${GEOMETRY.menu_bar_height}px`;
+  dd.style.left = '0';
+  dd.style.background = COLORS.menu_bg;
+  dd.style.border = `1px solid ${COLORS.dialog_border}`;
+  dd.style.minWidth = '180px';
+  dd.style.zIndex = '1000';
+  dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+  menuDef.items.forEach((item) => {
+    if (item === '---') {
+      const sep = document.createElement('div');
+      sep.style.height = '1px';
+      sep.style.background = COLORS.separator;
+      sep.style.margin = '4px 0';
+      dd.appendChild(sep);
+      return;
+    }
+    const row = document.createElement('div');
+    row.textContent = item;
+    row.style.padding = '6px 12px';
+    row.style.cursor = 'pointer';
+    row.style.fontSize = '13px';
+    row.style.color = item.startsWith('體驗版') ? '#888' : COLORS.menu_text;
+    row.addEventListener('mouseenter', () => { row.style.background = COLORS.menu_hover; row.style.color = '#fff'; });
+    row.addEventListener('mouseleave', () => { row.style.background = ''; row.style.color = item.startsWith('體驗版') ? '#888' : COLORS.menu_text; });
+    row.addEventListener('click', () => { closeAllMenus(); menuDef.handler(item); });
+    dd.appendChild(row);
+  });
+  return dd;
+}
+
+function closeAllMenus(): void {
+  document.querySelectorAll('#menuBarDropdown').forEach((el) => el.remove());
+  activeMenu = null;
+}
+document.addEventListener('click', closeAllMenus);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllMenus(); });
+buildMenu();
 
 const canvas = document.createElement('canvas');
 // 畫布填滿可用區域（體驗版無右側面板，不預留 132px 右欄）
@@ -80,6 +201,35 @@ function showToast(text: string): void {
 const store = new GameStore(4, 4, 2);
 const ctx = canvas.getContext('2d')!;
 const renderer = new BoardRenderer(ctx, 1);
+// M6：浮動面板（虛擬鍵盤 / 成績）
+const vkPanel = document.createElement('div');
+vkPanel.style.position = 'fixed';
+vkPanel.style.left = '12px';
+vkPanel.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
+vkPanel.style.background = COLORS.dialog_bg;
+vkPanel.style.border = `1px solid ${COLORS.dialog_border}`;
+vkPanel.style.borderRadius = '6px';
+vkPanel.style.padding = '10px';
+vkPanel.style.display = 'none';
+vkPanel.style.zIndex = '500';
+app.appendChild(vkPanel);
+
+const recordsPanel = document.createElement('div');
+recordsPanel.style.position = 'fixed';
+recordsPanel.style.right = '12px';
+recordsPanel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
+recordsPanel.style.width = '260px';
+recordsPanel.style.maxHeight = '60vh';
+recordsPanel.style.overflowY = 'auto';
+recordsPanel.style.background = COLORS.dialog_bg;
+recordsPanel.style.border = `1px solid ${COLORS.dialog_border}`;
+recordsPanel.style.borderRadius = '6px';
+recordsPanel.style.padding = '10px';
+recordsPanel.style.fontSize = '13px';
+recordsPanel.style.color = COLORS.dialog_text;
+recordsPanel.style.display = 'none';
+recordsPanel.style.zIndex = '500';
+app.appendChild(recordsPanel);
 
 // M5：練習/計時模式 + 計時器
 let gameMode: 'practice' | 'timed' = 'practice';
@@ -112,7 +262,7 @@ function layoutCanvas(): void {
   const width = Math.max(320, app.clientWidth);
   const height = Math.max(
     240,
-    app.clientHeight - GEOMETRY.menu_bar_height - GEOMETRY.status_bar_height - toolbar.offsetHeight,
+    app.clientHeight - GEOMETRY.menu_bar_height - GEOMETRY.status_bar_height,
   );
   canvas.width = Math.round(width);
   canvas.height = Math.round(height);
@@ -305,23 +455,6 @@ vkButton('D', () => controller.move('d'));
 vkButton('撤銷', () => { const r = undo(store.cmd); showToast(r.message); autosave(store); schedulePaint(); });
 vkButton('打亂', () => { const r = shuffle(store.cmd, 100); showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); timer.reset(); schedulePaint(); });
 vkButton('重置', () => { const r = reset(store.cmd); showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); schedulePaint(); });
-
-// M6：成績面板（按目前謎題分組）
-const recordsPanel = document.createElement('div');
-recordsPanel.style.position = 'fixed';
-recordsPanel.style.right = '12px';
-recordsPanel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
-recordsPanel.style.width = '260px';
-recordsPanel.style.maxHeight = '60vh';
-recordsPanel.style.overflowY = 'auto';
-recordsPanel.style.background = COLORS.dialog_bg;
-recordsPanel.style.border = `1px solid ${COLORS.dialog_border}`;
-recordsPanel.style.borderRadius = '6px';
-recordsPanel.style.padding = '10px';
-recordsPanel.style.fontSize = '13px';
-recordsPanel.style.color = COLORS.dialog_text;
-recordsPanel.style.display = 'none';
-app.appendChild(recordsPanel);
 
 let recordsPanelVisible = false;
 const emptyRecordsNote = document.createElement('div');

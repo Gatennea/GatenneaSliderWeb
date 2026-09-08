@@ -127,16 +127,16 @@ export function shuffle(ctx: CommandContext, attempts = 100): Reply {
   return { ok: true, message: '已打亂' };
 }
 
-/** reset = 回到打亂前（體驗版語義：回到本局打亂前快照），對照原版 reset。 */
+/** reset = 回到復原狀態並清空歷史（對照原版 reset_puzzle → new_puzzle(current m/n/step)）。 */
 export function reset(ctx: CommandContext): Reply {
-  if (ctx.shuffleBefore) {
-    ctx.game.restore(ctx.shuffleBefore);
-    ctx.selectedGap = null;
-    ctx.selectedBlock = null;
-    ctx.stepCount = 0;
-    ctx.history = new GameHistory();
-    ctx.history.save_snapshot(ctx.game);
-    return { ok: true, message: '已重置' };
-  }
-  return { ok: false, message: '尚無可重置的起點' };
+  const m = ctx.game.m;
+  const n = ctx.game.n;
+  ctx.game = new SliderMatrix(m, n);
+  ctx.selectedGap = null;
+  ctx.selectedBlock = null;
+  ctx.stepCount = 0;
+  ctx.history = new GameHistory();
+  ctx.history.save_snapshot(ctx.game);
+  ctx.shuffleBefore = null;
+  return { ok: true, message: '已重置' };
 }

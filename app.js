@@ -21,16 +21,189 @@ app.style.overflow = 'hidden';
 app.style.display = 'flex';
 app.style.flexDirection = 'column';
 app.style.fontFamily = 'system-ui, sans-serif';
-const menu = document.createElement('div');
-menu.style.height = `${GEOMETRY.menu_bar_height}px`;
-menu.style.background = COLORS.menu_bg;
-menu.style.borderBottom = `1px solid ${COLORS.border}`;
-menu.style.display = 'flex';
-menu.style.alignItems = 'center';
-menu.style.paddingLeft = '10px';
-menu.style.color = COLORS.menu_text;
-menu.textContent = '文件   編輯   謎題   宏   設置';
-app.appendChild(menu);
+// 頂部選單欄（對照原版：文件/編輯/謎題/宏定義/設置/幫助）
+const menuBar = document.createElement('div');
+menuBar.style.height = `${GEOMETRY.menu_bar_height}px`;
+menuBar.style.background = COLORS.menu_bg;
+menuBar.style.borderBottom = `1px solid ${COLORS.border}`;
+menuBar.style.display = 'flex';
+menuBar.style.alignItems = 'center';
+menuBar.style.paddingLeft = '10px';
+menuBar.style.color = COLORS.menu_text;
+menuBar.id = 'menuBar';
+app.appendChild(menuBar);
+const menus = [
+    { label: '文件', items: ['打開 Ctrl+O', '保存 Ctrl+S', '另存為...'], handler: (item) => {
+            if (item === '保存 Ctrl+S' || item === '另存為...') {
+                downloadSave(store);
+                showToast(item === '保存 Ctrl+S' ? '已保存' : '已下載存檔');
+            }
+            else if (item === '打開 Ctrl+O')
+                fileInput.click();
+        }
+    },
+    { label: '編輯', items: ['撤銷 Ctrl+Z', '重做 Ctrl+X', '打亂 Alt+S', '重置 Ctrl+R'], handler: (item) => {
+            if (item.startsWith('撤銷')) {
+                const r = undo(store.cmd);
+                showToast(r.message);
+                autosave(store);
+                schedulePaint();
+            }
+            else if (item.startsWith('重做')) {
+                const r = redo(store.cmd);
+                showToast(r.message);
+                autosave(store);
+                schedulePaint();
+            }
+            else if (item.startsWith('打亂')) {
+                const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
+                showToast(r.message);
+                renderer.animation = null;
+                centerCamera();
+                autosave(store);
+                timer.reset();
+                schedulePaint();
+            }
+            else if (item.startsWith('重置')) {
+                const r = reset(store.cmd);
+                showToast(r.message);
+                renderer.animation = null;
+                centerCamera();
+                autosave(store);
+                timer.reset();
+                schedulePaint();
+            }
+        }
+    },
+    { label: '謎題', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '自定義...', '模式:練習', '模式:競速'], handler: (item) => {
+            if (item === '自定義...') {
+                const m = Number(window.prompt('列數 m（例如 4）', String(store.currentM)));
+                const n = Number(window.prompt('行數 n（例如 5）', String(store.currentN)));
+                const step = Number(window.prompt('步距 step（需 < max(m,n)）', String(store.currentStep)));
+                if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) {
+                    showToast('輸入需為整數');
+                    return;
+                }
+                if (step >= Math.max(m, n)) {
+                    showToast(`step 需 < max(m,n)=${Math.max(m, n)}`);
+                    return;
+                }
+                store.newPuzzle(m, n, step);
+                renderer.animation = null;
+                centerCamera();
+                autosave(store);
+                timer.reset();
+                schedulePaint();
+                showToast(`切換謎題 ${step}~${m}*${n}`);
+            }
+            else if (item === '模式:練習') {
+                gameMode = 'practice';
+                timer.reset();
+                showToast('模式：練習');
+                schedulePaint();
+            }
+            else if (item === '模式:競速') {
+                gameMode = 'timed';
+                timer.reset();
+                showToast('模式：競速');
+                schedulePaint();
+            }
+            else if (item !== '---') {
+                const parts = item.split('~');
+                const step = Number(parts[0]);
+                const dims = parts[1].split('*');
+                const m = Number(dims[0]), n = Number(dims[1]);
+                store.newPuzzle(m, n, step);
+                renderer.animation = null;
+                centerCamera();
+                autosave(store);
+                timer.reset();
+                schedulePaint();
+                showToast(`切換謎題 ${step}~${m}*${n}`);
+            }
+        }
+    },
+    { label: '宏定義', items: ['錄製', '執行', '刪除'], handler: () => showToast('體驗版不含宏定義') },
+    { label: '設置', items: ['虛擬鍵盤', '成績面板'], handler: (item) => {
+            if (item === '虛擬鍵盤') {
+                const vis = vkPanel.style.display === 'none';
+                vkPanel.style.display = vis ? '' : 'none';
+                showToast(vis ? '已開啟虛擬鍵盤' : '已關閉虛擬鍵盤');
+            }
+            else if (item === '成績面板') {
+                const vis = recordsPanel.style.display === 'none';
+                recordsPanel.style.display = vis ? '' : 'none';
+                if (vis)
+                    renderRecordsPanel();
+                showToast(vis ? '已開啟成績面板' : '已關閉成績面板');
+            }
+        }
+    },
+    { label: '幫助', items: ['關於'], handler: () => showToast('貓九的滑塊遊戲 網頁體驗版 v0.1') },
+];
+let activeMenu = null;
+function buildMenu() {
+    menuBar.innerHTML = '';
+    menus.forEach((menu, idx) => {
+        const btn = document.createElement('div');
+        btn.textContent = menu.label;
+        btn.style.padding = '0 12px';
+        btn.style.cursor = 'pointer';
+        btn.style.fontSize = '13px';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeAllMenus();
+            if (activeMenu?.idx === idx) {
+                activeMenu = null;
+                return;
+            }
+            const dropdown = createDropdown(idx, menu);
+            activeMenu = { idx, el: dropdown };
+            menuBar.appendChild(dropdown);
+        });
+        menuBar.appendChild(btn);
+    });
+}
+function createDropdown(menuIdx, menuDef) {
+    const dd = document.createElement('div');
+    dd.style.position = 'absolute';
+    dd.style.top = `${GEOMETRY.menu_bar_height}px`;
+    dd.style.left = '0';
+    dd.style.background = COLORS.menu_bg;
+    dd.style.border = `1px solid ${COLORS.dialog_border}`;
+    dd.style.minWidth = '180px';
+    dd.style.zIndex = '1000';
+    dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+    menuDef.items.forEach((item) => {
+        if (item === '---') {
+            const sep = document.createElement('div');
+            sep.style.height = '1px';
+            sep.style.background = COLORS.separator;
+            sep.style.margin = '4px 0';
+            dd.appendChild(sep);
+            return;
+        }
+        const row = document.createElement('div');
+        row.textContent = item;
+        row.style.padding = '6px 12px';
+        row.style.cursor = 'pointer';
+        row.style.fontSize = '13px';
+        row.style.color = item.startsWith('體驗版') ? '#888' : COLORS.menu_text;
+        row.addEventListener('mouseenter', () => { row.style.background = COLORS.menu_hover; row.style.color = '#fff'; });
+        row.addEventListener('mouseleave', () => { row.style.background = ''; row.style.color = item.startsWith('體驗版') ? '#888' : COLORS.menu_text; });
+        row.addEventListener('click', () => { closeAllMenus(); menuDef.handler(item); });
+        dd.appendChild(row);
+    });
+    return dd;
+}
+function closeAllMenus() {
+    document.querySelectorAll('#menuBarDropdown').forEach((el) => el.remove());
+    activeMenu = null;
+}
+document.addEventListener('click', closeAllMenus);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape')
+    closeAllMenus(); });
+buildMenu();
 const canvas = document.createElement('canvas');
 // 畫布填滿可用區域（體驗版無右側面板，不預留 132px 右欄）
 canvas.style.flex = '1 1 auto';
@@ -73,6 +246,34 @@ function showToast(text) {
 const store = new GameStore(4, 4, 2);
 const ctx = canvas.getContext('2d');
 const renderer = new BoardRenderer(ctx, 1);
+// M6：浮動面板（虛擬鍵盤 / 成績）
+const vkPanel = document.createElement('div');
+vkPanel.style.position = 'fixed';
+vkPanel.style.left = '12px';
+vkPanel.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
+vkPanel.style.background = COLORS.dialog_bg;
+vkPanel.style.border = `1px solid ${COLORS.dialog_border}`;
+vkPanel.style.borderRadius = '6px';
+vkPanel.style.padding = '10px';
+vkPanel.style.display = 'none';
+vkPanel.style.zIndex = '500';
+app.appendChild(vkPanel);
+const recordsPanel = document.createElement('div');
+recordsPanel.style.position = 'fixed';
+recordsPanel.style.right = '12px';
+recordsPanel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
+recordsPanel.style.width = '260px';
+recordsPanel.style.maxHeight = '60vh';
+recordsPanel.style.overflowY = 'auto';
+recordsPanel.style.background = COLORS.dialog_bg;
+recordsPanel.style.border = `1px solid ${COLORS.dialog_border}`;
+recordsPanel.style.borderRadius = '6px';
+recordsPanel.style.padding = '10px';
+recordsPanel.style.fontSize = '13px';
+recordsPanel.style.color = COLORS.dialog_text;
+recordsPanel.style.display = 'none';
+recordsPanel.style.zIndex = '500';
+app.appendChild(recordsPanel);
 // M5：練習/計時模式 + 計時器
 let gameMode = 'practice';
 const timer = new Timer();
@@ -100,7 +301,7 @@ function centerCamera() {
 // 依可用區域調整畫布位圖尺寸（保持 CSS == 位圖，座標才 1:1）
 function layoutCanvas() {
     const width = Math.max(320, app.clientWidth);
-    const height = Math.max(240, app.clientHeight - GEOMETRY.menu_bar_height - GEOMETRY.status_bar_height - toolbar.offsetHeight);
+    const height = Math.max(240, app.clientHeight - GEOMETRY.menu_bar_height - GEOMETRY.status_bar_height);
     canvas.width = Math.round(width);
     canvas.height = Math.round(height);
     canvas.style.width = `${canvas.width}px`;
@@ -286,22 +487,6 @@ vkButton('D', () => controller.move('d'));
 vkButton('撤銷', () => { const r = undo(store.cmd); showToast(r.message); autosave(store); schedulePaint(); });
 vkButton('打亂', () => { const r = shuffle(store.cmd, 100); showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); timer.reset(); schedulePaint(); });
 vkButton('重置', () => { const r = reset(store.cmd); showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); schedulePaint(); });
-// M6：成績面板（按目前謎題分組）
-const recordsPanel = document.createElement('div');
-recordsPanel.style.position = 'fixed';
-recordsPanel.style.right = '12px';
-recordsPanel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
-recordsPanel.style.width = '260px';
-recordsPanel.style.maxHeight = '60vh';
-recordsPanel.style.overflowY = 'auto';
-recordsPanel.style.background = COLORS.dialog_bg;
-recordsPanel.style.border = `1px solid ${COLORS.dialog_border}`;
-recordsPanel.style.borderRadius = '6px';
-recordsPanel.style.padding = '10px';
-recordsPanel.style.fontSize = '13px';
-recordsPanel.style.color = COLORS.dialog_text;
-recordsPanel.style.display = 'none';
-app.appendChild(recordsPanel);
 let recordsPanelVisible = false;
 const emptyRecordsNote = document.createElement('div');
 emptyRecordsNote.style.color = '#888';
@@ -1175,6 +1360,7 @@ return { BoardController };
  * 把求解器掛到 Web Worker 時沿用原版指令協定。
  */
 const { GameHistory } = require("./GameHistory.js");
+const { SliderMatrix } = require("./SliderMatrix.js");
 const { isValidDirectionForGap } = require("./rules.js");
 function createContext(game, step) {
     const ctx = {
@@ -1263,18 +1449,18 @@ function shuffle(ctx, attempts = 100) {
     ctx.history.save_snapshot(ctx.game);
     return { ok: true, message: '已打亂' };
 }
-/** reset = 回到打亂前（體驗版語義：回到本局打亂前快照），對照原版 reset。 */
+/** reset = 回到復原狀態並清空歷史（對照原版 reset_puzzle → new_puzzle(current m/n/step)）。 */
 function reset(ctx) {
-    if (ctx.shuffleBefore) {
-        ctx.game.restore(ctx.shuffleBefore);
-        ctx.selectedGap = null;
-        ctx.selectedBlock = null;
-        ctx.stepCount = 0;
-        ctx.history = new GameHistory();
-        ctx.history.save_snapshot(ctx.game);
-        return { ok: true, message: '已重置' };
-    }
-    return { ok: false, message: '尚無可重置的起點' };
+    const m = ctx.game.m;
+    const n = ctx.game.n;
+    ctx.game = new SliderMatrix(m, n);
+    ctx.selectedGap = null;
+    ctx.selectedBlock = null;
+    ctx.stepCount = 0;
+    ctx.history = new GameHistory();
+    ctx.history.save_snapshot(ctx.game);
+    ctx.shuffleBefore = null;
+    return { ok: true, message: '已重置' };
 }
 
 return { createContext, selectGap, selectBlock, move, undo, redo, shuffle, reset };
@@ -1373,110 +1559,6 @@ class Block {
 return { Block };
 },
     "m7": function (require) {
-/**
- * 規則常量（對照 game.py / 術語規定.md）
- *
- * - h 縫隙（橫向，row 之間）只能 a/d（左右）
- * - v 縫隙（縱向，col 之間）只能 w/s（上下）
- * - side 邊界：above/left 含 line（<=），below/right 不含（>）
- */
-const DIRECTION_DELTA = {
-    w: [-1, 0],
-    s: [1, 0],
-    a: [0, -1],
-    d: [0, 1],
-};
-/** h 縫隙的合法移動方向 */
-const VALID_DIRECTIONS_FOR_GAP = {
-    h: ['a', 'd'],
-    v: ['w', 's'],
-};
-function isValidDirectionForGap(gap, dir) {
-    return VALID_DIRECTIONS_FOR_GAP[gap].includes(dir);
-}
-/**
- * mod 不變量：step > 1 時，每次合法移動使每塊的 (r % step, c % step) 永不變。
- * 互動邏輯不依賴它，但務必保留此假設（日後接求解器/著色/連鎖時共用）。
- */
-function modGroupOf(r, c, step) {
-    return ((r % step) * step + (c % step)) >>> 0;
-}
-
-return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modGroupOf };
-},
-    "m8": function (require) {
-/**
- * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
- * M1 先放核心狀態；計時/面板等後續里程碑再加。
- */
-const { createContext } = require("../core/CommandBus.js");
-const { SliderMatrix } = require("../core/SliderMatrix.js");
-class GameStore {
-    constructor(m = 4, n = 4, step = 2) {
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.game = new SliderMatrix(m, n);
-        this.cmd = createContext(this.game, step);
-    }
-    get solved() {
-        return this.game.is_solved();
-    }
-    get selectedGap() {
-        return this.cmd.selectedGap;
-    }
-    get selectedCells() {
-        return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
-    }
-    /** 便捷方法：轉換謎題（對照 new {m,n,step}）。 */
-    newPuzzle(m, n, step) {
-        if (step >= Math.max(m, n))
-            return false;
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.game = new SliderMatrix(m, n);
-        this.cmd = createContext(this.game, step);
-        return true;
-    }
-    /** 序列化為可存檔的 JSON 結構（體驗版用 map 文本當核心，不照搬原版 matrix/bounds）。 */
-    serialize() {
-        return {
-            version: 1,
-            puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
-            step_count: this.cmd.stepCount,
-            map: this.game.export_map(),
-            history: this.cmd.history.snapshotAll(),
-        };
-    }
-    /** 由序列化結構還原。 */
-    deserialize(p) {
-        const m = p.puzzle?.m ?? this.currentM;
-        const n = p.puzzle?.n ?? this.currentN;
-        const step = p.puzzle?.step ?? this.currentStep;
-        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step))
-            return false;
-        if (step >= Math.max(m, n))
-            return false;
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.game = new SliderMatrix(m, n);
-        if (typeof p.map === 'string' && p.map.trim().length > 0) {
-            this.game.import_map(p.map);
-        }
-        this.cmd = createContext(this.game, step);
-        this.cmd.stepCount = p.step_count ?? 0;
-        if (Array.isArray(p.history)) {
-            this.cmd.history.restoreAll(p.history);
-        }
-        return true;
-    }
-}
-
-return { GameStore };
-},
-    "m9": function (require) {
 /**
  * 滑塊矩陣核心邏輯（對照 game.py::SliderMatrix 逐函數移植）
  *
@@ -1752,6 +1834,110 @@ class SliderMatrix {
 }
 
 return { SliderMatrix };
+},
+    "m8": function (require) {
+/**
+ * 規則常量（對照 game.py / 術語規定.md）
+ *
+ * - h 縫隙（橫向，row 之間）只能 a/d（左右）
+ * - v 縫隙（縱向，col 之間）只能 w/s（上下）
+ * - side 邊界：above/left 含 line（<=），below/right 不含（>）
+ */
+const DIRECTION_DELTA = {
+    w: [-1, 0],
+    s: [1, 0],
+    a: [0, -1],
+    d: [0, 1],
+};
+/** h 縫隙的合法移動方向 */
+const VALID_DIRECTIONS_FOR_GAP = {
+    h: ['a', 'd'],
+    v: ['w', 's'],
+};
+function isValidDirectionForGap(gap, dir) {
+    return VALID_DIRECTIONS_FOR_GAP[gap].includes(dir);
+}
+/**
+ * mod 不變量：step > 1 時，每次合法移動使每塊的 (r % step, c % step) 永不變。
+ * 互動邏輯不依賴它，但務必保留此假設（日後接求解器/著色/連鎖時共用）。
+ */
+function modGroupOf(r, c, step) {
+    return ((r % step) * step + (c % step)) >>> 0;
+}
+
+return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modGroupOf };
+},
+    "m9": function (require) {
+/**
+ * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
+ * M1 先放核心狀態；計時/面板等後續里程碑再加。
+ */
+const { createContext } = require("../core/CommandBus.js");
+const { SliderMatrix } = require("../core/SliderMatrix.js");
+class GameStore {
+    constructor(m = 4, n = 4, step = 2) {
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.game = new SliderMatrix(m, n);
+        this.cmd = createContext(this.game, step);
+    }
+    get solved() {
+        return this.game.is_solved();
+    }
+    get selectedGap() {
+        return this.cmd.selectedGap;
+    }
+    get selectedCells() {
+        return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
+    }
+    /** 便捷方法：轉換謎題（對照 new {m,n,step}）。 */
+    newPuzzle(m, n, step) {
+        if (step >= Math.max(m, n))
+            return false;
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.game = new SliderMatrix(m, n);
+        this.cmd = createContext(this.game, step);
+        return true;
+    }
+    /** 序列化為可存檔的 JSON 結構（體驗版用 map 文本當核心，不照搬原版 matrix/bounds）。 */
+    serialize() {
+        return {
+            version: 1,
+            puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
+            step_count: this.cmd.stepCount,
+            map: this.game.export_map(),
+            history: this.cmd.history.snapshotAll(),
+        };
+    }
+    /** 由序列化結構還原。 */
+    deserialize(p) {
+        const m = p.puzzle?.m ?? this.currentM;
+        const n = p.puzzle?.n ?? this.currentN;
+        const step = p.puzzle?.step ?? this.currentStep;
+        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step))
+            return false;
+        if (step >= Math.max(m, n))
+            return false;
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.game = new SliderMatrix(m, n);
+        if (typeof p.map === 'string' && p.map.trim().length > 0) {
+            this.game.import_map(p.map);
+        }
+        this.cmd = createContext(this.game, step);
+        this.cmd.stepCount = p.step_count ?? 0;
+        if (Array.isArray(p.history)) {
+            this.cmd.history.restoreAll(p.history);
+        }
+        return true;
+    }
+}
+
+return { GameStore };
 } };
   var __cache = {};
   function __load(id) {
@@ -1771,9 +1957,9 @@ return { SliderMatrix };
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/CommandBus.js": "m4",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/GameHistory.js": "m5",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/Block.js": "m6",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/rules.js": "m7",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/store/GameStore.js": "m8",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/SliderMatrix.js": "m9" };
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/SliderMatrix.js": "m7",
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/rules.js": "m8",
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/store/GameStore.js": "m9" };
   function __resolvedId(fromId, spec) {
     var fromAbs = null;
     for (var k in __resolve) { if (__resolve[k] === fromId) { fromAbs = k; break; } }
