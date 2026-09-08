@@ -25,8 +25,6 @@ export interface BoardControllerUI {
   onChanged?: () => void;
 }
 
-const MOVE_DURATION_MS = 180;
-
 interface DragState {
   active: boolean;
   startX: number;
@@ -63,11 +61,32 @@ const DRAG_MOVE_THRESHOLD = 18;
 export class BoardController {
   private ui: BoardControllerUI;
   private drag: DragState;
+  /** 右側面板「滑動動畫」開關；關閉時移動瞬間完成 */
+  animationEnabled = true;
+  /** 右側面板「速度」滑條控制的移動動畫時長（ms） */
+  moveDurationMs = 180;
 
   constructor(ui: BoardControllerUI) {
     this.ui = ui;
     this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true };
     this.attach();
+  }
+
+  /** 播放一段過場動畫（undo/redo 用）：從 from 到 to 平滑過渡後停在 to。 */
+  playTransition(from: [number, number][], to: [number, number][], durationMs = this.moveDurationMs): void {
+    const renderer = this.ui.renderer;
+    renderer.animation = { start: from, end: to, progress: 0, durationMs };
+    const t0 = performance.now();
+    const frame = (now: number): void => {
+      const anim = renderer.animation;
+      if (!anim) return;
+      const p = Math.min(1, (now - t0) / anim.durationMs);
+      anim.progress = p;
+      this.ui.requestPaint?.();
+      if (p < 1) requestAnimationFrame(frame);
+      else renderer.animation = null;
+    };
+    requestAnimationFrame(frame);
   }
 
   private get canvas(): HTMLCanvasElement {
@@ -264,7 +283,21 @@ export class BoardController {
       return e ? ([e[0], e[1]] as [number, number]) : ([b.row, b.col] as [number, number]);
     });
 
-    renderer.animation = { start, end, progress: 0, durationMs: MOVE_DURATION_MS };
+    if (!this.animationEnabled) {
+      // 關閉動畫：瞬間提交
+      store.game.commit_move(finalPositions);
+      store.game.selected.clear();
+      cmd.selectedGap = null;
+      cmd.selectedBlock = null;
+      cmd.stepCount += 1;
+      cmd.history.save_snapshot(store.game);
+      this.notify(`移動 ${direction}`);
+      this.ui.onChanged?.();
+      this.ui.requestPaint?.();
+      return;
+    }
+
+    renderer.animation = { start, end, progress: 0, durationMs: this.moveDurationMs };
     const t0 = performance.now();
 
     const frame = (now: number): void => {

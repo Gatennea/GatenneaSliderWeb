@@ -44,6 +44,14 @@
   - 界面重構：改採用原版風格的下拉選單欄（文件/編輯/謎題/宏定義/設置/幫助），操作放進對應選單，移除下排工具列。
   - 修正 reset 語義：回到復原狀態並清空歷史（對照原版 `reset_puzzle → new_puzzle`）。
 
+## 界面重構（貼近原版）
+
+- **移除底部工具列**：底部改回原版狀態列（状态：复原/未复原、步数、计时/模式、谜题、缩放）。
+- **下拉選單可正常關閉**：點選單外/Esc/再點同一選單都會關閉；操作按原版分到 文件/編輯/謎題/宏定義/設置/幫助。
+- **右側面板**：新增 132px 右欄，含 縮放/速度 垂直滑條與 6 個開關（滑动动画/选中动画/着色/连锁/模式/逆序宏）。
+- **快捷鍵**：Ctrl+Z 撤銷、Ctrl+Y / Ctrl+Shift+Z 重做、Ctrl+S 存檔、Ctrl+O 導入、Ctrl+R 重置、Alt+S 打亂、F1 虛擬鍵盤、F3 成績面板。
+- **撤銷/重做動畫**：過場平滑動畫（可被右側「滑动动画」開關關閉）。
+
 > M1 驗收：`npm test` 全過（10/10）；`npm run build` 產出單檔 `app.js`，雙擊 `index.html`（file://）即可看到初始版面。
 > 環境備註：受限環境禁止 Node spawn 子進程（esbuild/vitest/`node --test` 均 EPERM），因此改為零 spawn 方案：`tsc` 以 in-process 模式編譯（`node node_modules/typescript/lib/tsc.js`），測試用自寫 in-process runner，打包用自寫 in-process `scripts/bundle.mjs`（產出非 module 的 `app.js`，規避 file:// 的 CORS 限制）。
 
