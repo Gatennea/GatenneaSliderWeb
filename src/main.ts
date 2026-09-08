@@ -279,7 +279,17 @@ const controller = new BoardController({
     }
     schedulePaint();
   },
-});
+})
+
+// 鼠標滾輪縮放：向上滾放大、向下滾縮小
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  renderer.zoom = Math.max(0.5, Math.min(4, renderer.zoom * factor));
+  centerCamera();
+  schedulePaint();
+}, { passive: false });
+;
 
 // 供成績面板與 DNF
 function recordDnf(): void {
