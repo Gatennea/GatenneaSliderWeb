@@ -70,7 +70,7 @@ const GAP_ABBR: ('d' | 'l' | 'r' | 'u')[] = ['d', 'l', 'r', 'd', 'u', 'r', 'l', 
 const DIR_ABBR: ('r' | 'u' | 'l' | 'd')[] = ['r', 'u', 'u', 'l', 'l', 'd', 'd', 'r'];
 
 function directGestureFromDrag(row: number, col: number, dx: number, dy: number): DirectGesture | null {
-  const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+  const angle = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360; // y 向上：0°=右、90°=上
   const sector = Math.floor(angle / 45) % 8;
   const gapAbbr = GAP_ABBR[sector];
   const moveAbbr = DIR_ABBR[sector];

@@ -1862,7 +1862,7 @@ const DIRECTION_KEYS = {
 const GAP_ABBR = ['d', 'l', 'r', 'd', 'u', 'r', 'l', 'u'];
 const DIR_ABBR = ['r', 'u', 'u', 'l', 'l', 'd', 'd', 'r'];
 function directGestureFromDrag(row, col, dx, dy) {
-    const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    const angle = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360; // y 向上：0°=右、90°=上
     const sector = Math.floor(angle / 45) % 8;
     const gapAbbr = GAP_ABBR[sector];
     const moveAbbr = DIR_ABBR[sector];
