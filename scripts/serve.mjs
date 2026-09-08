@@ -5,6 +5,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { localIP } from './net-util.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const port = Number(process.argv[2] ?? 5173);
@@ -46,6 +47,6 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`[web] 靜態伺服器：http://127.0.0.1:${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log("[web] 靜態伺服器（0.0.0.0） 內網：http://" + localIP() + ":" + port + "  本機：http://127.0.0.1:" + port);
 });

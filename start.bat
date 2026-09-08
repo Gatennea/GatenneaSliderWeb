@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo ============================================
-echo   Gatennea Slider - Web (double-click play)
+echo   Gatennea Slider - Web (LAN access)
 echo ============================================
 
 where node >nul 2>nul
@@ -25,7 +25,22 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Opening index.html ...
-start "" "%~dp0index.html"
+set "PORT=5173"
 
-echo Done. If the browser did not open, double-click index.html manually.
+echo.
+echo Starting LAN server on 0.0.0.0:%PORT% ...
+start "GatenneaSlider-Server" cmd /c "node scripts\serve.mjs %PORT%"
+
+rem 讓伺服器先起來
+timeout /t 2 /nobreak >nul
+
+rem 抓內網 IPv4（偏好私網）
+for /f "delims=" %%i in ('node scripts\lanip.cjs') do set "LANIP=%%i"
+if "%LANIP%"=="" set "LANIP=127.0.0.1"
+
+start "" "http://%LANIP%:%PORT%"
+echo.
+echo LAN URL for OTHER devices: http://%LANIP%:%PORT%
+echo (make sure firewall allows inbound on port %PORT%)
+echo.
+echo Done. This PC opened in browser; other LAN devices use the LAN URL above.

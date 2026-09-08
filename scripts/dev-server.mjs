@@ -14,6 +14,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { localIP } from './net-util.mjs';
 
 import { SliderMatrix } from '../dist/core/SliderMatrix.js';
 import { GameHistory } from '../dist/core/GameHistory.js';
@@ -244,7 +245,7 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`[dev-server] http://127.0.0.1:${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`[dev-server] 內網：http://${localIP()}:${port}  本機：http://127.0.0.1:${port}`);
   console.log(`[dev-server] REST API: http://127.0.0.1:${port}/api/status`);
 });
