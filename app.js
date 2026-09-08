@@ -1889,7 +1889,13 @@ class BoardController {
                 // 提交（對照 CommandBus.move 的 commit 尾巴；保留選中以便連續滑動）
                 store.game.commit_move(finalPositions);
                 cmd.stepCount += 1;
-                cmd.history.save_snapshot(store.game);
+                cmd.history.save_snapshot(store.game, {
+                    direction,
+                    step: store.currentStep,
+                    gap_type: cmd.selectedGap?.type,
+                    gap_line: cmd.selectedGap?.line,
+                    moved_positions: movedPositions,
+                });
                 this.notify(`移動 ${direction}`);
                 this.ui.onChanged?.();
                 this.ui.requestPaint?.();
