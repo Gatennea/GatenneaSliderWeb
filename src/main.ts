@@ -284,9 +284,15 @@ const controller = new BoardController({
 // 鼠標滾輪縮放：向上滾放大、向下滾縮小
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const [wx, wy] = renderer.screenToWorld(sx, sy);
   const factor = e.deltaY < 0 ? 1.1 : 0.9;
   renderer.zoom = Math.max(0.5, Math.min(4, renderer.zoom * factor));
-  centerCamera();
+  // 以鼠標位置為中心：縮放後讓同一世界點仍留在鼠標下
+  renderer.cameraX = sx - wx * renderer.zoom;
+  renderer.cameraY = sy - wy * renderer.zoom;
   schedulePaint();
 }, { passive: false });
 ;
@@ -544,39 +550,90 @@ function toggleRecords(): void {
 }
 
 // ---------- 共用動作 ----------
-function flashMoved(before: [number, number][], after: [number, number][]): void {
-  if (!selectionAnimationEnabled || before.length !== after.length) return;
-  const moved = new Set<string>();
-  for (let i = 0; i < before.length; i++) {
-    if (before[i][0] !== after[i][0] || before[i][1] !== after[i][1]) {
-      moved.add(`${after[i][0]}:${after[i][1]}`);
-    }
+const DIR_DELTA_ANIM: Record<string, [number, number]> = { w:[-1,0], s:[1,0], a:[0,-1], d:[0,1] };
+
+/** 依 move_info 建立只動「該步滑塊組」的完整過場陣列；找不到對應塊回 null */
+function buildHistoryAnim(moveInfo: { direction: string; step: number; moved_positions: [number, number][] }, isUndo: boolean): { start: [number, number][]; end: [number, number][] } | null {
+  const game = store.game;
+  const delta = DIR_DELTA_ANIM[moveInfo.direction];
+  if (!delta) return null;
+  const step = moveInfo.step || store.currentStep;
+  const start = game.blocks.map((b) => [b.row, b.col] as [number, number]);
+  const end = start.map((p) => [p[0], p[1]] as [number, number]);
+  const posToIdx = new Map<string, number>();
+  game.blocks.forEach((b, i) => posToIdx.set(`${b.row}:${b.col}`, i));
+  for (const pre of moveInfo.moved_positions) {
+    const post: [number, number] = [pre[0] + delta[0] * step, pre[1] + delta[1] * step];
+    const idx = isUndo
+      ? posToIdx.get(`${post[0]}:${post[1]}`)
+      : posToIdx.get(`${pre[0]}:${pre[1]}`);
+    if (idx === undefined) return null;
+    end[idx] = isUndo ? [pre[0], pre[1]] : [post[0], post[1]];
   }
-  if (moved.size === 0) return;
-  renderer.highlightCells = moved;
+  return { start, end };
+}
+
+function flashMoveSelection(moveInfo: { direction: string; step: number; moved_positions: [number, number][] } | null | undefined, isUndo: boolean): void {
+  if (!selectionAnimationEnabled || !moveInfo) return;
+  const delta = DIR_DELTA_ANIM[moveInfo.direction];
+  if (!delta) return;
+  const step = moveInfo.step || store.currentStep;
+  const targets = new Set<string>();
+  for (const pre of moveInfo.moved_positions) {
+    const pos = isUndo
+      ? pre
+      : ([pre[0] + delta[0] * step, pre[1] + delta[1] * step] as [number, number]);
+    targets.add(`${pos[0]}:${pos[1]}`);
+  }
+  if (targets.size === 0) return;
+  renderer.highlightCells = targets;
   window.setTimeout(() => { renderer.highlightCells = null; schedulePaint(); }, 420);
+}
+
+/** 執行動畫後再真正 undo/redo（只對該步滑塊組動畫，對照原版） */
+function runHistoryAnimation(kind: 'undo' | 'redo'): void {
+  const hist = store.cmd.history;
+  const moveInfo = kind === 'undo' ? hist.currentMoveInfo() : hist.nextMoveInfo();
+
+  const commit = () => {
+    const r = kind === 'undo' ? undo(store.cmd) : redo(store.cmd);
+    if (!r.ok) { showToast(r.message); return; }
+    flashMoveSelection(moveInfo, kind === 'undo');
+    autosave(store);
+    schedulePaint();
+    showToast(r.message);
+  };
+
+  if (!controller.animationEnabled || !moveInfo) { commit(); return; }
+  const anim = buildHistoryAnim(moveInfo, kind === 'undo');
+  if (!anim) { commit(); return; }
+
+  renderer.animation = { start: anim.start, end: anim.end, progress: 0, durationMs: controller.moveDurationMs };
+  const t0 = performance.now();
+  const frame = (now: number): void => {
+    const a = renderer.animation;
+    if (!a) return;
+    const p = Math.min(1, (now - t0) / a.durationMs);
+    a.progress = p;
+    schedulePaint();
+    if (p < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      renderer.animation = null;
+      commit();
+    }
+  };
+  requestAnimationFrame(frame);
 }
 
 function handleUndo(): void {
   if (!store.cmd.history.canUndo) { showToast('沒有可撤銷的步驟'); return; }
-  const before = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
-  const r = undo(store.cmd);
-  if (!r.ok) { showToast(r.message); return; }
-  const after = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
-  if (controller.animationEnabled && selectionAnimationEnabled && before.length === after.length) controller.playTransition(before, after);
-  flashMoved(before, after);
-  autosave(store); schedulePaint(); showToast(r.message);
+  runHistoryAnimation('undo');
 }
 
 function handleRedo(): void {
   if (!store.cmd.history.canRedo) { showToast('沒有可重做的步驟'); return; }
-  const before = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
-  const r = redo(store.cmd);
-  if (!r.ok) { showToast(r.message); return; }
-  const after = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
-  if (controller.animationEnabled && selectionAnimationEnabled && before.length === after.length) controller.playTransition(before, after);
-  flashMoved(before, after);
-  autosave(store); schedulePaint(); showToast(r.message);
+  runHistoryAnimation('redo');
 }
 
 function handleShuffle(): void {

@@ -88,7 +88,10 @@ export class GameStore {
     } else if (p.history && Array.isArray(p.history.snapshots)) {
       for (const snap of p.history.snapshots) {
         const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
-        if (blocks) snapshots.push({ blocks });
+        if (blocks) snapshots.push({
+          blocks,
+          ...(snap?.move_info ? { move_info: snap.move_info } : {}),
+        });
       }
     }
 

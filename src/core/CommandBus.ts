@@ -88,10 +88,20 @@ export function move(ctx: CommandContext, direction: Direction): Reply {
     return { ok: false, message: '移動不合法（碰撞或斷連）' };
   }
 
+  const movedPositions = ctx.game.blocks
+    .filter((b) => ctx.game.selected.has(b))
+    .map((b) => [b.row, b.col] as [number, number]);
+
   ctx.game.commit_move(finalPositions);
   // 對照原版：移動後保留縫隙/滑塊組選中，以便連續滑動
   ctx.stepCount += 1;
-  ctx.history.save_snapshot(ctx.game);
+  ctx.history.save_snapshot(ctx.game, {
+    direction,
+    step: ctx.step,
+    gap_type: ctx.selectedGap?.type,
+    gap_line: ctx.selectedGap?.line,
+    moved_positions: movedPositions,
+  });
   return { ok: true, message: `移動 ${direction}` };
 }
 

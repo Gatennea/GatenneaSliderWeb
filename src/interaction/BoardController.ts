@@ -276,6 +276,7 @@ export class BoardController {
 
     // 建立全量 block 的起點/終點（選中組終點用 finalPositions，其餘原地）
     const selectedList = store.game.blocks.filter((b) => store.game.selected.has(b));
+    const movedPositions = selectedList.map((b) => [b.row, b.col] as [number, number]);
     const endBySelected = new Map(selectedList.map((b, i) => [b, finalPositions[i]] as const));
     const start = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
     const end = store.game.blocks.map((b) => {
@@ -287,7 +288,13 @@ export class BoardController {
       // 關閉動畫：瞬間提交；保留選中以便連續滑動
       store.game.commit_move(finalPositions);
       cmd.stepCount += 1;
-      cmd.history.save_snapshot(store.game);
+      cmd.history.save_snapshot(store.game, {
+        direction,
+        step: store.currentStep,
+        gap_type: cmd.selectedGap?.type,
+        gap_line: cmd.selectedGap?.line,
+        moved_positions: movedPositions,
+      });
       this.notify(`移動 ${direction}`);
       this.ui.onChanged?.();
       this.ui.requestPaint?.();
