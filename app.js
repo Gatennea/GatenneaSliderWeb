@@ -382,6 +382,8 @@ function buildVK() {
         b.style.padding = '5px 0';
         b.style.cursor = 'pointer';
         b.style.fontSize = '13px';
+        b.style.fontFamily = 'inherit';
+        b.style.fontWeight = 'normal';
         b.addEventListener('click', cb);
         return b;
     };
@@ -516,6 +518,20 @@ function toggleRecords() {
     showToast(vis ? '已開啟成績面板' : '已關閉成績面板');
 }
 // ---------- 共用動作 ----------
+function flashMoved(before, after) {
+    if (!selectionAnimationEnabled || before.length !== after.length)
+        return;
+    const moved = new Set();
+    for (let i = 0; i < before.length; i++) {
+        if (before[i][0] !== after[i][0] || before[i][1] !== after[i][1]) {
+            moved.add(`${after[i][0]}:${after[i][1]}`);
+        }
+    }
+    if (moved.size === 0)
+        return;
+    renderer.highlightCells = moved;
+    window.setTimeout(() => { renderer.highlightCells = null; schedulePaint(); }, 420);
+}
 function handleUndo() {
     if (!store.cmd.history.canUndo) {
         showToast('沒有可撤銷的步驟');
@@ -530,6 +546,7 @@ function handleUndo() {
     const after = store.game.blocks.map((b) => [b.row, b.col]);
     if (controller.animationEnabled && selectionAnimationEnabled && before.length === after.length)
         controller.playTransition(before, after);
+    flashMoved(before, after);
     autosave(store);
     schedulePaint();
     showToast(r.message);
@@ -546,8 +563,9 @@ function handleRedo() {
         return;
     }
     const after = store.game.blocks.map((b) => [b.row, b.col]);
-    if (controller.animationEnabled && before.length === after.length)
+    if (controller.animationEnabled && selectionAnimationEnabled && before.length === after.length)
         controller.playTransition(before, after);
+    flashMoved(before, after);
     autosave(store);
     schedulePaint();
     showToast(r.message);
@@ -709,7 +727,7 @@ const menus = [
                 handleReset();
         }
     },
-    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '自定义...', '模式:练习', '模式:竞速'], handler: (item) => {
+    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '3~6*6', '3~7*7', '3~8*8', '3~9*9', '3~10*10', '---', '自定义...', '模式:练习', '模式:竞速'], handler: (item) => {
             if (item === '自定义...')
                 handleCustomPuzzle();
             else if (item === '模式:练习')
@@ -858,6 +876,20 @@ window.addEventListener('keydown', (e) => {
         handleShuffle();
         return;
     }
+    if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        if (gameMode === 'timed') {
+            if (timer.state === 'ready') {
+                timer.start();
+                showToast('計時開始');
+                schedulePaint();
+            }
+            else if (timer.state === 'running') {
+                recordDnf();
+            }
+        }
+        return;
+    }
     if (e.key === 'F1') {
         e.preventDefault();
         toggleVK();
@@ -910,6 +942,8 @@ const GAP = GEOMETRY.gap_width;
 class BoardRenderer {
     constructor(ctx, zoom = 1) {
         this.animation = null;
+        /** 選中動畫：短暫高亮的格子集合（undo/redo 時顯示移動過的組） */
+        this.highlightCells = null;
         this.ctx = ctx;
         this.zoom = zoom;
         this.cameraX = 0;
@@ -1050,6 +1084,12 @@ class BoardRenderer {
             ctx.lineWidth = Math.max(1, GEOMETRY.block_border_width * this.zoom);
             this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
             ctx.stroke();
+            if (this.highlightCells && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`)) {
+                ctx.strokeStyle = 'rgba(255, 205, 60, 0.9)';
+                ctx.lineWidth = 3;
+                this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
+                ctx.stroke();
+            }
         }
     }
     drawGapLines(bounds, selectedGap) {
@@ -1925,6 +1965,21 @@ return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modG
  */
 const { createContext } = require("../core/CommandBus.js");
 const { SliderMatrix } = require("../core/SliderMatrix.js");
+function matrixToBlocks(matrix, bounds) {
+    if (!Array.isArray(matrix) || !bounds || !Number.isInteger(bounds.min_row) || !Number.isInteger(bounds.min_col))
+        return null;
+    const out = [];
+    for (let r = 0; r < matrix.length; r++) {
+        const row = matrix[r];
+        if (!Array.isArray(row))
+            return null;
+        for (let c = 0; c < row.length; c++) {
+            if (row[c] === 1)
+                out.push([bounds.min_row + r, bounds.min_col + c]);
+        }
+    }
+    return out;
+}
 class GameStore {
     constructor(m = 4, n = 4, step = 2) {
         this.currentM = m;
@@ -1963,7 +2018,7 @@ class GameStore {
             history: this.cmd.history.snapshotAll(),
         };
     }
-    /** 由序列化結構還原。 */
+    /** 由序列化結構還原（相容體驗版 JSON 與原版 save JSON）。 */
     deserialize(p) {
         const m = p.puzzle?.m ?? this.currentM;
         const n = p.puzzle?.n ?? this.currentN;
@@ -1976,16 +2031,30 @@ class GameStore {
         this.currentN = n;
         this.currentStep = step;
         this.game = new SliderMatrix(m, n);
+        // 原版存檔：history.snapshots 內是 matrix + bounds
+        const snapshots = [];
+        if (Array.isArray(p.history)) {
+            snapshots.push(...p.history.filter((h) => Array.isArray(h?.blocks)));
+        }
+        else if (p.history && Array.isArray(p.history.snapshots)) {
+            for (const snap of p.history.snapshots) {
+                const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
+                if (blocks)
+                    snapshots.push({ blocks });
+            }
+        }
         if (typeof p.map === 'string' && p.map.trim().length > 0) {
             this.game.import_map(p.map);
-            // import_map 會依 map 邊界覆寫 m/n，這裡恢復謎題原始尺寸
             this.game.m = m;
             this.game.n = n;
         }
+        else if (snapshots.length > 0) {
+            this.game.restore({ blocks: snapshots[snapshots.length - 1].blocks });
+        }
         this.cmd = createContext(this.game, step);
         this.cmd.stepCount = p.step_count ?? 0;
-        if (Array.isArray(p.history)) {
-            this.cmd.history.restoreAll(p.history);
+        if (snapshots.length > 0) {
+            this.cmd.history.restoreAll(snapshots);
         }
         return true;
     }

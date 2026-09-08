@@ -408,6 +408,8 @@ function buildVK(): void {
     b.style.padding = '5px 0';
     b.style.cursor = 'pointer';
     b.style.fontSize = '13px';
+    b.style.fontFamily = 'inherit';
+    b.style.fontWeight = 'normal';
     b.addEventListener('click', cb);
     return b;
   };
@@ -532,6 +534,19 @@ function toggleRecords(): void {
 }
 
 // ---------- 共用動作 ----------
+function flashMoved(before: [number, number][], after: [number, number][]): void {
+  if (!selectionAnimationEnabled || before.length !== after.length) return;
+  const moved = new Set<string>();
+  for (let i = 0; i < before.length; i++) {
+    if (before[i][0] !== after[i][0] || before[i][1] !== after[i][1]) {
+      moved.add(`${after[i][0]}:${after[i][1]}`);
+    }
+  }
+  if (moved.size === 0) return;
+  renderer.highlightCells = moved;
+  window.setTimeout(() => { renderer.highlightCells = null; schedulePaint(); }, 420);
+}
+
 function handleUndo(): void {
   if (!store.cmd.history.canUndo) { showToast('沒有可撤銷的步驟'); return; }
   const before = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
@@ -539,6 +554,7 @@ function handleUndo(): void {
   if (!r.ok) { showToast(r.message); return; }
   const after = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
   if (controller.animationEnabled && selectionAnimationEnabled && before.length === after.length) controller.playTransition(before, after);
+  flashMoved(before, after);
   autosave(store); schedulePaint(); showToast(r.message);
 }
 
@@ -548,7 +564,8 @@ function handleRedo(): void {
   const r = redo(store.cmd);
   if (!r.ok) { showToast(r.message); return; }
   const after = store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
-  if (controller.animationEnabled && before.length === after.length) controller.playTransition(before, after);
+  if (controller.animationEnabled && selectionAnimationEnabled && before.length === after.length) controller.playTransition(before, after);
+  flashMoved(before, after);
   autosave(store); schedulePaint(); showToast(r.message);
 }
 
@@ -706,7 +723,7 @@ const menus: MenuDef[] = [
       else if (item.startsWith('重置')) handleReset();
     }
   },
-  { label: '谜题', items: ['2~4*4','2~5*5','2~6*6','2~7*7','2~8*8','2~9*9','2~10*10','---','自定义...','模式:练习','模式:竞速'], handler: (item) => {
+  { label: '谜题', items: ['2~4*4','2~5*5','2~6*6','2~7*7','2~8*8','2~9*9','2~10*10','---','3~6*6','3~7*7','3~8*8','3~9*9','3~10*10','---','自定义...','模式:练习','模式:竞速'], handler: (item) => {
       if (item === '自定义...') handleCustomPuzzle();
       else if (item === '模式:练习') setGameMode('practice');
       else if (item === '模式:竞速') setGameMode('timed');
@@ -815,6 +832,14 @@ window.addEventListener('keydown', (e) => {
   if (ctrl && key === 'o') { e.preventDefault(); fileInput.click(); return; }
   if (ctrl && key === 'r') { e.preventDefault(); handleReset(); return; }
   if (e.altKey && key === 's') { e.preventDefault(); handleShuffle(); return; }
+  if (e.code === 'Space' || e.key === ' ') {
+    e.preventDefault();
+    if (gameMode === 'timed') {
+      if (timer.state === 'ready') { timer.start(); showToast('計時開始'); schedulePaint(); }
+      else if (timer.state === 'running') { recordDnf(); }
+    }
+    return;
+  }
   if (e.key === 'F1') { e.preventDefault(); toggleVK(); return; }
   if (e.key === 'F3') { e.preventDefault(); toggleRecords(); return; }
 });

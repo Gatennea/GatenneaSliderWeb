@@ -49,6 +49,34 @@ export const cases = [
     },
   },
   {
+    name: '相容原版 save JSON（matrix/bounds 歷史）且可撤銷',
+    run() {
+      const g = new GameStore(4, 4, 2);
+      const snap0 = {
+        matrix: [[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1]],
+        bounds: { min_row: 0, max_row: 3, min_col: 0, max_col: 3 },
+      };
+      // 移動後 4x6 map（寬 6 的實心底列？隨意一組非復原佔位）
+      const snap1 = {
+        matrix: [[0,0,1,1,1,1],[0,0,1,1,1,1],[1,1,1,1,0,0],[1,1,1,1,0,0]],
+        bounds: { min_row: 0, max_row: 3, min_col: 0, max_col: 5 },
+      };
+      const p = {
+        version: 1,
+        puzzle: { m: 4, n: 4, step: 2 },
+        step_count: 1,
+        history: { history_index: 1, snapshots: [snap0, snap1] },
+      };
+      const g2 = new GameStore();
+      g2.deserialize(p);
+      if (g2.game.m !== 4 || g2.game.n !== 4) throw new Error('載入原版存檔後 m/n 應維持謎題尺寸 4');
+      // 未復原時 is_solved 可能 false；我們只驗證可撤銷回初始
+      const r = undo(g2.cmd);
+      if (!r.ok) throw new Error('原版存檔載入後應可撤銷');
+      if (!g2.game.is_solved()) throw new Error('撤銷後應回到復原態');
+    },
+  },
+  {
     name: '切換謎題 newPuzzle 校驗 step < max(m,n)',
     run() {
       const g = new GameStore();

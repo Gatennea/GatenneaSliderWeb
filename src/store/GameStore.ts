@@ -6,6 +6,19 @@
 import { createContext, type CommandContext } from '../core/CommandBus.js';
 import { SliderMatrix } from '../core/SliderMatrix.js';
 
+function matrixToBlocks(matrix: unknown, bounds: any): [number, number][] | null {
+  if (!Array.isArray(matrix) || !bounds || !Number.isInteger(bounds.min_row) || !Number.isInteger(bounds.min_col)) return null;
+  const out: [number, number][] = [];
+  for (let r = 0; r < matrix.length; r++) {
+    const row = matrix[r];
+    if (!Array.isArray(row)) return null;
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] === 1) out.push([bounds.min_row + r, bounds.min_col + c]);
+    }
+  }
+  return out;
+}
+
 export class GameStore {
   game: SliderMatrix;
   cmd: CommandContext;
@@ -55,7 +68,7 @@ export class GameStore {
     };
   }
 
-  /** 由序列化結構還原。 */
+  /** 由序列化結構還原（相容體驗版 JSON 與原版 save JSON）。 */
   deserialize(p: SavePayload): boolean {
     const m = p.puzzle?.m ?? this.currentM;
     const n = p.puzzle?.n ?? this.currentN;
@@ -67,16 +80,30 @@ export class GameStore {
     this.currentN = n;
     this.currentStep = step;
     this.game = new SliderMatrix(m, n);
+
+    // 原版存檔：history.snapshots 內是 matrix + bounds
+    const snapshots: { blocks: [number, number][] }[] = [];
+    if (Array.isArray(p.history)) {
+      snapshots.push(...p.history.filter((h: any) => Array.isArray(h?.blocks)));
+    } else if (p.history && Array.isArray(p.history.snapshots)) {
+      for (const snap of p.history.snapshots) {
+        const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
+        if (blocks) snapshots.push({ blocks });
+      }
+    }
+
     if (typeof p.map === 'string' && p.map.trim().length > 0) {
       this.game.import_map(p.map);
-      // import_map 會依 map 邊界覆寫 m/n，這裡恢復謎題原始尺寸
       this.game.m = m;
       this.game.n = n;
+    } else if (snapshots.length > 0) {
+      this.game.restore({ blocks: snapshots[snapshots.length - 1].blocks });
     }
+
     this.cmd = createContext(this.game, step);
     this.cmd.stepCount = p.step_count ?? 0;
-    if (Array.isArray(p.history)) {
-      this.cmd.history.restoreAll(p.history);
+    if (snapshots.length > 0) {
+      this.cmd.history.restoreAll(snapshots);
     }
     return true;
   }
@@ -86,6 +113,6 @@ export interface SavePayload {
   version: number;
   puzzle: { m: number; n: number; step: number };
   step_count: number;
-  map: string;
-  history: { blocks: [number, number][] }[];
+  map?: string;
+  history?: any;
 }

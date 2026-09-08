@@ -31,6 +31,8 @@ export class BoardRenderer {
   cameraX: number;
   cameraY: number;
   animation: MoveAnimation | null = null;
+  /** 選中動畫：短暫高亮的格子集合（undo/redo 時顯示移動過的組） */
+  highlightCells: Set<string> | null = null;
 
   constructor(ctx: CanvasRenderingContext2D, zoom = 1) {
     this.ctx = ctx;
@@ -193,6 +195,13 @@ export class BoardRenderer {
       ctx.lineWidth = Math.max(1, GEOMETRY.block_border_width * this.zoom);
       this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
       ctx.stroke();
+
+      if (this.highlightCells && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`)) {
+        ctx.strokeStyle = 'rgba(255, 205, 60, 0.9)';
+        ctx.lineWidth = 3;
+        this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
+        ctx.stroke();
+      }
     }
   }
 
