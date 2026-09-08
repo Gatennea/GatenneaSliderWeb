@@ -10,6 +10,8 @@ import { COLORS, GEOMETRY } from './render/theme.js';
 import { shuffle, reset, undo, redo } from './core/CommandBus.js';
 import { autosave, autoload, downloadSave, importData } from './io/SaveManager.js';
 import { Timer, formatTime } from './feature/Timer.js';
+import { Records, stats, puzzleKey } from './feature/Records.js';
+import type { RecordItem } from './feature/Records.js';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -82,6 +84,15 @@ const renderer = new BoardRenderer(ctx, 1);
 // M5：練習/計時模式 + 計時器
 let gameMode: 'practice' | 'timed' = 'practice';
 const timer = new Timer();
+
+// M6：成績
+const records = new Records();
+/** 完成或 DNF 時寫入成績（僅競速模式）。 */
+function recordResult(dnf: boolean): void {
+  const key = puzzleKey(store.currentM, store.currentN, store.currentStep);
+  records.add(store.currentM, store.currentN, store.currentStep, Math.round(timer.elapsedMs), store.cmd.stepCount, dnf);
+  if (recordsPanel) renderRecordsPanel();
+}
 
 // 置中（對照原版 center_map）
 function centerCamera(): void {
@@ -167,7 +178,10 @@ const controller = new BoardController({
     autosave(store);
     if (gameMode === 'timed') {
       if (timer.state === 'ready') timer.start();
-      if (store.solved && timer.state === 'running') timer.solve();
+      if (store.solved && timer.state === 'running') {
+        timer.solve();
+        recordResult(false);
+      }
     }
     schedulePaint();
   },
@@ -252,6 +266,7 @@ addButton('模式', () => {
 const dnfButton = addButton('DNF', () => {
   if (gameMode === 'timed' && timer.state === 'running') {
     timer.dnf();
+    recordResult(true);
     showToast('DNF');
     schedulePaint();
   }
@@ -260,6 +275,110 @@ dnfButton.style.display = 'none';
 function syncDnfButton(): void {
   dnfButton.style.display = gameMode === 'timed' ? '' : 'none';
 }
+
+// M6：虛擬鍵盤（螢幕方向 + 常用動作，行動裝置可用）
+const vkRow = document.createElement('div');
+vkRow.style.display = 'flex';
+vkRow.style.gap = '6px';
+vkRow.style.padding = '0 16px 8px';
+vkRow.style.flexWrap = 'wrap';
+app.insertBefore(vkRow, status);
+
+function vkButton(label: string, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.style.background = COLORS.input_bg;
+  b.style.color = '#fff';
+  b.style.border = '1px solid ' + COLORS.border;
+  b.style.borderRadius = '4px';
+  b.style.minWidth = '40px';
+  b.style.padding = '8px 14px';
+  b.style.cursor = 'pointer';
+  b.addEventListener('click', onClick);
+  vkRow.appendChild(b);
+  return b;
+}
+vkButton('W', () => controller.move('w'));
+vkButton('A', () => controller.move('a'));
+vkButton('S', () => controller.move('s'));
+vkButton('D', () => controller.move('d'));
+vkButton('撤銷', () => { const r = undo(store.cmd); showToast(r.message); autosave(store); schedulePaint(); });
+vkButton('打亂', () => { const r = shuffle(store.cmd, 100); showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); timer.reset(); schedulePaint(); });
+vkButton('重置', () => { const r = reset(store.cmd); showToast(r.message); renderer.animation = null; centerCamera(); autosave(store); schedulePaint(); });
+
+// M6：成績面板（按目前謎題分組）
+const recordsPanel = document.createElement('div');
+recordsPanel.style.position = 'fixed';
+recordsPanel.style.right = '12px';
+recordsPanel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
+recordsPanel.style.width = '260px';
+recordsPanel.style.maxHeight = '60vh';
+recordsPanel.style.overflowY = 'auto';
+recordsPanel.style.background = COLORS.dialog_bg;
+recordsPanel.style.border = `1px solid ${COLORS.dialog_border}`;
+recordsPanel.style.borderRadius = '6px';
+recordsPanel.style.padding = '10px';
+recordsPanel.style.fontSize = '13px';
+recordsPanel.style.color = COLORS.dialog_text;
+recordsPanel.style.display = 'none';
+app.appendChild(recordsPanel);
+
+let recordsPanelVisible = false;
+const emptyRecordsNote = document.createElement('div');
+emptyRecordsNote.style.color = '#888';
+emptyRecordsNote.style.marginTop = '6px';
+emptyRecordsNote.textContent = '尚無成績記錄';
+
+function renderRecordsPanel(): void {
+  const key = puzzleKey(store.currentM, store.currentN, store.currentStep);
+  const list = records.get(key);
+  const s = stats(list);
+  const best = s.best === null ? '-' : formatTime(s.best);
+  const worst = s.worst === null ? '-' : formatTime(s.worst);
+  const ao5 = s.ao5 === null ? '-' : (s.ao5 === 'DNF' ? 'DNF' : formatTime(s.ao5));
+  const ao12 = s.ao12 === null ? '-' : (s.ao12 === 'DNF' ? 'DNF' : formatTime(s.ao12));
+
+  recordsPanel.innerHTML = '';
+  const title = document.createElement('div');
+  title.textContent = `成績：${key}`;
+  title.style.color = COLORS.dialog_title;
+  title.style.marginBottom = '6px';
+  recordsPanel.appendChild(title);
+
+  const sum = document.createElement('div');
+  sum.textContent = `次數 ${s.count} ｜ 最佳 ${best} ｜ 最差 ${worst} ｜ DNF ${s.dnf_count}`;
+  sum.style.marginBottom = '4px';
+  recordsPanel.appendChild(sum);
+  const ao = document.createElement('div');
+  ao.textContent = `Ao5 ${ao5} ｜ Ao12 ${ao12}`;
+  ao.style.marginBottom = '8px';
+  recordsPanel.appendChild(ao);
+
+  if (list.length === 0) {
+    recordsPanel.appendChild(emptyRecordsNote);
+    return;
+  }
+  const table = document.createElement('div');
+  list
+    .slice()
+    .reverse()
+    .forEach((r: RecordItem) => {
+      const row = document.createElement('div');
+      row.style.padding = '2px 0';
+      row.style.borderBottom = `1px solid ${COLORS.separator}`;
+      const t = r.dnf ? 'DNF' : formatTime(r.time_ms);
+      row.textContent = `${t}（${r.moves}步）`;
+      if (r.dnf) row.style.color = '#cc6666';
+      table.appendChild(row);
+    });
+  recordsPanel.appendChild(table);
+}
+
+addButton('成績', () => {
+  recordsPanelVisible = !recordsPanelVisible;
+  recordsPanel.style.display = recordsPanelVisible ? '' : 'none';
+  if (recordsPanelVisible) renderRecordsPanel();
+});
 
 // 導入檔案 input（隱藏）
 const fileInput = document.createElement('input');

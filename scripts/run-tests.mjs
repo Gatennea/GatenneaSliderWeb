@@ -8,6 +8,7 @@ import { cases as renderCases } from '../tests/render.test.mjs';
 import { cases as cmdCases } from '../tests/commandbus.test.mjs';
 import { cases as saveCases } from '../tests/save.test.mjs';
 import { cases as timerCases } from '../tests/timer.test.mjs';
+import { cases as recordCases } from '../tests/records.test.mjs';
 
 const suites = [
   { name: 'SliderMatrix/GameHistory', cases: matrixCases },
@@ -16,6 +17,7 @@ const suites = [
   { name: 'CommandBus 整合 (M3)', cases: cmdCases },
   { name: '存檔/導入/切換 (M4)', cases: saveCases },
   { name: '計時器 (M5)', cases: timerCases },
+  { name: '成績 (M6)', cases: recordCases },
 ];
 
 let passed = 0;

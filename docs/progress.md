@@ -38,7 +38,9 @@
   - 練習模式（預設）與競速模式切換按鈕；競速才有 DNF 按鈕與計時顯示。
   - 計時狀態機 ready→running→solved|dnf（`src/feature/Timer.ts`）；首次合法移動起跑、還原自動停錶、狀態欄即時刷新時間。
   - 計時顯示格式對照 records.format_time（厘秒 / 分:秒）。
-- [ ] M6 成績面板/虛擬鍵盤
+- [x] M6 成績面板/虛擬鍵盤
+  - 成績：`src/feature/Records.ts` 按 puzzle 分組存 localStorage；競速完成/DNF 自動入榜；成績面板顯示 count/best/worst/dnf/ao5/ao12 與逐筆列表（AoN 對照 records.py）。
+  - 虛擬鍵盤：螢幕 W/A/S/D + 撤銷/打亂/重置按鈕（行動裝置可用；方向經 `BoardController.move`）。
 - [ ] M7 著色器（可選）
 - [ ] M8 驗收與文檔收口
 

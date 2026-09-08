@@ -224,6 +224,11 @@ export class BoardController {
     this.animateMove(dir);
   }
 
+  /** 對外：虛擬鍵盤/程式化移動入口。 */
+  move(direction: Direction): void {
+    this.animateMove(direction);
+  }
+
   /** 帶動畫的移動：預測 → 動畫插值 → 提交。 */
   private animateMove(direction: Direction): void {
     const { store, renderer } = this.ui;
