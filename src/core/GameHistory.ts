@@ -60,6 +60,17 @@ export class GameHistory {
     return true;
   }
 
+  /** 匯出全部快照（供存檔）。 */
+  snapshotAll(): { blocks: [number, number][] }[] {
+    return this.entries.map((e) => ({ blocks: e.blocks.map(([r, c]) => [r, c]) }));
+  }
+
+  /** 由快照列表還原（index 設為末位，對應載入時停在最新狀態）。 */
+  restoreAll(list: { blocks: [number, number][] }[]): void {
+    this.entries = list.map((e) => ({ blocks: e.blocks.map(([r, c]) => [r, c] as [number, number]) }));
+    this.index = this.entries.length - 1;
+  }
+
   private apply(game: SliderMatrix, entry: Entry): void {
     game.blocks = entry.blocks.map(([r, c]) => new Block([r, c]));
     game.selected.clear();

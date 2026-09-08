@@ -10,6 +10,7 @@ const { BoardController } = require("./interaction/BoardController.js");
 const { GameStore } = require("./store/GameStore.js");
 const { COLORS, GEOMETRY } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
+const { autosave, autoload, downloadSave, importData } = require("./io/SaveManager.js");
 const app = document.querySelector('#app');
 // 外框（對照原版深色背景 + 選單/狀態欄配色）
 app.style.background = COLORS.background;
@@ -137,6 +138,7 @@ const controller = new BoardController({
     store,
     onStatus: showToast,
     requestPaint: schedulePaint,
+    onChanged: () => autosave(store),
 });
 function addButton(label, onClick) {
     const b = document.createElement('button');
@@ -155,6 +157,7 @@ addButton('打亂', () => {
     showToast(reply.message);
     renderer.animation = null;
     centerCamera();
+    autosave(store);
     schedulePaint();
 });
 addButton('重置', () => {
@@ -162,18 +165,77 @@ addButton('重置', () => {
     showToast(reply.message);
     renderer.animation = null;
     centerCamera();
+    autosave(store);
     schedulePaint();
 });
 addButton('撤銷', () => {
     const reply = undo(store.cmd);
     showToast(reply.message);
+    autosave(store);
     schedulePaint();
 });
 addButton('重做', () => {
     const reply = redo(store.cmd);
     showToast(reply.message);
+    autosave(store);
     schedulePaint();
 });
+addButton('存檔', () => {
+    downloadSave(store);
+    showToast('已下載存檔');
+});
+addButton('導入', () => {
+    fileInput.click();
+});
+addButton('切換謎題', () => {
+    const m = Number(window.prompt('列數 m（例如 4）', String(store.currentM)));
+    const n = Number(window.prompt('行數 n（例如 5）', String(store.currentN)));
+    const step = Number(window.prompt('步距 step（需 < max(m,n)）', String(store.currentStep)));
+    if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) {
+        showToast('輸入需為整數');
+        return;
+    }
+    if (step >= Math.max(m, n)) {
+        showToast(`step 需 < max(m,n)=${Math.max(m, n)}`);
+        return;
+    }
+    store.newPuzzle(m, n, step);
+    renderer.animation = null;
+    centerCamera();
+    autosave(store);
+    schedulePaint();
+    showToast(`切換謎題 ${step}~${m}*${n}`);
+});
+// 導入檔案 input（隱藏）
+const fileInput = document.createElement('input');
+fileInput.type = 'file';
+fileInput.accept = '.json,.txt';
+fileInput.style.display = 'none';
+app.appendChild(fileInput);
+fileInput.addEventListener('change', () => {
+    const f = fileInput.files?.[0];
+    if (!f)
+        return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        const r = importData(store, String(reader.result ?? ''));
+        showToast(r.message);
+        if (r.ok) {
+            renderer.animation = null;
+            centerCamera();
+            autosave(store);
+            schedulePaint();
+        }
+    };
+    reader.readAsText(f);
+    fileInput.value = '';
+});
+// 啟動時嘗試從 localStorage 恢復
+if (autoload(store)) {
+    renderer.animation = null;
+    centerCamera();
+    showToast('已恢復上次進度');
+}
 // 快捷鍵：Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
 window.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -400,6 +462,81 @@ class BoardRenderer {
 }
 
 return { BoardRenderer };
+},
+    "m10": function (require) {
+/**
+ * 存檔/導入（M4）：localStorage 自動快照 + 檔案下載/上傳 + 解析 map 文本。
+ *
+ * 體驗版核心狀態用 map 文本（# / _），存檔 JSON 結構：
+ *   { version, puzzle:{m,n,step}, step_count, map, history }
+ */
+const STORAGE_KEY = 'gatennea-slider-web:last';
+function puzzleTag(store) {
+    return `${store.currentStep}~${store.currentM}*${store.currentN}`;
+}
+/** localStorage 自動快照（對照原版 temp_history.json）。 */
+function autosave(store) {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store.serialize()));
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/** 啟動時恢復 localStorage 快照。回傳是否恢復成功。 */
+function autoload(store) {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw)
+            return false;
+        const p = JSON.parse(raw);
+        return store.deserialize(p);
+    }
+    catch {
+        return false;
+    }
+}
+/** 下載存檔 JSON。 */
+function downloadSave(store) {
+    const p = store.serialize();
+    const name = `${puzzleTag(store)}-save.json`;
+    downloadText(name, JSON.stringify(p, null, 2));
+}
+/** 從 JSON 或 map 文本導入。回傳結果文案。 */
+function importData(store, text) {
+    const t = text.trim();
+    if (!t)
+        return { ok: false, message: '內容為空' };
+    // 先試 JSON
+    if (t[0] === '{') {
+        try {
+            const p = JSON.parse(t);
+            if (store.deserialize(p))
+                return { ok: true, message: '已導入存檔' };
+            return { ok: false, message: '存檔內容不合法' };
+        }
+        catch {
+            return { ok: false, message: 'JSON 解析失敗' };
+        }
+    }
+    // 否則視為 map 文本（# / _），沿用目前 puzzle 參數
+    if (store.game.import_map(t)) {
+        return { ok: true, message: '已導入 map' };
+    }
+    return { ok: false, message: 'map 解析失敗' };
+}
+function downloadText(filename, text) {
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+return { autosave, autoload, downloadSave, importData };
 },
     "m2": function (require) {
 /**
@@ -699,6 +836,7 @@ class BoardController {
                 cmd.stepCount += 1;
                 cmd.history.save_snapshot(store.game);
                 this.notify(`移動 ${direction}`);
+                this.ui.onChanged?.();
                 this.ui.requestPaint?.();
             }
         };
@@ -879,6 +1017,15 @@ class GameHistory {
         this.apply(game, this.entries[this.index]);
         return true;
     }
+    /** 匯出全部快照（供存檔）。 */
+    snapshotAll() {
+        return this.entries.map((e) => ({ blocks: e.blocks.map(([r, c]) => [r, c]) }));
+    }
+    /** 由快照列表還原（index 設為末位，對應載入時停在最新狀態）。 */
+    restoreAll(list) {
+        this.entries = list.map((e) => ({ blocks: e.blocks.map(([r, c]) => [r, c]) }));
+        this.index = this.entries.length - 1;
+    }
     apply(game, entry) {
         game.blocks = entry.blocks.map(([r, c]) => new Block([r, c]));
         game.selected.clear();
@@ -976,6 +1123,39 @@ class GameStore {
         this.currentStep = step;
         this.game = new SliderMatrix(m, n);
         this.cmd = createContext(this.game, step);
+        return true;
+    }
+    /** 序列化為可存檔的 JSON 結構（體驗版用 map 文本當核心，不照搬原版 matrix/bounds）。 */
+    serialize() {
+        return {
+            version: 1,
+            puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
+            step_count: this.cmd.stepCount,
+            map: this.game.export_map(),
+            history: this.cmd.history.snapshotAll(),
+        };
+    }
+    /** 由序列化結構還原。 */
+    deserialize(p) {
+        const m = p.puzzle?.m ?? this.currentM;
+        const n = p.puzzle?.n ?? this.currentN;
+        const step = p.puzzle?.step ?? this.currentStep;
+        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step))
+            return false;
+        if (step >= Math.max(m, n))
+            return false;
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.game = new SliderMatrix(m, n);
+        if (typeof p.map === 'string' && p.map.trim().length > 0) {
+            this.game.import_map(p.map);
+        }
+        this.cmd = createContext(this.game, step);
+        this.cmd.stepCount = p.step_count ?? 0;
+        if (Array.isArray(p.history)) {
+            this.cmd.history.restoreAll(p.history);
+        }
         return true;
     }
 }
@@ -1269,6 +1449,7 @@ return { SliderMatrix };
   }
   var __resolve = { "E:/program_project/py/貓九的滑塊遊戲/web/dist/main.js": "m0",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/render/BoardRenderer.js": "m1",
+    "E:/program_project/py/貓九的滑塊遊戲/web/dist/io/SaveManager.js": "m10",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/render/theme.js": "m2",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/interaction/BoardController.js": "m3",
     "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/CommandBus.js": "m4",

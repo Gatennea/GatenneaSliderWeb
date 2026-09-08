@@ -8,6 +8,7 @@ import { BoardController } from './interaction/BoardController.js';
 import { GameStore } from './store/GameStore.js';
 import { COLORS, GEOMETRY } from './render/theme.js';
 import { shuffle, reset, undo, redo } from './core/CommandBus.js';
+import { autosave, autoload, downloadSave, importData } from './io/SaveManager.js';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -150,6 +151,7 @@ const controller = new BoardController({
   store,
   onStatus: showToast,
   requestPaint: schedulePaint,
+  onChanged: () => autosave(store),
 });
 
 function addButton(label: string, onClick: () => void): void {
@@ -170,6 +172,7 @@ addButton('打亂', () => {
   showToast(reply.message);
   renderer.animation = null;
   centerCamera();
+  autosave(store);
   schedulePaint();
 });
 addButton('重置', () => {
@@ -177,18 +180,78 @@ addButton('重置', () => {
   showToast(reply.message);
   renderer.animation = null;
   centerCamera();
+  autosave(store);
   schedulePaint();
 });
 addButton('撤銷', () => {
   const reply = undo(store.cmd);
   showToast(reply.message);
+  autosave(store);
   schedulePaint();
 });
 addButton('重做', () => {
   const reply = redo(store.cmd);
   showToast(reply.message);
+  autosave(store);
   schedulePaint();
 });
+addButton('存檔', () => {
+  downloadSave(store);
+  showToast('已下載存檔');
+});
+addButton('導入', () => {
+  fileInput.click();
+});
+addButton('切換謎題', () => {
+  const m = Number(window.prompt('列數 m（例如 4）', String(store.currentM)));
+  const n = Number(window.prompt('行數 n（例如 5）', String(store.currentN)));
+  const step = Number(window.prompt('步距 step（需 < max(m,n)）', String(store.currentStep)));
+  if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) {
+    showToast('輸入需為整數');
+    return;
+  }
+  if (step >= Math.max(m, n)) {
+    showToast(`step 需 < max(m,n)=${Math.max(m, n)}`);
+    return;
+  }
+  store.newPuzzle(m, n, step);
+  renderer.animation = null;
+  centerCamera();
+  autosave(store);
+  schedulePaint();
+  showToast(`切換謎題 ${step}~${m}*${n}`);
+});
+
+// 導入檔案 input（隱藏）
+const fileInput = document.createElement('input');
+fileInput.type = 'file';
+fileInput.accept = '.json,.txt';
+fileInput.style.display = 'none';
+app.appendChild(fileInput);
+fileInput.addEventListener('change', () => {
+  const f = fileInput.files?.[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const r = importData(store, String(reader.result ?? ''));
+    showToast(r.message);
+    if (r.ok) {
+      renderer.animation = null;
+      centerCamera();
+      autosave(store);
+      schedulePaint();
+    }
+  };
+  reader.readAsText(f);
+  fileInput.value = '';
+});
+
+// 啟動時嘗試從 localStorage 恢復
+if (autoload(store)) {
+  renderer.animation = null;
+  centerCamera();
+  showToast('已恢復上次進度');
+}
 
 // 快捷鍵：Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
 window.addEventListener('keydown', (e) => {

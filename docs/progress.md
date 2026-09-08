@@ -28,7 +28,12 @@
 - 畫布改為**填滿可用區域**（體驗版無右側面板，不再預留 132px 右欄，消除右邊一大塊空白）。
 - 拖動地圖判定：**按在滑塊上不觸發平移**（對照原版），僅空白/縫隙處才拖動平移。
 - 選中縫隙紅線：移除跨棋盤的紅色半透明帶，紅線為**線段**（只在棋盤範圍，貼合縫隙）。
-- [ ] M4 存檔/導入/切換謎題（`export_map/import_map` 已移植，UI 待接）
+- [x] M4 存檔/導入/切換謎題
+  - 存檔：localStorage 自動快照（每次移動/打亂/重置後）+ 手動下載 JSON（puzzle/step_count/map/history）。
+  - 導入：上傳 JSON 存檔或 map 文本（# / _）。
+  - 切換謎題：按鈕輸入 m/n/step（校驗 step < max(m,n)）。
+  - 新增 `src/io/SaveManager.ts`、`GameStore.serialize/deserialize`、`GameHistory.snapshotAll/restoreAll`。
+  - 新增存檔/導入/切換測試（往返、校驗、map 導入）。
 - [ ] M5 練習模式/計時模式/計時器
 - [ ] M6 成績面板/虛擬鍵盤
 - [ ] M7 著色器（可選）

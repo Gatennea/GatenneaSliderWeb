@@ -21,6 +21,8 @@ export interface BoardControllerUI {
   onStatus?: (message: string) => void;
   /** 需要重繪時呼叫（main 的 on-demand rAF） */
   requestPaint?: () => void;
+  /** 成功移動提交後呼叫（main 用於 autosave） */
+  onChanged?: () => void;
 }
 
 const MOVE_DURATION_MS = 180;
@@ -278,6 +280,7 @@ export class BoardController {
         cmd.stepCount += 1;
         cmd.history.save_snapshot(store.game);
         this.notify(`移動 ${direction}`);
+        this.ui.onChanged?.();
         this.ui.requestPaint?.();
       }
     };
