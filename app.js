@@ -10,7 +10,7 @@ const { BoardController } = require("./interaction/BoardController.js");
 const { GameStore } = require("./store/GameStore.js");
 const { COLORS, GEOMETRY } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
-const { autosave, autoload, downloadSave, saveAs, importData } = require("./io/SaveManager.js");
+const { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } = require("./io/SaveManager.js");
 const { Timer, formatTime } = require("./feature/Timer.js");
 const { Records, stats, puzzleKey } = require("./feature/Records.js");
 const app = document.querySelector('#app');
@@ -837,7 +837,7 @@ function setGameMode(mode) {
     schedulePaint();
 }
 const menus = [
-    { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...'], handler: (item) => {
+    { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...', '---', '存檔列表...'], handler: (item) => {
             if (item.includes('另存')) {
                 saveAs(store);
                 showToast('另存為...');
@@ -848,6 +848,8 @@ const menus = [
             }
             else if (item.includes('打开'))
                 fileInput.click();
+            else if (item.includes('存檔列表'))
+                openSaveList();
         }
     },
     { label: '编辑', items: ['撤销 Ctrl+Z', '重做 Ctrl+X', '打乱 Alt+S', '重置 Ctrl+R'], handler: (item) => {
@@ -938,6 +940,143 @@ function buildMenu() {
         });
         menuBar.appendChild(item);
     });
+}
+// ---------- 存檔列表（localStorage，手機友好） ----------
+function openSaveList() {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0,0,0,0.55)';
+    overlay.style.zIndex = '2000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.addEventListener('click', () => overlay.remove());
+    const box = document.createElement('div');
+    box.style.background = COLORS.dialog_bg;
+    box.style.border = '1px solid ' + COLORS.dialog_border;
+    box.style.borderRadius = '8px';
+    box.style.padding = '16px';
+    box.style.width = 'min(360px, 90vw)';
+    box.style.maxHeight = '70vh';
+    box.style.display = 'flex';
+    box.style.flexDirection = 'column';
+    box.style.gap = '8px';
+    box.style.color = COLORS.dialog_text;
+    box.style.fontSize = '13px';
+    box.addEventListener('click', (e) => e.stopPropagation());
+    const title = document.createElement('div');
+    title.textContent = '存檔列表（本機瀏覽器）';
+    title.style.fontWeight = 'bold';
+    title.style.marginBottom = '4px';
+    box.appendChild(title);
+    const nameRow = document.createElement('div');
+    nameRow.style.display = 'flex';
+    nameRow.style.gap = '6px';
+    const nameInput = document.createElement('input');
+    nameInput.placeholder = '輸入存檔名稱';
+    nameInput.style.flex = '1';
+    nameInput.style.background = COLORS.input_bg;
+    nameInput.style.color = COLORS.input_text;
+    nameInput.style.border = '1px solid ' + COLORS.border;
+    nameInput.style.borderRadius = '4px';
+    nameInput.style.padding = '6px';
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '新增存檔';
+    addBtn.style.background = COLORS.button_bg;
+    addBtn.style.color = '#fff';
+    addBtn.style.border = 'none';
+    addBtn.style.borderRadius = '4px';
+    addBtn.style.padding = '6px 10px';
+    addBtn.style.cursor = 'pointer';
+    addBtn.addEventListener('click', () => {
+        const slot = saveSlot(nameInput.value || '未命名存檔', store);
+        if (slot) {
+            nameInput.value = '';
+            renderList();
+            showToast('已新增存檔');
+        }
+    });
+    nameRow.append(nameInput, addBtn);
+    box.appendChild(nameRow);
+    const listEl = document.createElement('div');
+    listEl.style.overflowY = 'auto';
+    listEl.style.maxHeight = '50vh';
+    box.appendChild(listEl);
+    const renderList = () => {
+        listEl.innerHTML = '';
+        const slots = listSaves();
+        if (slots.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.color = '#888';
+            empty.style.padding = '12px';
+            empty.textContent = '尚無存檔';
+            listEl.appendChild(empty);
+            return;
+        }
+        slots.forEach((slot) => {
+            const row = document.createElement('div');
+            row.style.border = '1px solid ' + COLORS.separator;
+            row.style.borderRadius = '4px';
+            row.style.padding = '8px';
+            row.style.marginBottom = '6px';
+            const info = document.createElement('div');
+            info.textContent = `${slot.name}（${new Date(slot.updated).toLocaleString()}）`;
+            info.style.marginBottom = '4px';
+            info.style.fontWeight = 'bold';
+            const btnRow = document.createElement('div');
+            btnRow.style.display = 'flex';
+            btnRow.style.gap = '4px';
+            const mk = (label, cb) => {
+                const b = document.createElement('button');
+                b.textContent = label;
+                b.style.background = COLORS.input_bg;
+                b.style.color = '#fff';
+                b.style.border = '1px solid ' + COLORS.border;
+                b.style.borderRadius = '4px';
+                b.style.padding = '4px 8px';
+                b.style.cursor = 'pointer';
+                b.addEventListener('click', cb);
+                return b;
+            };
+            btnRow.append(mk('讀取', () => {
+                if (loadSlot(slot.id, store)) {
+                    renderer.animation = null;
+                    centerCamera();
+                    autosave(store);
+                    schedulePaint();
+                    showToast('已讀取 ' + slot.name);
+                }
+                else
+                    showToast('讀取失敗');
+            }), mk('覆蓋', () => {
+                if (updateSlot(slot.id, store)) {
+                    renderList();
+                    showToast('已覆蓋 ' + slot.name);
+                }
+            }), mk('刪除', () => {
+                deleteSlot(slot.id);
+                renderList();
+                showToast('已刪除');
+            }));
+            row.append(info, btnRow);
+            listEl.appendChild(row);
+        });
+    };
+    renderList();
+    const close = document.createElement('button');
+    close.textContent = '關閉';
+    close.style.background = COLORS.input_bg;
+    close.style.color = '#fff';
+    close.style.border = '1px solid ' + COLORS.border;
+    close.style.borderRadius = '4px';
+    close.style.padding = '6px 12px';
+    close.style.cursor = 'pointer';
+    close.style.alignSelf = 'flex-end';
+    close.addEventListener('click', () => overlay.remove());
+    box.appendChild(close);
+    overlay.appendChild(box);
+    app.appendChild(overlay);
 }
 // ---------- 檔案導入 ----------
 const fileInput = document.createElement('input');
@@ -1410,6 +1549,59 @@ function importData(store, text) {
     }
     return { ok: false, message: 'map 解析失敗' };
 }
+// ---------- localStorage 多存檔列表（手機為主、電腦備援） ----------
+const SAVES_KEY = 'gatennea-slider-web:saves';
+function listSaves() {
+    try {
+        const raw = localStorage.getItem(SAVES_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    }
+    catch {
+        return [];
+    }
+}
+function writeSaves(list) {
+    try {
+        localStorage.setItem(SAVES_KEY, JSON.stringify(list));
+    }
+    catch {
+        // 忽略
+    }
+}
+function saveSlot(name, store) {
+    const list = listSaves();
+    const slot = {
+        id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+        name: name.trim() || '未命名存檔',
+        updated: Date.now(),
+        payload: store.serialize(),
+    };
+    list.unshift(slot);
+    writeSaves(list);
+    return slot;
+}
+function updateSlot(id, store) {
+    const list = listSaves();
+    const idx = list.findIndex((s) => s.id === id);
+    if (idx < 0)
+        return false;
+    list[idx].payload = store.serialize();
+    list[idx].updated = Date.now();
+    writeSaves(list);
+    return true;
+}
+function loadSlot(id, store) {
+    const slot = listSaves().find((s) => s.id === id);
+    if (!slot)
+        return false;
+    return store.deserialize(slot.payload);
+}
+function deleteSlot(id) {
+    const list = listSaves().filter((s) => s.id !== id);
+    writeSaves(list);
+    return true;
+}
 function downloadText(filename, text) {
     const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1420,7 +1612,7 @@ function downloadText(filename, text) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-return { compactJsonDumps, autosave, autoload, downloadSave, saveAs, importData };
+return { compactJsonDumps, autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, updateSlot, loadSlot, deleteSlot };
 },
     "m11": function (require) {
 /**

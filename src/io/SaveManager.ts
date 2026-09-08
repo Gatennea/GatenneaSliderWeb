@@ -138,6 +138,70 @@ export function importData(store: GameStore, text: string): { ok: boolean; messa
   return { ok: false, message: 'map 解析失敗' };
 }
 
+
+// ---------- localStorage 多存檔列表（手機為主、電腦備援） ----------
+const SAVES_KEY = 'gatennea-slider-web:saves';
+
+export interface SaveSlot {
+  id: string;
+  name: string;
+  updated: number;
+  payload: SavePayload;
+}
+
+export function listSaves(): SaveSlot[] {
+  try {
+    const raw = localStorage.getItem(SAVES_KEY);
+    const arr = raw ? (JSON.parse(raw) as SaveSlot[]) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSaves(list: SaveSlot[]): void {
+  try {
+    localStorage.setItem(SAVES_KEY, JSON.stringify(list));
+  } catch {
+    // 忽略
+  }
+}
+
+export function saveSlot(name: string, store: GameStore): SaveSlot | null {
+  const list = listSaves();
+  const slot: SaveSlot = {
+    id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+    name: name.trim() || '未命名存檔',
+    updated: Date.now(),
+    payload: store.serialize(),
+  };
+  list.unshift(slot);
+  writeSaves(list);
+  return slot;
+}
+
+export function updateSlot(id: string, store: GameStore): boolean {
+  const list = listSaves();
+  const idx = list.findIndex((s) => s.id === id);
+  if (idx < 0) return false;
+  list[idx].payload = store.serialize();
+  list[idx].updated = Date.now();
+  writeSaves(list);
+  return true;
+}
+
+export function loadSlot(id: string, store: GameStore): boolean {
+  const slot = listSaves().find((s) => s.id === id);
+  if (!slot) return false;
+  return store.deserialize(slot.payload);
+}
+
+export function deleteSlot(id: string): boolean {
+  const list = listSaves().filter((s) => s.id !== id);
+  writeSaves(list);
+  return true;
+}
+
 function downloadText(filename: string, text: string): void {
   const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);

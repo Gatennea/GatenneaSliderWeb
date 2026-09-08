@@ -1,9 +1,18 @@
+// Node 無 localStorage，先注入 stub
+globalThis.localStorage = {
+  _d: {},
+  getItem(k) { return this._d[k] ?? null; },
+  setItem(k,v) { this._d[k]=v; },
+  removeItem(k) { delete this._d[k]; },
+};
+
 /**
  * 存檔/導入測試（M4）：serialize/deserialize 往返、map 導入、切換謎題。
  */
 import { GameStore } from '../dist/store/GameStore.js';
 import { SliderMatrix } from '../dist/core/SliderMatrix.js';
 import { createContext, selectGap, selectBlock, move, undo } from '../dist/core/CommandBus.js';
+import { listSaves, saveSlot, loadSlot, deleteSlot } from '../dist/io/SaveManager.js';
 
 export const cases = [
   {
@@ -78,6 +87,26 @@ export const cases = [
       const r = undo(g2.cmd);
       if (!r.ok) throw new Error('原版存檔載入後應可撤銷');
       if (!g2.game.is_solved()) throw new Error('撤銷後應回到復原態');
+    },
+  },
+  {
+    name: 'localStorage 存檔列表：新增/列出/讀取/刪除',
+    run() {
+      globalThis.localStorage._d = {};
+      const g = new GameStore(4, 4, 2);
+      const ctx = g.cmd;
+      selectGap(ctx, 'h', 1);
+      selectBlock(ctx, 0, 0);
+      move(ctx, 'd');
+      const slot = saveSlot('測試檔', g);
+      if (!slot) throw new Error('新增存檔失敗');
+      const slots = listSaves();
+      if (slots.length !== 1 || slots[0].name !== '測試檔') throw new Error('列表應有 1 筆且名稱正確');
+      const g2 = new GameStore();
+      if (!loadSlot(slot.id, g2)) throw new Error('讀取存檔失敗');
+      if (g2.cmd.stepCount !== 1) throw new Error('讀取後步數應為 1');
+      deleteSlot(slot.id);
+      if (listSaves().length !== 0) throw new Error('刪除後應為空');
     },
   },
   {
