@@ -97,6 +97,12 @@ export class BoardController {
   animationEnabled = true;
   /** 右側面板「速度」滑條控制的移動動畫時長（ms） */
   moveDurationMs = 180;
+  /** 控制模式：單次觸控（直接拖拽）、兩次觸控（先選縫隙再選組）、鼠標鍵盤（鍵盤移動） */
+  singleTouchEnabled = true;
+  twoTouchEnabled = true;
+  keyboardMouseEnabled = true;
+  /** 單次觸控完成後是否清空選中，確保下次拖拽是全新的單次操作 */
+  clearSelectionAfterMove = false;
   private pinchDist = 0;
   private pinchZoom = 1;
   private pinchActive = false;
@@ -257,19 +263,19 @@ export class BoardController {
       : (dy > 0 ? 's' : 'w');
 
     if (startBlock && overThreshold) {
-      if (store.cmd.selectedGap) {
+      if (this.twoTouchEnabled && store.cmd.selectedGap) {
         if (!store.cmd.selectedBlock) {
           const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
           if (!reply.ok) return;
         }
         this.animateMove(direction);
-      } else {
-        // 無縫隙時：依拖拽角度直接判定縫隙/方向（8 區）
+      } else if (this.singleTouchEnabled && !store.cmd.selectedGap) {
+        // 無縫隙時：依拖拽角度直接判定縫隙/方向（8 區）；單次觸控完成後清空選中
         const gesture = directGestureFromDrag(startBlock.row, startBlock.col, dx, dy);
         if (gesture) {
           store.cmd.selectedGap = gesture.gap;
           const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
-          if (reply.ok) this.animateMove(gesture.direction);
+          if (reply.ok) this.animateMove(gesture.direction, true);
         }
       }
     } else if (this.drag.pan) {
@@ -307,6 +313,7 @@ export class BoardController {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    if (!this.keyboardMouseEnabled) return;
     if (e.ctrlKey || e.metaKey) return; // 保留給 undo/redo 快捷鍵（M3）
     const dir = DIRECTION_KEYS[e.key];
     if (!dir) return;
@@ -320,19 +327,23 @@ export class BoardController {
   }
 
   /** 帶動畫的移動：預測 → 動畫插值 → 提交。 */
-  private animateMove(direction: Direction): void {
+  private animateMove(direction: Direction, clearAfter = false): void {
     const { store, renderer } = this.ui;
     const cmd = store.cmd;
+    this.clearSelectionAfterMove = clearAfter;
 
     if (!cmd.selectedGap) {
+      this.clearSelectionAfterMove = false;
       this.notify('請先選中縫隙');
       return;
     }
     if (!cmd.selectedBlock) {
+      this.clearSelectionAfterMove = false;
       this.notify('請先選中滑塊');
       return;
     }
     if (!isValidDirectionForGap(cmd.selectedGap.type, direction)) {
+      this.clearSelectionAfterMove = false;
       this.flashInvalid();
       this.notify(`移動方向非法（${cmd.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）`);
       return;
@@ -340,6 +351,7 @@ export class BoardController {
 
     const finalPositions = store.game.try_move(direction, store.currentStep);
     if (!finalPositions) {
+      this.clearSelectionAfterMove = false;
       this.flashInvalid();
       this.notify('移動不合法（碰撞或斷連）');
       return;
@@ -397,6 +409,12 @@ export class BoardController {
         });
         this.notify(`移動 ${direction}`);
         this.ui.onChanged?.();
+        if (this.clearSelectionAfterMove) {
+          store.game.selected.clear();
+          cmd.selectedGap = null;
+          cmd.selectedBlock = null;
+        }
+        this.clearSelectionAfterMove = false;
         this.ui.requestPaint?.();
       }
     };

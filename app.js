@@ -294,6 +294,10 @@ function recordDnf() {
 }
 // 右側開關狀態
 let selectionAnimationEnabled = true;
+// 控制模式
+let singleTouch = true;
+let twoTouch = true;
+let keyboardMouse = true;
 const switchStates = [
     { key: 'animation_enabled', label: '滑动动画', get: () => controller.animationEnabled, set: (v) => { controller.animationEnabled = v; } },
     { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
@@ -875,11 +879,13 @@ const menus = [
         }
     },
     { label: '宏定义', items: ['录制', '执行', '删除'], handler: () => showToast('體驗版不含宏定義') },
-    { label: '设置', items: ['虚拟键盘', '成绩面板'], handler: (item) => {
+    { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...'], handler: (item) => {
             if (item.includes('虚拟键盘'))
                 toggleVK();
             else if (item.includes('成绩'))
                 toggleRecords();
+            else if (item.includes('控制模式'))
+                openSettingsModal();
         }
     },
     { label: '帮助', items: ['关于'], handler: () => showToast('貓九的滑塊遊戲 網頁體驗版 v0.1') },
@@ -940,6 +946,95 @@ function buildMenu() {
         });
         menuBar.appendChild(item);
     });
+}
+// ---------- 控制模式設定 ----------
+function openSettingsModal() {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0,0,0,0.55)';
+    overlay.style.zIndex = '2000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.addEventListener('click', () => overlay.remove());
+    const box = document.createElement('div');
+    box.style.background = COLORS.dialog_bg;
+    box.style.border = '1px solid ' + COLORS.dialog_border;
+    box.style.borderRadius = '8px';
+    box.style.padding = '16px';
+    box.style.width = 'min(320px, 90vw)';
+    box.style.color = COLORS.dialog_text;
+    box.style.fontSize = '13px';
+    box.addEventListener('click', (e) => e.stopPropagation());
+    const title = document.createElement('div');
+    title.textContent = '控制模式';
+    title.style.fontWeight = 'bold';
+    title.style.marginBottom = '12px';
+    box.appendChild(title);
+    const modes = [
+        { key: 'singleTouch', label: '單次觸控', desc: '直接拖拽滑塊即滑動，完成後清空選中' },
+        { key: 'twoTouch', label: '兩次觸控', desc: '點縫隙 → 點方塊 → 再拖拽/鍵盤' },
+        { key: 'keyboardMouse', label: '鼠標鍵盤控制', desc: '鍵盤 W/A/S/D、方向鍵、點選' },
+    ];
+    const renderRow = (m) => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.justifyContent = 'space-between';
+        row.style.padding = '8px';
+        row.style.border = '1px solid ' + COLORS.separator;
+        row.style.borderRadius = '4px';
+        row.style.marginBottom = '8px';
+        const info = document.createElement('div');
+        const label = document.createElement('div');
+        label.textContent = m.label;
+        label.style.fontWeight = 'bold';
+        const desc = document.createElement('div');
+        desc.textContent = m.desc;
+        desc.style.color = '#999';
+        desc.style.fontSize = '11px';
+        info.append(label, desc);
+        const btn = document.createElement('button');
+        btn.style.background = COLORS.button_bg;
+        btn.style.color = '#fff';
+        btn.style.border = 'none';
+        btn.style.borderRadius = '4px';
+        btn.style.padding = '6px 14px';
+        btn.style.cursor = 'pointer';
+        const state = () => m.key === 'singleTouch' ? singleTouch : m.key === 'twoTouch' ? twoTouch : keyboardMouse;
+        const refresh = () => { btn.textContent = state() ? '開' : '關'; btn.style.background = state() ? COLORS.button_bg : COLORS.input_bg; };
+        refresh();
+        btn.addEventListener('click', () => {
+            const v = !state();
+            if (m.key === 'singleTouch')
+                singleTouch = v;
+            else if (m.key === 'twoTouch')
+                twoTouch = v;
+            else
+                keyboardMouse = v;
+            controller.singleTouchEnabled = singleTouch;
+            controller.twoTouchEnabled = twoTouch;
+            controller.keyboardMouseEnabled = keyboardMouse;
+            refresh();
+        });
+        row.append(info, btn);
+        return row;
+    };
+    modes.forEach((m) => box.appendChild(renderRow(m)));
+    const close = document.createElement('button');
+    close.textContent = '關閉';
+    close.style.background = COLORS.input_bg;
+    close.style.color = '#fff';
+    close.style.border = '1px solid ' + COLORS.border;
+    close.style.borderRadius = '4px';
+    close.style.padding = '6px 14px';
+    close.style.cursor = 'pointer';
+    close.style.marginTop = '10px';
+    close.addEventListener('click', () => overlay.remove());
+    box.appendChild(close);
+    overlay.appendChild(box);
+    app.appendChild(overlay);
 }
 // ---------- 存檔列表（localStorage，手機友好） ----------
 function openSaveList() {
@@ -1888,6 +1983,12 @@ class BoardController {
         this.animationEnabled = true;
         /** 右側面板「速度」滑條控制的移動動畫時長（ms） */
         this.moveDurationMs = 180;
+        /** 控制模式：單次觸控（直接拖拽）、兩次觸控（先選縫隙再選組）、鼠標鍵盤（鍵盤移動） */
+        this.singleTouchEnabled = true;
+        this.twoTouchEnabled = true;
+        this.keyboardMouseEnabled = true;
+        /** 單次觸控完成後是否清空選中，確保下次拖拽是全新的單次操作 */
+        this.clearSelectionAfterMove = false;
         this.pinchDist = 0;
         this.pinchZoom = 1;
         this.pinchActive = false;
@@ -2035,7 +2136,7 @@ class BoardController {
             ? (dx > 0 ? 'd' : 'a')
             : (dy > 0 ? 's' : 'w');
         if (startBlock && overThreshold) {
-            if (store.cmd.selectedGap) {
+            if (this.twoTouchEnabled && store.cmd.selectedGap) {
                 if (!store.cmd.selectedBlock) {
                     const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
                     if (!reply.ok)
@@ -2043,14 +2144,14 @@ class BoardController {
                 }
                 this.animateMove(direction);
             }
-            else {
-                // 無縫隙時：依拖拽角度直接判定縫隙/方向（8 區）
+            else if (this.singleTouchEnabled && !store.cmd.selectedGap) {
+                // 無縫隙時：依拖拽角度直接判定縫隙/方向（8 區）；單次觸控完成後清空選中
                 const gesture = directGestureFromDrag(startBlock.row, startBlock.col, dx, dy);
                 if (gesture) {
                     store.cmd.selectedGap = gesture.gap;
                     const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
                     if (reply.ok)
-                        this.animateMove(gesture.direction);
+                        this.animateMove(gesture.direction, true);
                 }
             }
         }
@@ -2089,6 +2190,8 @@ class BoardController {
         }
     }
     onKeyDown(e) {
+        if (!this.keyboardMouseEnabled)
+            return;
         if (e.ctrlKey || e.metaKey)
             return; // 保留給 undo/redo 快捷鍵（M3）
         const dir = DIRECTION_KEYS[e.key];
@@ -2102,24 +2205,29 @@ class BoardController {
         this.animateMove(direction);
     }
     /** 帶動畫的移動：預測 → 動畫插值 → 提交。 */
-    animateMove(direction) {
+    animateMove(direction, clearAfter = false) {
         const { store, renderer } = this.ui;
         const cmd = store.cmd;
+        this.clearSelectionAfterMove = clearAfter;
         if (!cmd.selectedGap) {
+            this.clearSelectionAfterMove = false;
             this.notify('請先選中縫隙');
             return;
         }
         if (!cmd.selectedBlock) {
+            this.clearSelectionAfterMove = false;
             this.notify('請先選中滑塊');
             return;
         }
         if (!isValidDirectionForGap(cmd.selectedGap.type, direction)) {
+            this.clearSelectionAfterMove = false;
             this.flashInvalid();
             this.notify(`移動方向非法（${cmd.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）`);
             return;
         }
         const finalPositions = store.game.try_move(direction, store.currentStep);
         if (!finalPositions) {
+            this.clearSelectionAfterMove = false;
             this.flashInvalid();
             this.notify('移動不合法（碰撞或斷連）');
             return;
@@ -2175,6 +2283,12 @@ class BoardController {
                 });
                 this.notify(`移動 ${direction}`);
                 this.ui.onChanged?.();
+                if (this.clearSelectionAfterMove) {
+                    store.game.selected.clear();
+                    cmd.selectedGap = null;
+                    cmd.selectedBlock = null;
+                }
+                this.clearSelectionAfterMove = false;
                 this.ui.requestPaint?.();
             }
         };

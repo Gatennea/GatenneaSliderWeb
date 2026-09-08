@@ -313,6 +313,10 @@ function recordDnf(): void {
 
 // 右側開關狀態
 let selectionAnimationEnabled = true;
+// 控制模式
+let singleTouch = true;
+let twoTouch = true;
+let keyboardMouse = true;
 
 // ---------- 右側面板開關 ----------
 type SwitchState = { key: string; label: string; get: () => boolean; set: (v: boolean) => void; el?: HTMLDivElement };
@@ -874,9 +878,10 @@ const menus: MenuDef[] = [
     }
   },
   { label: '宏定义', items: ['录制', '执行', '删除'], handler: () => showToast('體驗版不含宏定義') },
-  { label: '设置', items: ['虚拟键盘', '成绩面板'], handler: (item) => {
+  { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...'], handler: (item) => {
       if (item.includes('虚拟键盘')) toggleVK();
       else if (item.includes('成绩')) toggleRecords();
+      else if (item.includes('控制模式')) openSettingsModal();
     }
   },
   { label: '帮助', items: ['关于'], handler: () => showToast('貓九的滑塊遊戲 網頁體驗版 v0.1') },
@@ -939,6 +944,101 @@ function buildMenu(): void {
   });
 }
 
+
+
+// ---------- 控制模式設定 ----------
+function openSettingsModal(): void {
+  const overlay = document.createElement('div');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = 'rgba(0,0,0,0.55)';
+  overlay.style.zIndex = '2000';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+  overlay.addEventListener('click', () => overlay.remove());
+
+  const box = document.createElement('div');
+  box.style.background = COLORS.dialog_bg;
+  box.style.border = '1px solid ' + COLORS.dialog_border;
+  box.style.borderRadius = '8px';
+  box.style.padding = '16px';
+  box.style.width = 'min(320px, 90vw)';
+  box.style.color = COLORS.dialog_text;
+  box.style.fontSize = '13px';
+  box.addEventListener('click', (e) => e.stopPropagation());
+
+  const title = document.createElement('div');
+  title.textContent = '控制模式';
+  title.style.fontWeight = 'bold';
+  title.style.marginBottom = '12px';
+  box.appendChild(title);
+
+  const modes: { key: 'singleTouch' | 'twoTouch' | 'keyboardMouse'; label: string; desc: string }[] = [
+    { key: 'singleTouch', label: '單次觸控', desc: '直接拖拽滑塊即滑動，完成後清空選中' },
+    { key: 'twoTouch', label: '兩次觸控', desc: '點縫隙 → 點方塊 → 再拖拽/鍵盤' },
+    { key: 'keyboardMouse', label: '鼠標鍵盤控制', desc: '鍵盤 W/A/S/D、方向鍵、點選' },
+  ];
+
+  const renderRow = (m: { key: 'singleTouch' | 'twoTouch' | 'keyboardMouse'; label: string; desc: string }) => {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.justifyContent = 'space-between';
+    row.style.padding = '8px';
+    row.style.border = '1px solid ' + COLORS.separator;
+    row.style.borderRadius = '4px';
+    row.style.marginBottom = '8px';
+    const info = document.createElement('div');
+    const label = document.createElement('div');
+    label.textContent = m.label;
+    label.style.fontWeight = 'bold';
+    const desc = document.createElement('div');
+    desc.textContent = m.desc;
+    desc.style.color = '#999';
+    desc.style.fontSize = '11px';
+    info.append(label, desc);
+    const btn = document.createElement('button');
+    btn.style.background = COLORS.button_bg;
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '4px';
+    btn.style.padding = '6px 14px';
+    btn.style.cursor = 'pointer';
+    const state = () => m.key === 'singleTouch' ? singleTouch : m.key === 'twoTouch' ? twoTouch : keyboardMouse;
+    const refresh = () => { btn.textContent = state() ? '開' : '關'; btn.style.background = state() ? COLORS.button_bg : COLORS.input_bg; };
+    refresh();
+    btn.addEventListener('click', () => {
+      const v = !state();
+      if (m.key === 'singleTouch') singleTouch = v;
+      else if (m.key === 'twoTouch') twoTouch = v;
+      else keyboardMouse = v;
+      controller.singleTouchEnabled = singleTouch;
+      controller.twoTouchEnabled = twoTouch;
+      controller.keyboardMouseEnabled = keyboardMouse;
+      refresh();
+    });
+    row.append(info, btn);
+    return row;
+  };
+
+  modes.forEach((m) => box.appendChild(renderRow(m)));
+
+  const close = document.createElement('button');
+  close.textContent = '關閉';
+  close.style.background = COLORS.input_bg;
+  close.style.color = '#fff';
+  close.style.border = '1px solid ' + COLORS.border;
+  close.style.borderRadius = '4px';
+  close.style.padding = '6px 14px';
+  close.style.cursor = 'pointer';
+  close.style.marginTop = '10px';
+  close.addEventListener('click', () => overlay.remove());
+  box.appendChild(close);
+
+  overlay.appendChild(box);
+  app.appendChild(overlay);
+}
 
 // ---------- 存檔列表（localStorage，手機友好） ----------
 function openSaveList(): void {
