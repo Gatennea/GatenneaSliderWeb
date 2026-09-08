@@ -1166,7 +1166,8 @@ class BoardRenderer {
             }
             const [x, y] = this.worldToScreen(c * this.step, r * this.step);
             const selected = store.game.selected.has(block);
-            ctx.fillStyle = selected ? COLORS.block_selected : COLORS.block;
+            const hl = this.highlightCells !== null && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`);
+            ctx.fillStyle = selected || hl ? COLORS.block_selected : COLORS.block;
             const radius = GEOMETRY.block_radius * this.zoom;
             this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
             ctx.fill();
@@ -1175,8 +1176,8 @@ class BoardRenderer {
             this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
             ctx.stroke();
             if (this.highlightCells && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`)) {
-                ctx.strokeStyle = 'rgba(255, 205, 60, 0.9)';
-                ctx.lineWidth = 3;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+                ctx.lineWidth = 2;
                 this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
                 ctx.stroke();
             }
@@ -1232,18 +1233,73 @@ return { BoardRenderer };
     "m10": function (require) {
 /**
  * 存檔/導入（M4）：localStorage 自動快照 + 檔案下載/上傳 + 解析 map 文本。
- *
- * 體驗版核心狀態用 map 文本（# / _），存檔 JSON 結構：
- *   { version, puzzle:{m,n,step}, step_count, map, history }
+ * 存檔 JSON 與原版完全一致（{version, puzzle, step_count, history:{history_index, snapshots}}）。
  */
 const STORAGE_KEY = 'gatennea-slider-web:last';
+/** 移植原版 _compact_json_dumps：讓輸出格式與原版一字不差。 */
+function compactJsonDumps(data) {
+    const indent = 2;
+    const maxLineWidth = 200;
+    function format(obj, depth, sparse) {
+        const currentPad = ' '.repeat(depth * indent);
+        const nextPad = ' '.repeat((depth + 1) * indent);
+        if (obj === null)
+            return 'null';
+        if (Array.isArray(obj)) {
+            if (obj.length === 0)
+                return '[]';
+            const allAtomic = obj.every((x) => typeof x === 'number' || typeof x === 'boolean' || x === null);
+            if (allAtomic) {
+                const inline = '[' + obj.map((x) => JSON.stringify(x)).join(', ') + ']';
+                return inline;
+            }
+            const items = obj.map((x) => format(x, depth + 1, false));
+            if (sparse) {
+                const sep = ',\n';
+                return '[\n' + items.map((it) => nextPad + it).join(sep) + '\n' + currentPad + ']';
+            }
+            const allSingle = items.every((it) => !it.includes('\n'));
+            if (allSingle) {
+                const inline = '[' + items.join(', ') + ']';
+                if (inline.length <= maxLineWidth)
+                    return inline;
+            }
+            return '[\n' + items.map((it) => nextPad + it).join(',\n') + '\n' + currentPad + ']';
+        }
+        if (typeof obj === 'object') {
+            const keys = Object.keys(obj);
+            if (keys.length === 0)
+                return '{}';
+            const pairs = keys.map((k) => {
+                const v = obj[k];
+                const vStr = format(v, depth + 1, k === 'matrix' && Array.isArray(v) && v.length > 0 && Array.isArray(v[0]));
+                return [JSON.stringify(k), vStr];
+            });
+            const allSingle = pairs.every(([, v]) => !v.includes('\n'));
+            if (allSingle) {
+                const inline = '{' + pairs.map(([k, v]) => k + ': ' + v).join(', ') + '}';
+                if (inline.length <= maxLineWidth)
+                    return inline;
+            }
+            return '{\n' + pairs.map(([k, v]) => nextPad + k + ': ' + v).join(',\n') + '\n' + currentPad + '}';
+        }
+        return JSON.stringify(obj);
+    }
+    return format(data, 0, false);
+}
 function puzzleTag(store) {
     return `${store.currentStep}~${store.currentM}*${store.currentN}`;
+}
+function nowStamp() {
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const p4 = (n) => String(n).padStart(4, '0');
+    return `${p4(d.getFullYear())}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
 }
 /** localStorage 自動快照（對照原版 temp_history.json）。 */
 function autosave(store) {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(store.serialize()));
+        localStorage.setItem(STORAGE_KEY, compactJsonDumps(store.serialize()));
         return true;
     }
     catch {
@@ -1263,18 +1319,17 @@ function autoload(store) {
         return false;
     }
 }
-/** 下載存檔 JSON。 */
+/** 下載存檔：內容與原版完全一致，檔名也沿用原版 step-m-n-日期時間.json。 */
 function downloadSave(store) {
     const p = store.serialize();
-    const name = `${puzzleTag(store)}-save.json`;
-    downloadText(name, JSON.stringify(p, null, 2));
+    const name = `${store.currentStep}-${store.currentM}-${store.currentN}-${nowStamp()}.json`;
+    downloadText(name, compactJsonDumps(p));
 }
 /** 從 JSON 或 map 文本導入。回傳結果文案。 */
 function importData(store, text) {
     const t = text.trim();
     if (!t)
         return { ok: false, message: '內容為空' };
-    // 先試 JSON
     if (t[0] === '{') {
         try {
             const p = JSON.parse(t);
@@ -1286,7 +1341,6 @@ function importData(store, text) {
             return { ok: false, message: 'JSON 解析失敗' };
         }
     }
-    // 否則視為 map 文本（# / _），沿用目前 puzzle 參數
     if (store.game.import_map(t)) {
         return { ok: true, message: '已導入 map' };
     }
@@ -1302,7 +1356,7 @@ function downloadText(filename, text) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-return { autosave, autoload, downloadSave, importData };
+return { compactJsonDumps, autosave, autoload, downloadSave, importData };
 },
     "m11": function (require) {
 /**
@@ -2001,6 +2055,11 @@ class GameHistory {
         this.apply(game, this.entries[this.index]);
         return true;
     }
+    /** 設定目前歷史索引（載入存檔時用）。 */
+    setIndex(index) {
+        if (Number.isInteger(index) && index >= 0 && index < this.entries.length)
+            this.index = index;
+    }
     /** 直接跳到指定歷史步（虛擬鍵盤「跳到某步」用）。 */
     jumpTo(game, index) {
         if (!Number.isInteger(index) || index < 0 || index >= this.entries.length)
@@ -2091,7 +2150,7 @@ return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modG
     "m8": function (require) {
 /**
  * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
- * M1 先放核心狀態；計時/面板等後續里程碑再加。
+ * 存檔格式與原版完全一致：{version, puzzle, step_count, history:{history_index, snapshots:[{matrix,bounds,move_info?}]}}
  */
 const { createContext } = require("../core/CommandBus.js");
 const { SliderMatrix } = require("../core/SliderMatrix.js");
@@ -2110,6 +2169,27 @@ function matrixToBlocks(matrix, bounds) {
     }
     return out;
 }
+function blocksToMatrix(blocks) {
+    if (blocks.length === 0) {
+        return { matrix: [], bounds: { min_row: 0, max_row: 0, min_col: 0, max_col: 0 } };
+    }
+    const rows = blocks.map((b) => b[0]);
+    const cols = blocks.map((b) => b[1]);
+    const min_row = Math.min(...rows);
+    const max_row = Math.max(...rows);
+    const min_col = Math.min(...cols);
+    const max_col = Math.max(...cols);
+    const set = new Set(blocks.map((b) => `${b[0]}:${b[1]}`));
+    const matrix = [];
+    for (let r = min_row; r <= max_row; r++) {
+        const row = [];
+        for (let c = min_col; c <= max_col; c++) {
+            row.push(set.has(`${r}:${c}`) ? 1 : 0);
+        }
+        matrix.push(row);
+    }
+    return { matrix, bounds: { min_row, max_row, min_col, max_col } };
+}
 class GameStore {
     constructor(m = 4, n = 4, step = 2) {
         this.currentM = m;
@@ -2127,7 +2207,6 @@ class GameStore {
     get selectedCells() {
         return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
     }
-    /** 便捷方法：轉換謎題（對照 new {m,n,step}）。 */
     newPuzzle(m, n, step) {
         if (step >= Math.max(m, n))
             return false;
@@ -2138,17 +2217,27 @@ class GameStore {
         this.cmd = createContext(this.game, step);
         return true;
     }
-    /** 序列化為可存檔的 JSON 結構（體驗版用 map 文本當核心，不照搬原版 matrix/bounds）。 */
+    /** 序列化為與原版完全一致的結構。 */
     serialize() {
+        const entries = this.cmd.history.snapshotAll();
+        const snapshots = entries.map((e) => {
+            const { matrix, bounds } = blocksToMatrix(e.blocks);
+            const snap = { matrix, bounds };
+            if (e.move_info)
+                snap.move_info = e.move_info;
+            return snap;
+        });
         return {
             version: 1,
             puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
             step_count: this.cmd.stepCount,
-            map: this.game.export_map(),
-            history: this.cmd.history.snapshotAll(),
+            history: {
+                history_index: this.cmd.history.currentIndex,
+                snapshots,
+            },
         };
     }
-    /** 由序列化結構還原（相容體驗版 JSON 與原版 save JSON）。 */
+    /** 由序列化結構還原（相容原版 save JSON；也相容舊版網頁格式）。 */
     deserialize(p) {
         const m = p.puzzle?.m ?? this.currentM;
         const n = p.puzzle?.n ?? this.currentN;
@@ -2161,33 +2250,34 @@ class GameStore {
         this.currentN = n;
         this.currentStep = step;
         this.game = new SliderMatrix(m, n);
-        // 原版存檔：history.snapshots 內是 matrix + bounds
-        const snapshots = [];
+        // 將各格式歷史轉為 HistoryEntry（blocks + move_info?）
+        const entries = [];
         if (Array.isArray(p.history)) {
-            snapshots.push(...p.history.filter((h) => Array.isArray(h?.blocks)));
+            // 舊版網頁格式：history 是 blocks 陣列
+            for (const h of p.history) {
+                if (Array.isArray(h?.blocks))
+                    entries.push({ blocks: h.blocks, ...(h.move_info ? { move_info: h.move_info } : {}) });
+            }
         }
         else if (p.history && Array.isArray(p.history.snapshots)) {
+            // 原版格式：matrix + bounds + move_info?
             for (const snap of p.history.snapshots) {
                 const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
                 if (blocks)
-                    snapshots.push({
-                        blocks,
-                        ...(snap?.move_info ? { move_info: snap.move_info } : {}),
-                    });
+                    entries.push({ blocks, ...(snap?.move_info ? { move_info: snap.move_info } : {}) });
             }
         }
-        if (typeof p.map === 'string' && p.map.trim().length > 0) {
-            this.game.import_map(p.map);
-            this.game.m = m;
-            this.game.n = n;
-        }
-        else if (snapshots.length > 0) {
-            this.game.restore({ blocks: snapshots[snapshots.length - 1].blocks });
+        if (entries.length > 0) {
+            this.game.restore({ blocks: entries[entries.length - 1].blocks });
         }
         this.cmd = createContext(this.game, step);
         this.cmd.stepCount = p.step_count ?? 0;
-        if (snapshots.length > 0) {
-            this.cmd.history.restoreAll(snapshots);
+        if (entries.length > 0) {
+            this.cmd.history.restoreAll(entries);
+            const idx = p.history && typeof p.history === 'object' && 'history_index' in p.history
+                ? p.history.history_index
+                : entries.length - 1;
+            this.cmd.history.setIndex(idx);
         }
         return true;
     }

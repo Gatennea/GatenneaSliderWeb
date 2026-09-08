@@ -1,10 +1,11 @@
 /**
  * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
- * M1 先放核心狀態；計時/面板等後續里程碑再加。
+ * 存檔格式與原版完全一致：{version, puzzle, step_count, history:{history_index, snapshots:[{matrix,bounds,move_info?}]}}
  */
 
 import { createContext, type CommandContext } from '../core/CommandBus.js';
 import { SliderMatrix } from '../core/SliderMatrix.js';
+import type { HistoryEntry } from '../core/GameHistory.js';
 
 function matrixToBlocks(matrix: unknown, bounds: any): [number, number][] | null {
   if (!Array.isArray(matrix) || !bounds || !Number.isInteger(bounds.min_row) || !Number.isInteger(bounds.min_col)) return null;
@@ -17,6 +18,28 @@ function matrixToBlocks(matrix: unknown, bounds: any): [number, number][] | null
     }
   }
   return out;
+}
+
+function blocksToMatrix(blocks: [number, number][]): { matrix: number[][]; bounds: { min_row: number; max_row: number; min_col: number; max_col: number } } {
+  if (blocks.length === 0) {
+    return { matrix: [], bounds: { min_row: 0, max_row: 0, min_col: 0, max_col: 0 } };
+  }
+  const rows = blocks.map((b) => b[0]);
+  const cols = blocks.map((b) => b[1]);
+  const min_row = Math.min(...rows);
+  const max_row = Math.max(...rows);
+  const min_col = Math.min(...cols);
+  const max_col = Math.max(...cols);
+  const set = new Set(blocks.map((b) => `${b[0]}:${b[1]}`));
+  const matrix: number[][] = [];
+  for (let r = min_row; r <= max_row; r++) {
+    const row: number[] = [];
+    for (let c = min_col; c <= max_col; c++) {
+      row.push(set.has(`${r}:${c}`) ? 1 : 0);
+    }
+    matrix.push(row);
+  }
+  return { matrix, bounds: { min_row, max_row, min_col, max_col } };
 }
 
 export class GameStore {
@@ -46,7 +69,6 @@ export class GameStore {
     return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
   }
 
-  /** 便捷方法：轉換謎題（對照 new {m,n,step}）。 */
   newPuzzle(m: number, n: number, step: number): boolean {
     if (step >= Math.max(m, n)) return false;
     this.currentM = m;
@@ -57,18 +79,27 @@ export class GameStore {
     return true;
   }
 
-  /** 序列化為可存檔的 JSON 結構（體驗版用 map 文本當核心，不照搬原版 matrix/bounds）。 */
+  /** 序列化為與原版完全一致的結構。 */
   serialize(): SavePayload {
+    const entries = this.cmd.history.snapshotAll();
+    const snapshots = entries.map((e) => {
+      const { matrix, bounds } = blocksToMatrix(e.blocks);
+      const snap: any = { matrix, bounds };
+      if (e.move_info) snap.move_info = e.move_info;
+      return snap;
+    });
     return {
       version: 1,
       puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
       step_count: this.cmd.stepCount,
-      map: this.game.export_map(),
-      history: this.cmd.history.snapshotAll(),
+      history: {
+        history_index: this.cmd.history.currentIndex,
+        snapshots,
+      },
     };
   }
 
-  /** 由序列化結構還原（相容體驗版 JSON 與原版 save JSON）。 */
+  /** 由序列化結構還原（相容原版 save JSON；也相容舊版網頁格式）。 */
   deserialize(p: SavePayload): boolean {
     const m = p.puzzle?.m ?? this.currentM;
     const n = p.puzzle?.n ?? this.currentN;
@@ -81,32 +112,33 @@ export class GameStore {
     this.currentStep = step;
     this.game = new SliderMatrix(m, n);
 
-    // 原版存檔：history.snapshots 內是 matrix + bounds
-    const snapshots: { blocks: [number, number][] }[] = [];
+    // 將各格式歷史轉為 HistoryEntry（blocks + move_info?）
+    const entries: HistoryEntry[] = [];
     if (Array.isArray(p.history)) {
-      snapshots.push(...p.history.filter((h: any) => Array.isArray(h?.blocks)));
+      // 舊版網頁格式：history 是 blocks 陣列
+      for (const h of p.history as any[]) {
+        if (Array.isArray(h?.blocks)) entries.push({ blocks: h.blocks, ...(h.move_info ? { move_info: h.move_info } : {}) });
+      }
     } else if (p.history && Array.isArray(p.history.snapshots)) {
-      for (const snap of p.history.snapshots) {
+      // 原版格式：matrix + bounds + move_info?
+      for (const snap of p.history.snapshots as any[]) {
         const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
-        if (blocks) snapshots.push({
-          blocks,
-          ...(snap?.move_info ? { move_info: snap.move_info } : {}),
-        });
+        if (blocks) entries.push({ blocks, ...(snap?.move_info ? { move_info: snap.move_info } : {}) });
       }
     }
 
-    if (typeof p.map === 'string' && p.map.trim().length > 0) {
-      this.game.import_map(p.map);
-      this.game.m = m;
-      this.game.n = n;
-    } else if (snapshots.length > 0) {
-      this.game.restore({ blocks: snapshots[snapshots.length - 1].blocks });
+    if (entries.length > 0) {
+      this.game.restore({ blocks: entries[entries.length - 1].blocks });
     }
 
     this.cmd = createContext(this.game, step);
     this.cmd.stepCount = p.step_count ?? 0;
-    if (snapshots.length > 0) {
-      this.cmd.history.restoreAll(snapshots);
+    if (entries.length > 0) {
+      this.cmd.history.restoreAll(entries);
+      const idx = p.history && typeof p.history === 'object' && 'history_index' in p.history
+        ? (p.history as any).history_index
+        : entries.length - 1;
+      this.cmd.history.setIndex(idx);
     }
     return true;
   }
@@ -116,6 +148,5 @@ export interface SavePayload {
   version: number;
   puzzle: { m: number; n: number; step: number };
   step_count: number;
-  map?: string;
-  history?: any;
+  history?: { history_index: number; snapshots: any[] } | any[];
 }

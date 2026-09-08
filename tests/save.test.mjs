@@ -7,11 +7,10 @@ import { createContext, selectGap, selectBlock, move, undo } from '../dist/core/
 
 export const cases = [
   {
-    name: 'serialize/deserialize 往返保留 puzzle、步數、map、歷史',
+    name: 'serialize/deserialize 往返保留 puzzle、步數、歷史（原版格式）',
     run() {
       const g = new GameStore(4, 4, 2);
       const ctx = g.cmd;
-      // 一整次三連：選 h line=1 上方 12 塊右移
       selectGap(ctx, 'h', 1);
       selectBlock(ctx, 0, 0);
       const m = move(ctx, 'd');
@@ -20,14 +19,19 @@ export const cases = [
       const p = g.serialize();
       if (p.puzzle.m !== 4 || p.puzzle.n !== 4 || p.puzzle.step !== 2) throw new Error('puzzle 參數不符');
       if (p.step_count !== 1) throw new Error('step_count 應為 1');
-      if (typeof p.map !== 'string' || p.map.length === 0) throw new Error('map 缺');
-      if (!Array.isArray(p.history) || p.history.length < 2) throw new Error('歷史快照應至少 2 筆');
+      if (!p.history || !Array.isArray(p.history.snapshots) || p.history.snapshots.length < 2) {
+        throw new Error('應為原版格式：history.snapshots 至少 2 筆');
+      }
+      // 原版格式沒有 map 欄位
+      if ('map' in p) throw new Error('不應有 map 欄位');
+      // 快照含 matrix + bounds
+      const snap = p.history.snapshots[0];
+      if (!Array.isArray(snap.matrix) || !snap.bounds) throw new Error('快照應含 matrix + bounds');
 
       const g2 = new GameStore();
       if (!g2.deserialize(p)) throw new Error('deserialize 失敗');
       if (g2.currentM !== 4 || g2.currentN !== 4 || g2.currentStep !== 2) throw new Error('還原 puzzle 不符');
       if (g2.cmd.stepCount !== 1) throw new Error('還原 stepCount 不符');
-      if (g2.game.export_map() !== p.map) throw new Error('還原 map 不符');
     },
   },
   {

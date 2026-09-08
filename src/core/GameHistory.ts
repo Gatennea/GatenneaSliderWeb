@@ -91,6 +91,11 @@ export class GameHistory {
     return true;
   }
 
+  /** 設定目前歷史索引（載入存檔時用）。 */
+  setIndex(index: number): void {
+    if (Number.isInteger(index) && index >= 0 && index < this.entries.length) this.index = index;
+  }
+
   /** 直接跳到指定歷史步（虛擬鍵盤「跳到某步」用）。 */
   jumpTo(game: SliderMatrix, index: number): boolean {
     if (!Number.isInteger(index) || index < 0 || index >= this.entries.length) return false;

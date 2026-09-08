@@ -186,7 +186,8 @@ export class BoardRenderer {
       }
       const [x, y] = this.worldToScreen(c * this.step, r * this.step);
       const selected = store.game.selected.has(block);
-      ctx.fillStyle = selected ? COLORS.block_selected : COLORS.block;
+      const hl = this.highlightCells !== null && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`);
+      ctx.fillStyle = selected || hl ? COLORS.block_selected : COLORS.block;
       const radius = GEOMETRY.block_radius * this.zoom;
       this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
       ctx.fill();
@@ -197,8 +198,8 @@ export class BoardRenderer {
       ctx.stroke();
 
       if (this.highlightCells && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`)) {
-        ctx.strokeStyle = 'rgba(255, 205, 60, 0.9)';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.lineWidth = 2;
         this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
         ctx.stroke();
       }
