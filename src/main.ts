@@ -13,7 +13,8 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 
 // 外框（對照原版深色背景 + 選單/狀態欄配色）
 app.style.background = COLORS.background;
-app.style.minHeight = '100vh';
+app.style.height = '100vh';
+app.style.overflow = 'hidden';
 app.style.display = 'flex';
 app.style.flexDirection = 'column';
 app.style.fontFamily = 'system-ui, sans-serif';
@@ -30,16 +31,12 @@ menu.textContent = '文件   編輯   謎題   宏   設置';
 app.appendChild(menu);
 
 const canvas = document.createElement('canvas');
-canvas.width = 800;
-canvas.height = 500;
-canvas.style.width = '800px';
-canvas.style.height = '500px';
-// 防止 flex 容器因高度不足把 canvas 壓縮，導致 CSS 尺寸 != 位圖尺寸
-//（那正是「拖動地圖比滑鼠快 / 選中看不準」的根源）
-canvas.style.flex = '0 0 auto';
+// 畫布填滿可用區域（體驗版無右側面板，不預留 132px 右欄）
+canvas.style.flex = '1 1 auto';
+canvas.style.width = '100%';
 canvas.style.display = 'block';
-canvas.style.margin = '16px';
 canvas.style.touchAction = 'none';
+canvas.style.margin = '0';
 app.appendChild(canvas);
 
 // 快捷按鈕列（體驗版：打亂 / 重置 / 撤銷 / 重做；完整選單日後做）
@@ -92,7 +89,25 @@ function centerCamera(): void {
   renderer.cameraX = (canvas.width - w) / 2 - left * renderer.zoom;
   renderer.cameraY = (canvas.height - h) / 2 - top * renderer.zoom;
 }
-centerCamera();
+
+// 依可用區域調整畫布位圖尺寸（保持 CSS == 位圖，座標才 1:1）
+function layoutCanvas(): void {
+  const width = Math.max(320, app.clientWidth);
+  const height = Math.max(
+    240,
+    app.clientHeight - GEOMETRY.menu_bar_height - GEOMETRY.status_bar_height - toolbar.offsetHeight,
+  );
+  canvas.width = Math.round(width);
+  canvas.height = Math.round(height);
+  canvas.style.width = `${canvas.width}px`;
+  canvas.style.height = `${canvas.height}px`;
+  centerCamera();
+}
+layoutCanvas();
+window.addEventListener('resize', () => {
+  layoutCanvas();
+  schedulePaint();
+});
 
 // 狀態欄用緩存字串，避免每幀重建 DOM（掉幀主因）
 const statusSolved = document.createElement('span');

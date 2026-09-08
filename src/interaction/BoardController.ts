@@ -36,6 +36,8 @@ interface DragState {
   /** 拖動選中組移動的累積向量 */
   ax: number;
   ay: number;
+  /** 按下處若在滑塊上則禁止平移（對照原版：點滑塊不能拖動地圖） */
+  pan: boolean;
 }
 
 const DIRECTION_KEYS: Record<string, Direction> = {
@@ -62,7 +64,7 @@ export class BoardController {
 
   constructor(ui: BoardControllerUI) {
     this.ui = ui;
-    this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0 };
+    this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true };
     this.attach();
   }
 
@@ -122,6 +124,8 @@ export class BoardController {
   }
 
   private onPointerDown(x: number, y: number): void {
+    // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移
+    const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
     this.drag = {
       active: true,
       startX: x,
@@ -131,6 +135,7 @@ export class BoardController {
       moved: false,
       ax: 0,
       ay: 0,
+      pan: !onBlock,
     };
   }
 
@@ -141,11 +146,9 @@ export class BoardController {
     if (Math.abs(dx) + Math.abs(dy) > 4) this.drag.moved = true;
     this.drag.ax = dx;
     this.drag.ay = dy;
-    // 拖拽期間即時平移鏡頭（不等到 mouseup），避免跟手掉幀
-    const r = this.ui.renderer;
-    const { store } = this.ui;
-    const canDragMove = store.cmd.selectedGap !== null && store.cmd.selectedBlock !== null;
-    if (!canDragMove) {
+    // 拖拽期間即時平移鏡頭（不等到 mouseup）；只有「空白/縫隙按下」才允許平移
+    if (this.drag.pan) {
+      const r = this.ui.renderer;
       r.cameraX = this.drag.camX + dx;
       r.cameraY = this.drag.camY + dy;
       this.ui.requestPaint?.();
@@ -169,7 +172,7 @@ export class BoardController {
       return;
     }
 
-    // 拖動：若已選中縫隙+滑塊，且位移超過閾值 → 當作移動；否則只是平移鏡頭（已在 move 期間即時平移）
+    // 拖動：若已選中縫隙+滑塊，且位移超過閾值 → 當作移動；否則若「空白按下」才平移鏡頭
     const canDragMove = store.cmd.selectedGap !== null && store.cmd.selectedBlock !== null;
 
     if (canDragMove && (Math.abs(dx) > DRAG_MOVE_THRESHOLD || Math.abs(dy) > DRAG_MOVE_THRESHOLD)) {
@@ -177,7 +180,7 @@ export class BoardController {
         ? (dx > 0 ? 'd' : 'a')
         : (dy > 0 ? 's' : 'w');
       this.animateMove(direction);
-    } else if (!canDragMove) {
+    } else if (this.drag.pan) {
       // 平移鏡頭（已在 move 期間跟手，這裡確保最終位置一致）
       r.cameraX = this.drag.camX + dx;
       r.cameraY = this.drag.camY + dy;

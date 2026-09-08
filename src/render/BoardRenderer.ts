@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Canvas 棋盤渲染（M2：命中測試 + 選中縫隙紅線 + camera/zoom + 移動動畫）。
  *
  * 座標模型（對照 GUI.py，唯一真理源）：
@@ -209,19 +209,6 @@ export class BoardRenderer {
     const right = this.worldToScreen(bounds.max_col * this.step + CELL, 0)[0];
     const top = this.worldToScreen(0, bounds.min_row * this.step)[1];
     const bottom = this.worldToScreen(0, bounds.max_row * this.step + CELL)[1];
-
-    // 選中縫隙：半透明紅色帶（只在棋盤範圍附近）
-    const band = 10;
-    ctx.fillStyle = 'rgba(255, 0, 0, 0.28)';
-    if (selectedGap && selectedGap.type === 'h') {
-      const i = selectedGap.line + 1;
-      const sy = this.worldToScreen(0, i * this.step - GAP / 2)[1];
-      ctx.fillRect(left - pad, sy - band / 2, right - left + pad * 2, band);
-    } else if (selectedGap && selectedGap.type === 'v') {
-      const j = selectedGap.line + 1;
-      const sx = this.worldToScreen(j * this.step - GAP / 2, 0)[0];
-      ctx.fillRect(sx - band / 2, top - pad, band, bottom - top + pad * 2);
-    }
 
     // h（橫縫）：只在棋盤左右範圍（外擴 pad）
     for (let i = bounds.min_row; i <= bounds.max_row + 1; i++) {

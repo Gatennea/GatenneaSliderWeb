@@ -13,7 +13,8 @@ const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
 const app = document.querySelector('#app');
 // 外框（對照原版深色背景 + 選單/狀態欄配色）
 app.style.background = COLORS.background;
-app.style.minHeight = '100vh';
+app.style.height = '100vh';
+app.style.overflow = 'hidden';
 app.style.display = 'flex';
 app.style.flexDirection = 'column';
 app.style.fontFamily = 'system-ui, sans-serif';
@@ -28,16 +29,12 @@ menu.style.color = COLORS.menu_text;
 menu.textContent = '文件   編輯   謎題   宏   設置';
 app.appendChild(menu);
 const canvas = document.createElement('canvas');
-canvas.width = 800;
-canvas.height = 500;
-canvas.style.width = '800px';
-canvas.style.height = '500px';
-// 防止 flex 容器因高度不足把 canvas 壓縮，導致 CSS 尺寸 != 位圖尺寸
-//（那正是「拖動地圖比滑鼠快 / 選中看不準」的根源）
-canvas.style.flex = '0 0 auto';
+// 畫布填滿可用區域（體驗版無右側面板，不預留 132px 右欄）
+canvas.style.flex = '1 1 auto';
+canvas.style.width = '100%';
 canvas.style.display = 'block';
-canvas.style.margin = '16px';
 canvas.style.touchAction = 'none';
+canvas.style.margin = '0';
 app.appendChild(canvas);
 // 快捷按鈕列（體驗版：打亂 / 重置 / 撤銷 / 重做；完整選單日後做）
 const toolbar = document.createElement('div');
@@ -85,7 +82,21 @@ function centerCamera() {
     renderer.cameraX = (canvas.width - w) / 2 - left * renderer.zoom;
     renderer.cameraY = (canvas.height - h) / 2 - top * renderer.zoom;
 }
-centerCamera();
+// 依可用區域調整畫布位圖尺寸（保持 CSS == 位圖，座標才 1:1）
+function layoutCanvas() {
+    const width = Math.max(320, app.clientWidth);
+    const height = Math.max(240, app.clientHeight - GEOMETRY.menu_bar_height - GEOMETRY.status_bar_height - toolbar.offsetHeight);
+    canvas.width = Math.round(width);
+    canvas.height = Math.round(height);
+    canvas.style.width = `${canvas.width}px`;
+    canvas.style.height = `${canvas.height}px`;
+    centerCamera();
+}
+layoutCanvas();
+window.addEventListener('resize', () => {
+    layoutCanvas();
+    schedulePaint();
+});
 // 狀態欄用緩存字串，避免每幀重建 DOM（掉幀主因）
 const statusSolved = document.createElement('span');
 const statusSteps = document.createElement('span');
@@ -352,19 +363,6 @@ class BoardRenderer {
         const right = this.worldToScreen(bounds.max_col * this.step + CELL, 0)[0];
         const top = this.worldToScreen(0, bounds.min_row * this.step)[1];
         const bottom = this.worldToScreen(0, bounds.max_row * this.step + CELL)[1];
-        // 選中縫隙：半透明紅色帶（只在棋盤範圍附近）
-        const band = 10;
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.28)';
-        if (selectedGap && selectedGap.type === 'h') {
-            const i = selectedGap.line + 1;
-            const sy = this.worldToScreen(0, i * this.step - GAP / 2)[1];
-            ctx.fillRect(left - pad, sy - band / 2, right - left + pad * 2, band);
-        }
-        else if (selectedGap && selectedGap.type === 'v') {
-            const j = selectedGap.line + 1;
-            const sx = this.worldToScreen(j * this.step - GAP / 2, 0)[0];
-            ctx.fillRect(sx - band / 2, top - pad, band, bottom - top + pad * 2);
-        }
         // h（橫縫）：只在棋盤左右範圍（外擴 pad）
         for (let i = bounds.min_row; i <= bounds.max_row + 1; i++) {
             const sy = this.worldToScreen(0, i * this.step - GAP / 2)[1];
@@ -500,7 +498,7 @@ const DRAG_MOVE_THRESHOLD = 18;
 class BoardController {
     constructor(ui) {
         this.ui = ui;
-        this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0 };
+        this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true };
         this.attach();
     }
     get canvas() {
@@ -551,6 +549,8 @@ class BoardController {
         });
     }
     onPointerDown(x, y) {
+        // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移
+        const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
         this.drag = {
             active: true,
             startX: x,
@@ -560,6 +560,7 @@ class BoardController {
             moved: false,
             ax: 0,
             ay: 0,
+            pan: !onBlock,
         };
     }
     onPointerMove(x, y) {
@@ -571,11 +572,9 @@ class BoardController {
             this.drag.moved = true;
         this.drag.ax = dx;
         this.drag.ay = dy;
-        // 拖拽期間即時平移鏡頭（不等到 mouseup），避免跟手掉幀
-        const r = this.ui.renderer;
-        const { store } = this.ui;
-        const canDragMove = store.cmd.selectedGap !== null && store.cmd.selectedBlock !== null;
-        if (!canDragMove) {
+        // 拖拽期間即時平移鏡頭（不等到 mouseup）；只有「空白/縫隙按下」才允許平移
+        if (this.drag.pan) {
+            const r = this.ui.renderer;
             r.cameraX = this.drag.camX + dx;
             r.cameraY = this.drag.camY + dy;
             this.ui.requestPaint?.();
@@ -596,7 +595,7 @@ class BoardController {
             this.handleClick(x, y);
             return;
         }
-        // 拖動：若已選中縫隙+滑塊，且位移超過閾值 → 當作移動；否則只是平移鏡頭（已在 move 期間即時平移）
+        // 拖動：若已選中縫隙+滑塊，且位移超過閾值 → 當作移動；否則若「空白按下」才平移鏡頭
         const canDragMove = store.cmd.selectedGap !== null && store.cmd.selectedBlock !== null;
         if (canDragMove && (Math.abs(dx) > DRAG_MOVE_THRESHOLD || Math.abs(dy) > DRAG_MOVE_THRESHOLD)) {
             const direction = Math.abs(dx) > Math.abs(dy)
@@ -604,7 +603,7 @@ class BoardController {
                 : (dy > 0 ? 's' : 'w');
             this.animateMove(direction);
         }
-        else if (!canDragMove) {
+        else if (this.drag.pan) {
             // 平移鏡頭（已在 move 期間跟手，這裡確保最終位置一致）
             r.cameraX = this.drag.camX + dx;
             r.cameraY = this.drag.camY + dy;
