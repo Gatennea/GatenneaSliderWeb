@@ -23,6 +23,8 @@ export interface BoardControllerUI {
   requestPaint?: () => void;
   /** 成功移動提交後呼叫（main 用於 autosave） */
   onChanged?: () => void;
+  /** 縮放變更時呼叫（main 同步右側縮放滑條） */
+  onZoomChange?: () => void;
 }
 
 interface DragState {
@@ -141,6 +143,7 @@ export class BoardController {
         const d = dist(e.touches[0], e.touches[1]);
         const factor = d / this.pinchDist;
         this.ui.renderer.zoom = Math.max(0.1, Math.min(4, this.pinchZoom * factor));
+        this.ui.onZoomChange?.();
         this.ui.requestPaint?.();
         return;
       }

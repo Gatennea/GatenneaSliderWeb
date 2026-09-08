@@ -267,6 +267,7 @@ const controller = new BoardController({
   store,
   onStatus: showToast,
   requestPaint: schedulePaint,
+  onZoomChange: () => syncZoomSlider(),
   onChanged: () => {
     autosave(store);
     if (gameMode === 'timed') {
@@ -282,6 +283,8 @@ const controller = new BoardController({
   },
 })
 
+let syncZoomSlider: () => void = () => {};
+
 // 鼠標滾輪縮放：向上滾放大、向下滾縮小
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
@@ -294,6 +297,7 @@ canvas.addEventListener('wheel', (e) => {
   // 以鼠標位置為中心：縮放後讓同一世界點仍留在鼠標下
   renderer.cameraX = sx - wx * renderer.zoom;
   renderer.cameraY = sy - wy * renderer.zoom;
+  syncZoomSlider();
   schedulePaint();
 }, { passive: false });
 ;
@@ -403,12 +407,21 @@ function makeSlider(label: string, onChange: (ratio: number) => void): { track: 
 const zoomSlider = makeSlider('缩放', (ratio) => {
   renderer.zoom = Math.max(0.1, Math.min(4, 0.1 + ratio * 3.9));
   centerCamera();
+  syncZoomSlider();
   schedulePaint();
 });
 const speedSlider = makeSlider('速度', (ratio) => {
   controller.moveDurationMs = Math.max(60, Math.min(800, 800 - ratio * 740));
   schedulePaint();
 });
+
+syncZoomSlider = () => {
+  const ratio = Math.max(0, Math.min(1, (renderer.zoom - 0.1) / 3.9));
+  const rect = zoomSlider.track.getBoundingClientRect();
+  if (rect.height > 0) {
+    zoomSlider.knob.style.top = `${(1 - ratio) * rect.height - 6}px`;
+  }
+};
 
 // ---------- 虛擬鍵盤浮動面板 ----------
 let stickyOn = false;
