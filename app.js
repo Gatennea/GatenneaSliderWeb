@@ -2006,12 +2006,18 @@ class BoardController {
             this.handleClick(x, y);
             return;
         }
-        // 拖動：若已選中縫隙+滑塊，且位移超過閾值 → 當作移動；否則若「空白按下」才平移鏡頭
-        const canDragMove = store.cmd.selectedGap !== null && store.cmd.selectedBlock !== null;
-        if (canDragMove && (Math.abs(dx) > DRAG_MOVE_THRESHOLD || Math.abs(dy) > DRAG_MOVE_THRESHOLD)) {
-            const direction = Math.abs(dx) > Math.abs(dy)
-                ? (dx > 0 ? 'd' : 'a')
-                : (dy > 0 ? 's' : 'w');
+        // 拖動：若已選中縫隙，且起點在滑塊上，超過閾值 → 直接選中組並滑動（不必先點方塊）
+        const overThreshold = Math.abs(dx) > DRAG_MOVE_THRESHOLD || Math.abs(dy) > DRAG_MOVE_THRESHOLD;
+        const startBlock = r.getBlockAtPos(x, y, store);
+        const direction = Math.abs(dx) > Math.abs(dy)
+            ? (dx > 0 ? 'd' : 'a')
+            : (dy > 0 ? 's' : 'w');
+        if (store.cmd.selectedGap && startBlock && overThreshold) {
+            if (!store.cmd.selectedBlock) {
+                const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
+                if (!reply.ok)
+                    return;
+            }
             this.animateMove(direction);
         }
         else if (this.drag.pan) {
