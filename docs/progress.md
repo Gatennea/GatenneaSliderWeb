@@ -17,7 +17,11 @@
     - `start.bat`/`dev.bat` 中文在 cmd 被 GBK 錯解 → 全改 ASCII 輸出。
   - 前置：調試 HTTP 服務 `scripts/dev-server.mjs`（`npm run dev`，靜態 + `/api/*` REST）。
   - 入口：`start.bat`（雙擊建置並開 index.html）、`dev.bat`（雙擊建置並開調試伺服器）。
-- [ ] M3 撤銷/重做/重置/打亂（核心已移植，UI 待接）
+- [x] M3 撤銷/重做/重置/打亂
+  - 工具列四鍵（打亂/重置/撤銷/重做）+ 快捷鍵 Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y。
+  - 語義：shuffle 存打亂前快照 → reset 回打亂前；undo/redo 走快照（含步數增減與無歷史邊界提示）。
+  - 修正：歷史快照在 commit「之後」記錄（redo 才回得準）；createContext/shuffle/reset 各存一張基準快照作為 undo 起點。
+  - 新增 CommandBus 整合測試（shuffle/reset、move/undo/redo、方向限制、邊界提示）。
 - [ ] M4 存檔/導入/切換謎題（`export_map/import_map` 已移植，UI 待接）
 - [ ] M5 練習模式/計時模式/計時器
 - [ ] M6 成績面板/虛擬鍵盤

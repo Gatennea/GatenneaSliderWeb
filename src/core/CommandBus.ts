@@ -31,7 +31,7 @@ export interface SnapshotMark {
 }
 
 export function createContext(game: SliderMatrix, step: number): CommandContext {
-  return {
+  const ctx: CommandContext = {
     game,
     history: new GameHistory(),
     selectedGap: null,
@@ -40,6 +40,9 @@ export function createContext(game: SliderMatrix, step: number): CommandContext 
     stepCount: 0,
     shuffleBefore: null,
   };
+  // 存初始快照作為 undo 基準（第一個 move 才能撤回到初始版面）
+  ctx.history.save_snapshot(game);
+  return ctx;
 }
 
 export function selectGap(ctx: CommandContext, type: GapType, line: number): Reply {
@@ -85,12 +88,12 @@ export function move(ctx: CommandContext, direction: Direction): Reply {
     return { ok: false, message: '移動不合法（碰撞或斷連）' };
   }
 
-  ctx.history.save_snapshot(ctx.game);
   ctx.game.commit_move(finalPositions);
   ctx.game.selected.clear();
   ctx.selectedGap = null;
   ctx.selectedBlock = null;
   ctx.stepCount += 1;
+  ctx.history.save_snapshot(ctx.game);
   return { ok: true, message: `移動 ${direction}` };
 }
 
@@ -119,6 +122,8 @@ export function shuffle(ctx: CommandContext, attempts = 100): Reply {
   ctx.selectedBlock = null;
   ctx.stepCount = 0;
   ctx.history = new GameHistory();
+  // 打亂後存快照，作為 undo 的基準（退回打亂後第一個狀態）
+  ctx.history.save_snapshot(ctx.game);
   return { ok: true, message: '已打亂' };
 }
 
@@ -130,6 +135,7 @@ export function reset(ctx: CommandContext): Reply {
     ctx.selectedBlock = null;
     ctx.stepCount = 0;
     ctx.history = new GameHistory();
+    ctx.history.save_snapshot(ctx.game);
     return { ok: true, message: '已重置' };
   }
   return { ok: false, message: '尚無可重置的起點' };

@@ -692,13 +692,13 @@ class BoardController {
             }
             else {
                 renderer.animation = null;
-                // 提交（對照 CommandBus.move 的 commit 尾巴）
-                cmd.history.save_snapshot(store.game);
+                // 提交（對照 CommandBus.move 的 commit 尾巴；先 commit 再存快照）
                 store.game.commit_move(finalPositions);
                 store.game.selected.clear();
                 cmd.selectedGap = null;
                 cmd.selectedBlock = null;
                 cmd.stepCount += 1;
+                cmd.history.save_snapshot(store.game);
                 this.notify(`移動 ${direction}`);
                 this.ui.requestPaint?.();
             }
@@ -726,7 +726,7 @@ return { BoardController };
 const { GameHistory } = require("./GameHistory.js");
 const { isValidDirectionForGap } = require("./rules.js");
 function createContext(game, step) {
-    return {
+    const ctx = {
         game,
         history: new GameHistory(),
         selectedGap: null,
@@ -735,6 +735,9 @@ function createContext(game, step) {
         stepCount: 0,
         shuffleBefore: null,
     };
+    // 存初始快照作為 undo 基準（第一個 move 才能撤回到初始版面）
+    ctx.history.save_snapshot(game);
+    return ctx;
 }
 function selectGap(ctx, type, line) {
     const valid = type === 'h' ? ctx.game.is_valid_h_line(line) : ctx.game.is_valid_v_line(line);
@@ -774,12 +777,12 @@ function move(ctx, direction) {
     if (!finalPositions) {
         return { ok: false, message: '移動不合法（碰撞或斷連）' };
     }
-    ctx.history.save_snapshot(ctx.game);
     ctx.game.commit_move(finalPositions);
     ctx.game.selected.clear();
     ctx.selectedGap = null;
     ctx.selectedBlock = null;
     ctx.stepCount += 1;
+    ctx.history.save_snapshot(ctx.game);
     return { ok: true, message: `移動 ${direction}` };
 }
 function undo(ctx) {
@@ -805,6 +808,8 @@ function shuffle(ctx, attempts = 100) {
     ctx.selectedBlock = null;
     ctx.stepCount = 0;
     ctx.history = new GameHistory();
+    // 打亂後存快照，作為 undo 的基準（退回打亂後第一個狀態）
+    ctx.history.save_snapshot(ctx.game);
     return { ok: true, message: '已打亂' };
 }
 /** reset = 回到打亂前（體驗版語義：回到本局打亂前快照），對照原版 reset。 */
@@ -815,6 +820,7 @@ function reset(ctx) {
         ctx.selectedBlock = null;
         ctx.stepCount = 0;
         ctx.history = new GameHistory();
+        ctx.history.save_snapshot(ctx.game);
         return { ok: true, message: '已重置' };
     }
     return { ok: false, message: '尚無可重置的起點' };

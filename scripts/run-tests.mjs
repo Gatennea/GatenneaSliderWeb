@@ -5,11 +5,13 @@
 import { cases as matrixCases } from '../tests/SliderMatrix.test.mjs';
 import { cases as hitCases } from '../tests/hit.test.mjs';
 import { cases as renderCases } from '../tests/render.test.mjs';
+import { cases as cmdCases } from '../tests/commandbus.test.mjs';
 
 const suites = [
   { name: 'SliderMatrix/GameHistory', cases: matrixCases },
   { name: '命中測試 (BoardRenderer)', cases: hitCases },
   { name: '渲染選中效果 (BoardRenderer)', cases: renderCases },
+  { name: 'CommandBus 整合 (M3)', cases: cmdCases },
 ];
 
 let passed = 0;
