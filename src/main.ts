@@ -573,16 +573,16 @@ function buildHistoryAnim(moveInfo: { direction: string; step: number; moved_pos
   return { start, end };
 }
 
-function flashMoveSelection(moveInfo: { direction: string; step: number; moved_positions: [number, number][] } | null | undefined, isUndo: boolean): void {
+function flashMoveSelection(moveInfo: { direction: string; step: number; moved_positions: [number, number][] } | null | undefined, isUndo: boolean, afterCommit: boolean): void {
   if (!selectionAnimationEnabled || !moveInfo) return;
   const delta = DIR_DELTA_ANIM[moveInfo.direction];
   if (!delta) return;
   const step = moveInfo.step || store.currentStep;
   const targets = new Set<string>();
   for (const pre of moveInfo.moved_positions) {
-    const pos = isUndo
-      ? pre
-      : ([pre[0] + delta[0] * step, pre[1] + delta[1] * step] as [number, number]);
+    const post: [number, number] = [pre[0] + delta[0] * step, pre[1] + delta[1] * step];
+    // 原版：播放前高亮「當時位置」，提交後高亮「終點位置」
+    const pos = afterCommit ? (isUndo ? pre : post) : (isUndo ? post : pre);
     targets.add(`${pos[0]}:${pos[1]}`);
   }
   if (targets.size === 0) return;
@@ -590,25 +590,45 @@ function flashMoveSelection(moveInfo: { direction: string; step: number; moved_p
   window.setTimeout(() => { renderer.highlightCells = null; schedulePaint(); }, 420);
 }
 
-/** 執行動畫後再真正 undo/redo（只對該步滑塊組動畫，對照原版） */
-function runHistoryAnimation(kind: 'undo' | 'redo'): void {
+// 撤銷/重做動畫佇列（對照原版 _animation_queue + _process_next_in_queue）
+const historyAnimQueue: ('undo' | 'redo')[] = [];
+let historyAnimBusy = false;
+
+function requestHistoryStep(kind: 'undo' | 'redo'): void {
+  const hist = store.cmd.history;
+  if (kind === 'undo' && !hist.canUndo) { showToast('沒有可撤銷的步驟'); return; }
+  if (kind === 'redo' && !hist.canRedo) { showToast('沒有可重做的步驟'); return; }
+  historyAnimQueue.push(kind);
+  processHistoryQueue();
+}
+
+function processHistoryQueue(): void {
+  if (historyAnimBusy || historyAnimQueue.length === 0) return;
+  historyAnimBusy = true;
+  const kind = historyAnimQueue.shift()!;
+  runHistoryAnimation(kind, () => {
+    historyAnimBusy = false;
+    processHistoryQueue();
+  });
+}
+
+function runHistoryAnimation(kind: 'undo' | 'redo', onDone: () => void): void {
   const hist = store.cmd.history;
   const moveInfo = kind === 'undo' ? hist.currentMoveInfo() : hist.nextMoveInfo();
 
   const commit = () => {
     const r = kind === 'undo' ? undo(store.cmd) : redo(store.cmd);
-    if (!r.ok) { showToast(r.message); return; }
-    flashMoveSelection(moveInfo, kind === 'undo');
+    if (!r.ok) { showToast(r.message); onDone(); return; }
+    flashMoveSelection(moveInfo, kind === 'undo', true);
     autosave(store);
     schedulePaint();
     showToast(r.message);
+    onDone();
   };
 
   if (!controller.animationEnabled) { commit(); return; }
 
-  // 優先：用 move_info 只動「該步滑塊組」
   let anim = moveInfo ? buildHistoryAnim(moveInfo, kind === 'undo') : null;
-  // fallback：無 move_info 時做整版過場，確保仍有動畫
   if (!anim) {
     const target = kind === 'undo' ? hist.undoTarget() : hist.redoTarget();
     if (target) {
@@ -617,6 +637,9 @@ function runHistoryAnimation(kind: 'undo' | 'redo'): void {
     }
   }
   if (!anim) { commit(); return; }
+
+  // 播放前高亮該步滑塊組的當前位置
+  flashMoveSelection(moveInfo, kind === 'undo', false);
 
   renderer.animation = { start: anim.start, end: anim.end, progress: 0, durationMs: controller.moveDurationMs };
   const t0 = performance.now();
@@ -637,13 +660,11 @@ function runHistoryAnimation(kind: 'undo' | 'redo'): void {
 }
 
 function handleUndo(): void {
-  if (!store.cmd.history.canUndo) { showToast('沒有可撤銷的步驟'); return; }
-  runHistoryAnimation('undo');
+  requestHistoryStep('undo');
 }
 
 function handleRedo(): void {
-  if (!store.cmd.history.canRedo) { showToast('沒有可重做的步驟'); return; }
-  runHistoryAnimation('redo');
+  requestHistoryStep('redo');
 }
 
 function handleShuffle(): void {
