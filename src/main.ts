@@ -1237,7 +1237,50 @@ buildMenu();
 buildVK();
 layoutCanvas();
 window.addEventListener('resize', () => { layoutCanvas(); schedulePaint(); });
-if (autoload(store)) {
+
+// ---------- 首頁玩法演示模式（?demo=存檔路徑） ----------
+const demoFile = new URLSearchParams(window.location.search).get('demo');
+let demoPlaying = false;
+if (demoFile) {
+  // 演示模式：隱藏遊戲 UI，只留棋盤自動播放
+  menuBar.style.display = 'none';
+  rightPanel.style.display = 'none';
+  status.style.display = 'none';
+  vkPanel.style.display = 'none';
+  recordsPanel.style.display = 'none';
+}
+function demoTick(): void {
+  if (!demoPlaying) return;
+  if (store.cmd.history.canRedo) {
+    handleRedo();
+    setTimeout(demoTick, 200);
+  } else {
+    // 播完回到起點繼續循環
+    store.cmd.history.setIndex(0);
+    store.cmd.stepCount = 0;
+    centerCamera();
+    schedulePaint();
+    setTimeout(demoTick, 800);
+  }
+}
+if (demoFile) {
+  fetch(demoFile)
+    .then((r) => r.json())
+    .then((p) => {
+      if (!store.deserialize(p)) { showToast('演示存檔無法載入'); return; }
+      store.cmd.history.setIndex(0);
+      store.cmd.stepCount = 0;
+      controller.animationEnabled = true;
+      controller.moveDurationMs = 100;
+      centerCamera();
+      schedulePaint();
+      demoPlaying = true;
+      setTimeout(demoTick, 600);
+    })
+    .catch(() => showToast('無法載入演示存檔'));
+} else if (autoload(store)) {
+  centerCamera();
+  showToast('已恢復上次進度');
   centerCamera();
   showToast('已恢復上次進度');
 }
