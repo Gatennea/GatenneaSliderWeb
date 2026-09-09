@@ -3,19 +3,39 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>貓九的滑塊遊戲 GatenneaSlider</title>
+    <title>貓九的滑块游戏 — GatenneaSlider</title>
     <style>
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        background: #1e1e1e;
+        background: #0d0d0f;
         color: #e6e6e6;
         font-family: system-ui, "Microsoft JhengHei", sans-serif;
         line-height: 1.7;
       }
-      .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+      .demo-bg {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        z-index: 0;
+        pointer-events: none;
+        opacity: 0.72;
+        filter: blur(1.5px) saturate(0.9);
+        transform: scale(1.02);
+      }
+      .demo-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background: linear-gradient(rgba(10,10,12,0.45), rgba(10,10,12,0.20));
+      }
+      .wrap { position: relative; z-index: 2; max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
       header {
-        background: #323232;
+        background: rgba(25, 25, 30, 0.55);
+        backdrop-filter: blur(5px);
         border: 1px solid #646464;
         border-radius: 12px;
         padding: 24px;
@@ -47,7 +67,8 @@
       }
       .enter-btn:hover { background: #5aa6d8; }
       .card {
-        background: #252526;
+        background: rgba(25, 25, 30, 0.55);
+        backdrop-filter: blur(5px);
         border: 1px solid #646464;
         border-radius: 10px;
         padding: 18px 20px;
@@ -70,46 +91,61 @@
       .imgs img { width: 100%; border-radius: 8px; border: 1px solid #646464; }
       .imgs figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 4px; }
       .note { font-size: 13px; color: #aaa; }
+      .lang-switch {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 10;
+        background: rgba(30, 30, 35, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        border-radius: 20px;
+        padding: 6px 14px;
+        font-size: 14px;
+        cursor: pointer;
+        backdrop-filter: blur(6px);
+      }
+      .lang-switch:hover { background: rgba(70, 130, 180, 0.8); }
+      .wrap[data-lang="zh-Hans"] { display: none; }
+      body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hant"] { display: block; }
+      body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hans"] { display: none; }
+      body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hant"] { display: none; }
+      body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hans"] { display: block; }
     </style>
   </head>
-  <body>
-    <div class="wrap">
+  <body data-lang="zh-Hant">
+    <iframe class="demo-bg" src="game.html?demo=demo/animation.json" title="玩法演示背景" aria-hidden="true"></iframe>
+    <div class="demo-overlay" aria-hidden="true"></div>
+    <button class="lang-switch" id="langSwitch" type="button">切换为简体中文</button>
+
+    <div class="wrap" data-lang="zh-Hant">
       <header>
         <h1>貓九的滑塊遊戲 GatenneaSlider</h1>
         <div class="subtitle">分類：單機・益智・燒腦・競速</div>
-        <div class="tags"><span class="tag">滑塊</span><span class="tag">解謎</span><span class="tag">速擰</span><span class="tag">可競速</span></div>
+        <!-- <div class="tags"><span class="tag">滑塊</span><span class="tag">解謎</span><span class="tag">速擰</span><span class="tag">可競速</span></div> -->
         <a class="enter-btn" href="game.html">▶ 進入遊戲</a>
       </header>
 
       <section class="card">
-        <h2>玩法演示</h2>
-        <p>從還原 → 打亂 → 再還原的自動演示：</p>
-        <div class="demo-wrap" style="display:flex;justify-content:center;">
-          <iframe src="game.html?demo=demo/animation.json" style="width:100%;max-width:720px;height:480px;border:1px solid #646464;border-radius:8px;background:#1e1e1e;" title="玩法演示"></iframe>
-        </div>
-      </section>
-
-      <section class="card">
         <h2>這是什麼遊戲？</h2>
-        <p>這是貓九製作的第二款原創規則遊戲。玩家（或 AI）透過「選縫隙 → 選滑塊組 → 滑動」把打亂的方塊還原成一個完整的 <strong>m×n 或 n×m 實心矩形</strong>（允許整體平移與轉置，不是回到初始版面）。</p>
-        <p>它的難度非常高（目前貓九已推導出 2 級滑塊的通用解法），適合邏輯思維強的人挑戰。</p>
+        <p>這是貓九製作的第二款原創規則遊戲。玩家（或 AI）透過「選縫隙 → 選滑塊組 → 滑動」把打亂的方塊還原成一個完整的<strong>實心長方形</strong>（允許整體平移或旋轉方向，不是回到初始版面）。</p>
+        <p>它的難度非常高，適合邏輯思維強的人挑戰。</p>
         <p>支援平台：瀏覽器 / Windows 系統 / Python + pygame 環境。</p>
       </section>
 
       <section class="card">
         <h2>遊戲規則</h2>
         <ul>
-          <li><strong>縫隙</strong>：h=橫向縫隙（只能左右滑），v=縱向縫隙（只能上下滑）。</li>
+          <li><strong>縫隙</strong>：方塊之間的空隙通道，分為橫向與縱向。</li>
           <li><strong>一次完整移動</strong>：選縫隙 → 選滑塊組 → 移動。</li>
-          <li><strong>還原條件</strong>：所有方塊在任意位置構成 m×n 或 n×m 實心矩形，允許平移/轉置。</li>
-          <li><strong>步距 step</strong>：每次移動整組平移 step 的整數倍。</li>
+          <li><strong>還原條件</strong>：把所有方塊拼成任意位置、任意方向的完整實心長方形。</li>
         </ul>
       </section>
 
       <section class="card">
         <h2>操作方式</h2>
         <ul>
-          <li><strong>滑鼠/桌上型</strong>：點縫隙 → 點方塊 → W/A/S/D 或拖拽滑動；也可直接拖拽滑塊依 8 區角度判定縫隙與方向。</li>
+          <li><strong>滑鼠/桌上型</strong>：點縫隙 → 點方塊 → W/A/S/D 或拖拽滑動；也可直接拖拽滑塊，依拖拽方向判定縫隙與滑動方向。</li>
           <li><strong>手機/觸控</strong>：支援單次觸控（直接拖拽即滑動）、兩次觸控、虛擬鍵盤，也支援兩指捏合縮放與拖拽平移地圖。</li>
           <li><strong>控制模式</strong>：單次觸控、兩次觸控、鼠標鍵盤控制可任意開關。</li>
         </ul>
@@ -121,10 +157,9 @@
           <li>撤銷 / 重做 / 重置 / 自動打亂</li>
           <li>練習模式與競速計時、DNF、成績面板（Ao5 / Ao12）</li>
           <li>存檔：電腦可用原版格式 .json；手機可用瀏覽器內存檔列表</li>
-          <li>多種等級謎題：step=2 與 step=3 系列</li>
+          <li>多種尺寸與難度的謎題</li>
           <li>鼠標滾輪 / 兩指捏合縮放，視圖可平移</li>
           <li>動畫：滑動動畫、選中動畫、撤銷/重做動畫佇列</li>
-          <li>調試 REST API（本機/內網 dev-server）</li>
         </ul>
       </section>
 
@@ -158,9 +193,110 @@
 
       <section class="card">
         <h2>關於 Web 版</h2>
-        <p>目前 Web 版定位為「體驗版」：能玩、能還原、能計時、能存檔；求解器、宏定義、調試面板等高級功能不在 Web 版實現，完整功能請下載 Windows / Python 版本。</p>
+        <p>目前 Web 版定位為「體驗版」：能玩、能還原、能計時、能存檔；部分進階功能不在 Web 版實現，完整功能請下載 Windows / Python 版本。</p>
         <p class="note">最後更新時間：2026.9.9</p>
       </section>
     </div>
+
+    <div class="wrap" data-lang="zh-Hans">
+      <header>
+        <h1>猫九的滑块游戏 GatenneaSlider</h1>
+        <div class="subtitle">分类：单机・益智・烧脑・竞速</div>
+        <!-- <div class="tags"><span class="tag">滑块</span><span class="tag">解谜</span><span class="tag">速拧</span><span class="tag">可竞速</span></div> -->
+        <a class="enter-btn" href="game.html">▶ 进入游戏</a>
+      </header>
+
+      <section class="card">
+        <h2>这是什么游戏？</h2>
+        <p>这是猫九制作的第二款原创规则游戏。玩家（或 AI）通过「选缝隙 → 选滑块组 → 滑动」把打乱的方块还原成一个完整的<strong>实心长方形</strong>（允许整体平移或旋转方向，不是回到初始版面）。</p>
+        <p>它的难度非常高，适合逻辑思维强的玩家挑战。</p>
+        <p>支持平台：浏览器 / Windows 系统 / Python + pygame 环境。</p>
+      </section>
+
+      <section class="card">
+        <h2>游戏规则</h2>
+        <ul>
+          <li><strong>缝隙</strong>：方块之间的空隙通道，分为横向缝隙和纵向缝隙。</li>
+          <li><strong>一次完整移动</strong>：选缝隙 → 选滑块组 → 移动。</li>
+          <li><strong>还原条件</strong>：把所有方块拼成任意位置、任意方向的完整实心长方形。</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>操作方式</h2>
+        <ul>
+          <li><strong>鼠标/桌面</strong>：点缝隙 → 点方块 → W/A/S/D 或拖拽滑动；也可以直接拖拽滑块，根据拖拽方向判定缝隙与滑动方向。</li>
+          <li><strong>手机/触控</strong>：支持单次触控（直接拖拽滑动）、两次触控、虚拟键盘，也支持双指捏合缩放与拖拽平移地图。</li>
+          <li><strong>控制模式</strong>：单次触控、两次触控、鼠标键盘控制可自由开关。</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>功能</h2>
+        <ul>
+          <li>撤销 / 重做 / 重置 / 自动打乱</li>
+          <li>练习模式与竞速计时、DNF、成绩面板（Ao5 / Ao12）</li>
+          <li>存档：电脑可用原版格式 .json；手机可用浏览器内存档列表</li>
+          <li>多种尺寸与难度的谜题</li>
+          <li>鼠标滚轮 / 双指捏合缩放，视图可平移</li>
+          <li>动画：滑动动画、选中动画、撤销/重做动画队列</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>下载链接</h2>
+        <p>猫九把游戏的不同部分拆成多个链接，供不同需要的人下载。</p>
+        <p>版本说明：核心上就是两种架构，<strong>Web 版</strong>和 <strong>Python 版</strong>。</p>
+        <table>
+          <tr><th>版本</th><th>链接</th><th>需下载</th><th>依赖</th><th>介绍</th></tr>
+          <tr><td>Web 版</td><td><a href="game.html">点击即玩</a></td><td>否</td><td>联网・浏览器</td><td>功能较精简</td></tr>
+          <tr><td>Win 版</td><td><a href="https://share.weiyun.com/hvpG4AIb" target="_blank" rel="noopener">网盘下载</a></td><td>是</td><td>Windows 系统</td><td>完整版，由 Python 版编译而来</td></tr>
+          <tr><td>离线 Web 版</td><td><a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">GitHub 下载</a></td><td>是</td><td>浏览器</td><td>功能较精简</td></tr>
+          <tr><td>Python 版</td><td><a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">GitHub 下载</a></td><td>是</td><td>Python + pygame 环境</td><td>完整版</td></tr>
+          <tr><td>数据库</td><td><a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">网盘下载</a></td><td>是</td><td>Win 版 / Python 版游戏</td><td>特殊功能（查表求解器资料）</td></tr>
+        </table>
+        <p class="note">说明：数据库指的是游戏功能「查表求解器」运行时需要的数据；若缺失，该求解器无法使用。因为它不是核心功能，且与游戏更新互不相干，所以专门提供链接。</p>
+      </section>
+
+      <section class="card">
+        <h2>游戏展示</h2>
+        <p>2025 年，猫九发布了游戏构思，用正方体磁铁（巴克球）展示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[猫九]我用磁铁设计了一种高难度谜题：猫九滑块</a></p>
+        <p>2026 年，计划录制游戏介绍并发布到 B 站。</p>
+        <div class="imgs">
+          <figure><img src="images/1.新手教程.png" alt="新手教程" /><figcaption>新手教程</figcaption></figure>
+          <figure><img src="images/2.py版竞速中.png" alt="Python 版竞速中" /><figcaption>Python 版竞速中</figcaption></figure>
+          <figure><img src="images/3.求解器正在运行.png" alt="求解器运行中" /><figcaption>求解器运行中</figcaption></figure>
+          <figure><img src="images/4.网页版.png" alt="网页版" /><figcaption>网页版</figcaption></figure>
+        </div>
+        <p>游戏提供了多种尺寸和难度的谜题，适合不断挑战自己。更多内容待更新。</p>
+      </section>
+
+      <section class="card">
+        <h2>关于 Web 版</h2>
+        <p>目前 Web 版定位为「体验版」：能玩、能还原、能计时、能存档；部分进阶功能不在 Web 版实现，完整功能请下载 Windows / Python 版本。</p>
+        <p class="note">最后更新时间：2026.9.9</p>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        var button = document.getElementById('langSwitch');
+        function setLang(lang) {
+          document.body.dataset.lang = lang;
+          document.documentElement.lang = lang;
+          button.textContent = lang === 'zh-Hant' ? '切换为简体中文' : '切换为繁體中文';
+          document.title = lang === 'zh-Hant'
+            ? '貓九的滑塊遊戲 GatenneaSlider'
+            : '猫九的滑块游戏 GatenneaSlider';
+          try { localStorage.setItem('gatennea-home-lang', lang); } catch (e) {}
+        }
+        var saved = null;
+        try { saved = localStorage.getItem('gatennea-home-lang'); } catch (e) {}
+        setLang(saved === 'zh-Hans' || saved === 'zh-Hant' ? saved : 'zh-Hant');
+        button.addEventListener('click', function () {
+          setLang(document.body.dataset.lang === 'zh-Hant' ? 'zh-Hans' : 'zh-Hant');
+        });
+      })();
+    </script>
   </body>
 </html>

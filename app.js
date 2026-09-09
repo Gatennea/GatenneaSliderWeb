@@ -8,7 +8,7 @@
 const { BoardRenderer } = require("./render/BoardRenderer.js");
 const { BoardController } = require("./interaction/BoardController.js");
 const { GameStore } = require("./store/GameStore.js");
-const { COLORS, GEOMETRY } = require("./render/theme.js");
+const { COLORS, GEOMETRY, easeOut } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
 const { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } = require("./io/SaveManager.js");
 const { Timer, formatTime } = require("./feature/Timer.js");
@@ -230,6 +230,7 @@ function updateStatus() {
 }
 let needsPaint = true;
 let rafQueued = false;
+let demoPlaying = false;
 function schedulePaint() {
     needsPaint = true;
     if (rafQueued)
@@ -239,6 +240,8 @@ function schedulePaint() {
         rafQueued = false;
         if (needsPaint) {
             needsPaint = false;
+            if (demoPlaying)
+                followDemoCamera();
             renderer.draw(store);
             updateStatus();
         }
@@ -1280,7 +1283,50 @@ layoutCanvas();
 window.addEventListener('resize', () => { layoutCanvas(); schedulePaint(); });
 // ---------- 首頁玩法演示模式（?demo=存檔路徑） ----------
 const demoFile = new URLSearchParams(window.location.search).get('demo');
-let demoPlaying = false;
+function followDemoCamera() {
+    const anim = renderer.animation;
+    const step = renderer.step;
+    const cell = renderer.cell;
+    let minRow = Infinity;
+    let maxRow = -Infinity;
+    let minCol = Infinity;
+    let maxCol = -Infinity;
+    const blocks = store.game.blocks;
+    if (anim) {
+        const t = easeOut(anim.progress);
+        for (let i = 0; i < blocks.length; i++) {
+            const b = blocks[i];
+            const sr = anim.start[i][0];
+            const sc = anim.start[i][1];
+            const er = anim.end[i][0];
+            const ec = anim.end[i][1];
+            const r = sr + (er - sr) * t;
+            const c = sc + (ec - sc) * t;
+            minRow = Math.min(minRow, r);
+            maxRow = Math.max(maxRow, r);
+            minCol = Math.min(minCol, c);
+            maxCol = Math.max(maxCol, c);
+        }
+    }
+    else {
+        for (const b of blocks) {
+            minRow = Math.min(minRow, b.row);
+            maxRow = Math.max(maxRow, b.row);
+            minCol = Math.min(minCol, b.col);
+            maxCol = Math.max(maxCol, b.col);
+        }
+    }
+    if (!Number.isFinite(minRow) || !Number.isFinite(minCol))
+        return;
+    const left = minCol * step;
+    const right = maxCol * step + cell;
+    const top = minRow * step;
+    const bottom = maxRow * step + cell;
+    const w = (right - left) * renderer.zoom;
+    const h = (bottom - top) * renderer.zoom;
+    renderer.cameraX = (canvas.width - w) / 2 - left * renderer.zoom;
+    renderer.cameraY = (canvas.height - h) / 2 - top * renderer.zoom;
+}
 if (demoFile) {
     // 演示模式：隱藏遊戲 UI，只留棋盤自動播放
     menuBar.style.display = 'none';
@@ -1298,10 +1344,9 @@ function demoTick() {
         setTimeout(demoTick, 200);
     }
     else {
-        // 播完回到起點繼續循環
+        // 播完回到起點；畫面由 followDemoCamera 持續置中，因此首尾兩個還原矩形無縫銜接
         store.cmd.history.setIndex(0);
         store.cmd.stepCount = 0;
-        centerCamera();
         schedulePaint();
         setTimeout(demoTick, 800);
     }
