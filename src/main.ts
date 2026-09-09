@@ -1248,6 +1248,7 @@ if (demoFile) {
   status.style.display = 'none';
   vkPanel.style.display = 'none';
   recordsPanel.style.display = 'none';
+  layoutCanvas();
 }
 function demoTick(): void {
   if (!demoPlaying) return;
@@ -1264,20 +1265,27 @@ function demoTick(): void {
   }
 }
 if (demoFile) {
-  fetch(demoFile)
-    .then((r) => r.json())
-    .then((p) => {
-      if (!store.deserialize(p)) { showToast('演示存檔無法載入'); return; }
-      store.cmd.history.setIndex(0);
-      store.cmd.stepCount = 0;
-      controller.animationEnabled = true;
-      controller.moveDurationMs = 100;
-      centerCamera();
-      schedulePaint();
-      demoPlaying = true;
-      setTimeout(demoTick, 600);
-    })
-    .catch(() => showToast('無法載入演示存檔'));
+  const startDemo = (p: any) => {
+    if (!store.deserialize(p)) { showToast('演示存檔無法載入'); return; }
+    store.cmd.history.setIndex(0);
+    store.cmd.stepCount = 0;
+    controller.animationEnabled = true;
+    controller.moveDurationMs = 100;
+    centerCamera();
+    schedulePaint();
+    demoPlaying = true;
+    setTimeout(demoTick, 600);
+  };
+  // 優先使用內嵌的 DEMO_SAVE（file:// 也能正常播放）
+  const inlineDemo = (window as any).DEMO_SAVE ?? null;
+  if (inlineDemo) {
+    startDemo(inlineDemo);
+  } else {
+    fetch(demoFile)
+      .then((r) => r.json())
+      .then(startDemo)
+      .catch(() => showToast('無法載入演示存檔'));
+  }
 } else if (autoload(store)) {
   centerCamera();
   showToast('已恢復上次進度');

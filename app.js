@@ -1288,6 +1288,7 @@ if (demoFile) {
     status.style.display = 'none';
     vkPanel.style.display = 'none';
     recordsPanel.style.display = 'none';
+    layoutCanvas();
 }
 function demoTick() {
     if (!demoPlaying)
@@ -1306,9 +1307,7 @@ function demoTick() {
     }
 }
 if (demoFile) {
-    fetch(demoFile)
-        .then((r) => r.json())
-        .then((p) => {
+    const startDemo = (p) => {
         if (!store.deserialize(p)) {
             showToast('演示存檔無法載入');
             return;
@@ -1321,8 +1320,18 @@ if (demoFile) {
         schedulePaint();
         demoPlaying = true;
         setTimeout(demoTick, 600);
-    })
-        .catch(() => showToast('無法載入演示存檔'));
+    };
+    // 優先使用內嵌的 DEMO_SAVE（file:// 也能正常播放）
+    const inlineDemo = window.DEMO_SAVE ?? null;
+    if (inlineDemo) {
+        startDemo(inlineDemo);
+    }
+    else {
+        fetch(demoFile)
+            .then((r) => r.json())
+            .then(startDemo)
+            .catch(() => showToast('無法載入演示存檔'));
+    }
 }
 else if (autoload(store)) {
     centerCamera();
