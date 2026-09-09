@@ -3,15 +3,154 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>貓九的滑塊遊戲 — 網頁體驗版</title>
+    <title>貓九的滑塊遊戲 GatenneaSlider</title>
     <style>
       * { box-sizing: border-box; }
-      body { margin: 0; background: #1e1e1e; }
+      body {
+        margin: 0;
+        background: #1e1e1e;
+        color: #e6e6e6;
+        font-family: system-ui, "Microsoft JhengHei", sans-serif;
+        line-height: 1.7;
+      }
+      .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+      header {
+        background: #323232;
+        border: 1px solid #646464;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        text-align: center;
+      }
+      h1 { margin: 0; font-size: 28px; color: #fff; }
+      .subtitle { margin-top: 6px; color: #dcdcdc; font-size: 15px; }
+      .tags { margin-top: 10px; }
+      .tag {
+        display: inline-block;
+        background: #4696c8;
+        color: #fff;
+        border-radius: 20px;
+        padding: 2px 12px;
+        font-size: 13px;
+        margin: 3px 4px;
+      }
+      .enter-btn {
+        display: inline-block;
+        margin-top: 18px;
+        background: #4696c8;
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 40px;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: bold;
+      }
+      .enter-btn:hover { background: #5aa6d8; }
+      .card {
+        background: #252526;
+        border: 1px solid #646464;
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 20px;
+      }
+      h2 {
+        margin: 0 0 10px;
+        font-size: 20px;
+        color: #fff;
+        border-left: 4px solid #4696c8;
+        padding-left: 10px;
+      }
+      a { color: #5aa6d8; }
+      table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+      th, td { border: 1px solid #464646; padding: 8px; text-align: left; font-size: 14px; }
+      th { background: #323232; color: #fff; }
+      ul { padding-left: 20px; }
+      .imgs { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+      .imgs figure { margin: 0; flex: 1 1 260px; }
+      .imgs img { width: 100%; border-radius: 8px; border: 1px solid #646464; }
+      .imgs figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 4px; }
+      .note { font-size: 13px; color: #aaa; }
     </style>
   </head>
   <body>
-    <div id="app"></div>
-    <!-- 單檔 app.js（非 module），file:// 直接雙擊也可用 -->
-    <script src="app.js"></script>
+    <div class="wrap">
+      <header>
+        <h1>貓九的滑塊遊戲 GatenneaSlider</h1>
+        <div class="subtitle">分類：單機・益智・燒腦・競速</div>
+        <div class="tags"><span class="tag">滑塊</span><span class="tag">解謎</span><span class="tag">速擰</span><span class="tag">可競速</span></div>
+        <a class="enter-btn" href="game.html">▶ 進入遊戲</a>
+      </header>
+
+      <section class="card">
+        <h2>這是什麼遊戲？</h2>
+        <p>這是貓九製作的第二款原創規則遊戲。玩家（或 AI）透過「選縫隙 → 選滑塊組 → 滑動」把打亂的方塊還原成一個完整的 <strong>m×n 或 n×m 實心矩形</strong>（允許整體平移與轉置，不是回到初始版面）。</p>
+        <p>它的難度非常高（目前貓九已推導出 2 級滑塊的通用解法），適合邏輯思維強的人挑戰。</p>
+        <p>支援平台：瀏覽器 / Windows 系統 / Python + pygame 環境。</p>
+      </section>
+
+      <section class="card">
+        <h2>遊戲規則</h2>
+        <ul>
+          <li><strong>縫隙</strong>：h=橫向縫隙（只能左右滑），v=縱向縫隙（只能上下滑）。</li>
+          <li><strong>一次完整移動</strong>：選縫隙 → 選滑塊組 → 移動。</li>
+          <li><strong>還原條件</strong>：所有方塊在任意位置構成 m×n 或 n×m 實心矩形，允許平移/轉置。</li>
+          <li><strong>步距 step</strong>：每次移動整組平移 step 的整數倍。</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>操作方式</h2>
+        <ul>
+          <li><strong>滑鼠/桌上型</strong>：點縫隙 → 點方塊 → W/A/S/D 或拖拽滑動；也可直接拖拽滑塊依 8 區角度判定縫隙與方向。</li>
+          <li><strong>手機/觸控</strong>：支援單次觸控（直接拖拽即滑動）、兩次觸控、虛擬鍵盤，也支援兩指捏合縮放與拖拽平移地圖。</li>
+          <li><strong>控制模式</strong>：單次觸控、兩次觸控、鼠標鍵盤控制可任意開關。</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>功能</h2>
+        <ul>
+          <li>撤銷 / 重做 / 重置 / 自動打亂</li>
+          <li>練習模式與競速計時、DNF、成績面板（Ao5 / Ao12）</li>
+          <li>存檔：電腦可用原版格式 .json；手機可用瀏覽器內存檔列表</li>
+          <li>多種等級謎題：step=2 與 step=3 系列</li>
+          <li>鼠標滾輪 / 兩指捏合縮放，視圖可平移</li>
+          <li>動畫：滑動動畫、選中動畫、撤銷/重做動畫佇列</li>
+          <li>調試 REST API（本機/內網 dev-server）</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>下載連結</h2>
+        <p>貓九把遊戲的不同部分拆成多個連結，供不同需要的人下載。</p>
+        <p>版本說明：核心上就是兩種架構，<strong>Web 版</strong>和 <strong>Python 版</strong>。</p>
+        <table>
+          <tr><th>版本</th><th>連結</th><th>需下載</th><th>依賴</th><th>介紹</th></tr>
+          <tr><td>Web 版</td><td><a href="game.html">點擊即玩</a></td><td>否</td><td>聯網・瀏覽器</td><td>功能較精簡</td></tr>
+          <tr><td>Win 版</td><td><a href="https://share.weiyun.com/hvpG4AIb" target="_blank" rel="noopener">雲盤下載</a></td><td>是</td><td>Windows 系統</td><td>完整版，由 Python 版編譯而來</td></tr>
+          <tr><td>離線 Web 版</td><td><a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">GitHub 下載</a></td><td>是</td><td>瀏覽器</td><td>功能較精簡</td></tr>
+          <tr><td>Python 版</td><td><a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">GitHub 下載</a></td><td>是</td><td>Python + pygame 環境</td><td>完整版</td></tr>
+          <tr><td>資料庫</td><td><a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">雲盤下載</a></td><td>是</td><td>Win 版 / Python 版遊戲</td><td>特殊功能（查表求解器資料）</td></tr>
+        </table>
+        <p class="note">說明：資料庫指的是遊戲功能「查表求解器」執行時需要的資料；若缺失，該求解器無法使用。因為它不是核心功能，且與遊戲更新互不相干，所以專門提供連結。</p>
+      </section>
+
+      <section class="card">
+        <h2>遊戲展示</h2>
+        <p>2025 年，貓九發布了遊戲構思，用正方體磁鐵（巴克球）展示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁鐵設計了一種高難度謎題：貓九滑塊</a></p>
+        <p>2026 年，計畫錄製遊戲介紹並發布到 B 站。</p>
+        <div class="imgs">
+          <figure><img src="images/intro-1.png" alt="第一次打開遊戲的界面" /><figcaption>第一次打開遊戲的界面</figcaption></figure>
+          <figure><img src="images/intro-2.png" alt="速擰界面" /><figcaption>速擰界面</figcaption></figure>
+        </div>
+        <p>遊戲提供了多種尺寸和難度的謎題，適合不斷挑戰自己。更多內容待更新。</p>
+      </section>
+
+      <section class="card">
+        <h2>關於 Web 版</h2>
+        <p>目前 Web 版定位為「體驗版」：能玩、能還原、能計時、能存檔；求解器、宏定義、調試面板等高級功能不在 Web 版實現，完整功能請下載 Windows / Python 版本。</p>
+        <p class="note">最後更新時間：2026.9.9</p>
+      </section>
+    </div>
   </body>
 </html>

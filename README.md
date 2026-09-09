@@ -11,16 +11,16 @@
 
 ## 如何開啟（開箱即用）
 
-**最簡單：雙擊 `start.bat`** —— 自動「第一次裝依賴 → 編譯打包 → 用瀏覽器開啟 `index.html`」。
+**最簡單：雙擊 `start.bat`** —— 自動「第一次裝依賴 → 編譯打包 → 用瀏覽器開啟 `game.html`」。
 
 | 方式 | 說明 |
 | --- | --- |
-| 雙擊 `start.bat` | 建置後直接開（file://，`app.js` 為非 module 單檔） |
+| 雙擊 `start.bat` | 建置後直接開 `game.html`（file://，`app.js` 為非 module 單檔） |
 | 雙擊 `dev.bat` | 建置後起調試伺服器並開 `http://127.0.0.1:5173`（含 `/api/*`） |
-| 手動 `cd web && npm run build` 後雙擊 `index.html` | 與 start.bat 同義 |
+| 手動 `cd web && npm run build` 後雙擊 `game.html` | 與 start.bat 同義 |
 | `npm run dev` | 調試伺服器（另帶 REST，供 curl/開發者） |
 
-> 若之前看到黑屏：多半是 `dist/` 沒編譯、或舊版 `index.html` 用了會受 file:// CORS 阻擋的 `<script type="module">`。現在已改成單檔 `app.js`，雙擊 `start.bat` 即可。
+> 若之前看到黑屏：多半是 `dist/` 沒編譯、或舊版 `game.html` 用了會受 file:// CORS 阻擋的 `<script type="module">`。現在已改成單檔 `app.js`，雙擊 `start.bat` 即可。
 
 ### 調試 REST（`npm run dev`）
 

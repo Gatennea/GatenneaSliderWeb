@@ -38,7 +38,7 @@ rem 抓內網 IPv4（偏好私網）
 for /f "delims=" %%i in ('node scripts\lanip.cjs') do set "LANIP=%%i"
 if "%LANIP%"=="" set "LANIP=127.0.0.1"
 
-start "" "http://%LANIP%:%PORT%"
+start "" "http://%LANIP%:%PORT%/game.html"
 echo.
 echo LAN URL for OTHER devices: http://%LANIP%:%PORT%
 echo (make sure firewall allows inbound on port %PORT%)
