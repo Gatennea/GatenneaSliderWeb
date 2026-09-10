@@ -339,8 +339,8 @@ type SwitchState = { key: string; label: string; get: () => boolean; set: (v: bo
 const switchStates: SwitchState[] = [
   { key: 'animation_enabled', label: '滑动动画', get: () => controller.animationEnabled, set: (v) => { controller.animationEnabled = v; } },
   { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
-  { key: 'coloring_enabled', label: '着色', get: () => false, set: () => {} },
-  { key: 'chain_hint_enabled', label: '连锁', get: () => false, set: () => {} },
+  { key: 'coloring_enabled', label: '着色', get: () => renderer.coloringEnabled, set: (v) => { renderer.coloringEnabled = v; schedulePaint(); } },
+  { key: 'chain_hint_enabled', label: '连锁', get: () => renderer.chainHintEnabled, set: (v) => { renderer.chainHintEnabled = v; schedulePaint(); } },
   { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('計時中無法切換模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
   { key: 'macro_reverse_mode', label: '逆序宏', get: () => false, set: () => {} },
 ];

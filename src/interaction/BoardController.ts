@@ -163,6 +163,12 @@ export class BoardController {
     const dist = (a: Touch, b: Touch): number =>
       Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 
+    c.addEventListener('mousemove', (e) => this.updateHover(e.offsetX, e.offsetY));
+    c.addEventListener('mouseleave', () => {
+      this.ui.renderer.hoverCell = null;
+      this.ui.requestPaint?.();
+    });
+
     c.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (e.touches.length >= 2) {
@@ -206,6 +212,19 @@ export class BoardController {
       this.deselect();
       this.notify('已取消選中');
     });
+  }
+
+  private updateHover(x: number, y: number): void {
+    const { renderer } = this.ui;
+    if (!renderer.chainHintEnabled) {
+      if (renderer.hoverCell) { renderer.hoverCell = null; this.ui.requestPaint?.(); }
+      return;
+    }
+    const cell = renderer.getCellAtPos(x, y);
+    const prev = renderer.hoverCell;
+    const changed = (!!cell !== !!prev) || (cell && prev && (cell[0] !== prev[0] || cell[1] !== prev[1]));
+    renderer.hoverCell = cell;
+    if (changed) this.ui.requestPaint?.();
   }
 
   private onPointerDown(x: number, y: number): void {

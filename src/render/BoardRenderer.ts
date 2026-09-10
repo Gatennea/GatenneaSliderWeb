@@ -25,6 +25,29 @@ export interface MoveAnimation {
   durationMs: number;
 }
 
+function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
+  const c = v * s;
+  const hp = ((h % 360) + 360) % 360 / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  let r = 0; let g = 0; let b = 0;
+  if (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  const m = v - c;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+/** 把 rgb(r, g, b) 往白色提亮 amount（0~1），對照原版 _lighten。 */
+function lightenCss(color: string, amount: number): string {
+  const m = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!m) return color;
+  const ch = [Number(m[1]), Number(m[2]), Number(m[3])].map((c) => Math.round(c + (255 - c) * amount));
+  return `rgb(${ch[0]}, ${ch[1]}, ${ch[2]})`;
+}
+
 export class BoardRenderer {
   private ctx: CanvasRenderingContext2D;
   zoom: number;
@@ -33,12 +56,49 @@ export class BoardRenderer {
   animation: MoveAnimation | null = null;
   /** 選中動畫：短暫高亮的格子集合（undo/redo 時顯示移動過的組） */
   highlightCells: Set<string> | null = null;
+  /** 著色器：按 (r%step,c%step) 給滑塊描邊同色 */
+  coloringEnabled = false;
+  /** 連鎖器：懸停時提亮同組位置（含空格） */
+  chainHintEnabled = false;
+  /** 目前懸停格（棋盤座標；可為空格） */
+  hoverCell: [number, number] | null = null;
+  private lastBounds: { min_row: number; max_row: number; min_col: number; max_col: number } | null = null;
 
   constructor(ctx: CanvasRenderingContext2D, zoom = 1) {
     this.ctx = ctx;
     this.zoom = zoom;
     this.cameraX = 0;
     this.cameraY = 0;
+  }
+
+  /** 分組描邊色：由 (r%step, c%step) 唯一決定（對照原版 _group_color）。 */
+  groupColor(r: number, c: number, step: number): string {
+    const k = ((r % step) + step) % step * step + ((c % step) + step) % step;
+    const n = step * step;
+    let hue: number;
+    if (n <= 16) hue = (k * 360) / n;
+    else hue = ((k * 0.618033988749895) % 1) * 360;
+    const [rr, gg, bb] = hsvToRgb(hue, 0.75, 0.92);
+    return `rgb(${rr}, ${gg}, ${bb})`;
+  }
+
+  /** 連鎖提示格（含空格）：邊界盒內與懸停格同 (r%step,c%step) 的位置。 */
+  chainHintCells(step: number): { cells: Set<string>; hover: [number, number] } | null {
+    if (!this.chainHintEnabled || !this.hoverCell || step <= 1) return null;
+    const [hr, hc] = this.hoverCell;
+    const b = this.lastBounds;
+    if (!b) return null;
+    if (hr < b.min_row - 1 || hr > b.max_row + 1 || hc < b.min_col - 1 || hc > b.max_col + 1) return null;
+    const cells = new Set<string>();
+    for (let r = b.min_row; r <= b.max_row; r++) {
+      for (let c = b.min_col; c <= b.max_col; c++) {
+        if (((r % step) + step) % step === ((hr % step) + step) % step &&
+            ((c % step) + step) % step === ((hc % step) + step) % step) {
+          cells.add(`${r}:${c}`);
+        }
+      }
+    }
+    return { cells, hover: [hr, hc] };
   }
 
   get cell(): number {
@@ -155,6 +215,7 @@ export class BoardRenderer {
     ctx.fillRect(0, 0, W, H);
 
     const bounds = store.game.get_boundaries();
+    this.lastBounds = bounds;
     const selectedGap = store.cmd.selectedGap;
 
     // 1) 無限網格背景
@@ -170,7 +231,8 @@ export class BoardRenderer {
     // 2) 縫隙線（先畫，讓滑塊蓋在上面；選中紅線、其餘灰線）
     this.drawGapLines(bounds, selectedGap);
 
-    // 3) 滑塊（動畫中則用插值位置）
+    // 3) 滑塊（動畫中則用插值位置；著色器描邊；連鎖器提亮）
+    const hint = this.chainHintCells(store.currentStep);
     for (let idx = 0; idx < store.game.blocks.length; idx++) {
       const block = store.game.blocks[idx];
       let r = block.row;
@@ -185,23 +247,49 @@ export class BoardRenderer {
         c = sc + (ec - sc) * t;
       }
       const [x, y] = this.worldToScreen(c * this.step, r * this.step);
+      const key = `${Math.round(r)}:${Math.round(c)}`;
       const selected = store.game.selected.has(block);
-      const hl = this.highlightCells !== null && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`);
-      ctx.fillStyle = selected || hl ? COLORS.block_selected : COLORS.block;
+      const hl = this.highlightCells !== null && this.highlightCells.has(key);
+
+      let fill = selected || hl ? COLORS.block_selected : COLORS.block;
+      if (hint && hint.cells.has(key)) {
+        const amt = hint.hover[0] === Math.round(r) && hint.hover[1] === Math.round(c) ? 0.55 : 0.35;
+        fill = lightenCss(fill, amt);
+      }
+      ctx.fillStyle = fill;
       const radius = GEOMETRY.block_radius * this.zoom;
       this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
       ctx.fill();
 
-      ctx.strokeStyle = COLORS.border;
-      ctx.lineWidth = Math.max(1, GEOMETRY.block_border_width * this.zoom);
+      if (this.coloringEnabled && store.currentStep > 1) {
+        ctx.strokeStyle = this.groupColor(Math.round(r), Math.round(c), store.currentStep);
+        ctx.lineWidth = Math.max(2, 7 * this.zoom);
+      } else {
+        ctx.strokeStyle = COLORS.border;
+        ctx.lineWidth = Math.max(1, GEOMETRY.block_border_width * this.zoom);
+      }
       this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
       ctx.stroke();
 
-      if (this.highlightCells && this.highlightCells.has(`${Math.round(r)}:${Math.round(c)}`)) {
+      if (this.highlightCells && this.highlightCells.has(key)) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.lineWidth = 2;
         this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
         ctx.stroke();
+      }
+    }
+
+    // 4) 連鎖器：同組的空格也提亮（對照原版 _chain_hint_cells）
+    if (hint) {
+      const occupied = new Set(store.game.blocks.map((b) => `${b.row}:${b.col}`));
+      for (const key of hint.cells) {
+        if (occupied.has(key)) continue;
+        const [r, c] = key.split(':').map(Number);
+        const amt = r === hint.hover[0] && c === hint.hover[1] ? 0.55 : 0.35;
+        const [x, y] = this.worldToScreen(c * this.step, r * this.step);
+        ctx.fillStyle = lightenCss(COLORS.background, amt);
+        this.roundRect(x, y, this.scaledCell, this.scaledCell, GEOMETRY.block_radius * this.zoom);
+        ctx.fill();
       }
     }
   }
