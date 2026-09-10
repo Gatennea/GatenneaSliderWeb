@@ -1690,20 +1690,28 @@ class BoardRenderer {
                 const amt = hint.hover[0] === Math.round(r) && hint.hover[1] === Math.round(c) ? 0.55 : 0.35;
                 fill = lightenCss(fill, amt);
             }
-            ctx.fillStyle = fill;
             const radius = GEOMETRY.block_radius * this.zoom;
-            this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
-            ctx.fill();
             if (this.coloringEnabled && store.currentStep > 1) {
-                ctx.strokeStyle = this.groupColor(Math.round(r), Math.round(c), store.currentStep);
-                ctx.lineWidth = Math.max(2, 7 * this.zoom);
+                // 著色器：從滑塊邊緣向內畫一圈分組色（原版 pygame 邊框是向內畫的）
+                const ring = Math.max(2, 6 * this.zoom);
+                ctx.fillStyle = this.groupColor(Math.round(r), Math.round(c), store.currentStep);
+                this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
+                ctx.fill();
+                const inner = Math.max(0, this.scaledCell - ring * 2);
+                const innerRadius = Math.max(0, radius - ring);
+                ctx.fillStyle = fill;
+                this.roundRect(x + ring, y + ring, inner, inner, innerRadius);
+                ctx.fill();
             }
             else {
+                ctx.fillStyle = fill;
+                this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
+                ctx.fill();
                 ctx.strokeStyle = COLORS.border;
                 ctx.lineWidth = Math.max(1, GEOMETRY.block_border_width * this.zoom);
+                this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
+                ctx.stroke();
             }
-            this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
-            ctx.stroke();
             if (this.highlightCells && this.highlightCells.has(key)) {
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
                 ctx.lineWidth = 2;
