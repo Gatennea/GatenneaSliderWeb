@@ -254,11 +254,14 @@ const controller = new BoardController({
     onStatus: showToast,
     requestPaint: schedulePaint,
     onZoomChange: () => syncZoomSlider(),
+    beforeMove: () => {
+        if (gameMode === 'timed' && timer.state === 'ready')
+            return '計時模式：按空白鍵開始計時後才能滑動';
+        return null;
+    },
     onChanged: () => {
         autosave(store);
         if (gameMode === 'timed') {
-            if (timer.state === 'ready')
-                timer.start();
             if (store.solved && timer.state === 'running') {
                 timer.solve();
                 const ms = timer.elapsedMs;
@@ -711,6 +714,10 @@ function handleRedo() {
     requestHistoryStep('redo');
 }
 function handleShuffle() {
+    if (gameMode === 'timed' && timer.state === 'running') {
+        showToast('計時中無法打亂');
+        return;
+    }
     const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
     showToast(r.message);
     renderer.animation = null;
@@ -720,6 +727,10 @@ function handleShuffle() {
     schedulePaint();
 }
 function handleReset() {
+    if (gameMode === 'timed' && timer.state === 'running') {
+        showToast('計時中無法重置');
+        return;
+    }
     const r = reset(store.cmd);
     showToast(r.message);
     renderer.animation = null;
@@ -729,6 +740,10 @@ function handleReset() {
     schedulePaint();
 }
 function handleCustomPuzzle() {
+    if (gameMode === 'timed' && timer.state === 'running') {
+        showToast('計時中無法切換謎題');
+        return;
+    }
     // 用自訂頁面表單取代瀏覽器內建 prompt
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
@@ -829,6 +844,10 @@ function handleCustomPuzzle() {
     app.appendChild(overlay);
 }
 function handlePresetPuzzle(label) {
+    if (gameMode === 'timed' && timer.state === 'running') {
+        showToast('計時中無法切換謎題');
+        return;
+    }
     const m = Number(label.split('*')[0].split('~')[1]);
     const n = Number(label.split('*')[1]);
     const step = Number(label.split('~')[0]);
@@ -841,6 +860,10 @@ function handlePresetPuzzle(label) {
     showToast(`切換謎題 ${step}~${m}*${n}`);
 }
 function setGameMode(mode) {
+    if (timer.state === 'running') {
+        showToast('計時中無法切換模式');
+        return;
+    }
     gameMode = mode;
     timer.reset();
     showToast(mode === 'timed' ? '模式：竞速' : '模式：练习');
@@ -1141,6 +1164,10 @@ function openSaveList() {
                 return b;
             };
             btnRow.append(mk('讀取', () => {
+                if (gameMode === 'timed') {
+                    showToast('競速模式中無法讀取存檔');
+                    return;
+                }
                 if (loadSlot(slot.id, store)) {
                     renderer.animation = null;
                     centerCamera();
@@ -1186,6 +1213,11 @@ fileInput.accept = '.json,.txt,.map';
 fileInput.style.display = 'none';
 app.appendChild(fileInput);
 fileInput.addEventListener('change', () => {
+    if (gameMode === 'timed') {
+        showToast('競速模式中無法打開存檔');
+        fileInput.value = '';
+        return;
+    }
     const f = fileInput.files?.[0];
     if (!f)
         return;

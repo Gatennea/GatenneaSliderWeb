@@ -127,7 +127,7 @@ function handleApi(pathname, body) {
       const type = body.type;
       const line = Number(body.line);
       if ((type !== 'h' && type !== 'v') || !Number.isInteger(line)) {
-        return { ok: false, message: '需要 type(h/v) 且 line 為整數' };
+        return { ok: false, message: '需要 type(h/v) 且 line 为整数' };
       }
       const r = selectGap(store, type, line);
       if (r.ok) {
@@ -141,7 +141,7 @@ function handleApi(pathname, body) {
       const row = Number(body.row);
       const col = Number(body.col);
       if (!Number.isInteger(row) || !Number.isInteger(col)) {
-        return { ok: false, message: '需要 row/col 整數' };
+        return { ok: false, message: '需要 row/col 整数' };
       }
       const r = selectBlock(store, row, col);
       if (r.ok) store.selectedBlock = [row, col];
@@ -151,7 +151,7 @@ function handleApi(pathname, body) {
     case 'move': {
       const dir = body.direction;
       if (!['w', 's', 'a', 'd'].includes(dir)) {
-        return { ok: false, message: 'direction 須為 w/s/a/d' };
+        return { ok: false, message: 'direction 必须为 w/s/a/d' };
       }
       if (store.selectedGap && !isValidDirectionForGap(store.selectedGap.type, dir)) {
         return { ok: false, message: `方向非法（${store.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）` };
@@ -173,7 +173,7 @@ function handleApi(pathname, body) {
       store.selectedGap = null;
       store.selectedBlock = null;
       store.game.selected.clear();
-      return { ok: true, message: '已清除選中' };
+      return { ok: true, message: '已清除选中' };
 
     case 'new': {
       const m = Number(body.m);
