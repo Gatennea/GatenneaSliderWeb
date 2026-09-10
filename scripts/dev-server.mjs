@@ -180,10 +180,10 @@ function handleApi(pathname, body) {
       const n = Number(body.n);
       const step = Number(body.step);
       if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) {
-        return { ok: false, message: '需要 m/n/step 整數' };
+        return { ok: false, message: '需要 m/n/step 整数' };
       }
       if (step >= Math.max(m, n)) {
-        return { ok: false, message: `step 須 < max(m,n)=${Math.max(m, n)}` };
+        return { ok: false, message: `step 必须 < max(m,n)=${Math.max(m, n)}` };
       }
       store.m = m;
       store.n = n;
@@ -193,7 +193,7 @@ function handleApi(pathname, body) {
       store.selectedGap = null;
       store.selectedBlock = null;
       store.stepCount = 0;
-      return { ok: true, message: `切換謎題 ${step}~${m}*${n}` };
+      return { ok: true, message: `切换谜题 ${step}~${m}*${n}` };
     }
 
     default:
@@ -246,6 +246,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`[dev-server] 內網：http://${localIP()}:${port}  本機：http://127.0.0.1:${port}`);
+  console.log(`[dev-server] 内网：http://${localIP()}:${port}  本机：http://127.0.0.1:${port}`);
   console.log(`[dev-server] REST API: http://127.0.0.1:${port}/api/status`);
 });

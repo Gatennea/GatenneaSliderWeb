@@ -1,9 +1,9 @@
 /**
- * 計時器（M5）：狀態機 ready → running → solved | dnf。
- * 用 performance.now() 測量，elapsed 毫秒在 rAF 中刷新顯示。
+ * 計時器（M5，對照原版競速狀態機）
+ * 狀態：idle（待打亂）→ ready（就緒，空格開始）→ running → solved | dnf
  */
 
-export type TimerState = 'ready' | 'running' | 'solved' | 'dnf';
+export type TimerState = 'idle' | 'ready' | 'running' | 'solved' | 'dnf';
 
 export function formatTime(ms: number | null): string {
   if (ms === null) return '-';
@@ -15,23 +15,31 @@ export function formatTime(ms: number | null): string {
 }
 
 export class Timer {
-  state: TimerState = 'ready';
+  state: TimerState = 'idle';
   private startMs = 0;
   private endMs = 0;
 
   get elapsedMs(): number {
     if (this.state === 'running') return performance.now() - this.startMs;
-    return this.endMs - this.startMs;
+    if (this.state === 'solved' || this.state === 'dnf') return this.endMs - this.startMs;
+    return 0;
   }
 
-  /** 進入 ready（打亂後待開始）。 */
-  reset(): void {
+  /** 打亂完成後進入 ready（就緒，空格開始）。 */
+  enterReady(): void {
     this.state = 'ready';
     this.startMs = 0;
     this.endMs = 0;
   }
 
-  /** 首次合法移動時開始計時。 */
+  /** 取消計時 / 切模式 / 換謎題：回到 idle（待打亂）。 */
+  cancel(): void {
+    this.state = 'idle';
+    this.startMs = 0;
+    this.endMs = 0;
+  }
+
+  /** 首次合法移動或按空白：ready → running。 */
   start(): void {
     if (this.state !== 'ready') return;
     this.state = 'running';
@@ -48,6 +56,7 @@ export class Timer {
 
   /** 手動 DNF。 */
   dnf(): void {
+    if (this.state !== 'running') return;
     this.state = 'dnf';
     this.endMs = performance.now();
   }

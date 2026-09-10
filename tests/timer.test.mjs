@@ -1,14 +1,17 @@
 /**
- * 計時器測試（M5）：狀態機 ready→running→solved|dnf + formatTime 格式。
+ * 計時器測試（M5）：狀態機 idle→ready→running→solved|dnf + formatTime 格式。
  */
 import { Timer, formatTime } from '../dist/feature/Timer.js';
 
 export const cases = [
   {
-    name: '初始為 ready，start 後 running，solve 後 solved',
+    name: '初始 idle，打亂 ready，start 後 running，solve 後 solved',
     run() {
       const t = new Timer();
-      if (t.state !== 'ready') throw new Error('初始應 ready');
+      if (t.state !== 'idle') throw new Error('初始應 idle');
+      if (t.start(), t.state !== 'idle') throw new Error('idle 下 start 不應變');
+      t.enterReady();
+      if (t.state !== 'ready') throw new Error('enterReady 後應 ready');
       t.start();
       if (t.state !== 'running') throw new Error('start 後應 running');
       t.solve();
@@ -16,11 +19,13 @@ export const cases = [
     },
   },
   {
-    name: '非 running 時 solve 不變 state，dnf 進入 dnf',
+    name: 'cancel 回 idle；dnf 進入 dnf',
     run() {
       const t = new Timer();
-      t.solve(); // ready 下不該變
-      if (t.state !== 'ready') throw new Error('ready 下 solve 不應變');
+      t.enterReady();
+      t.cancel();
+      if (t.state !== 'idle') throw new Error('cancel 後應 idle');
+      t.enterReady();
       t.start();
       t.dnf();
       if (t.state !== 'dnf') throw new Error('dnf 後應 dnf');

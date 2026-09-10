@@ -238,9 +238,17 @@ function updateStatus(): void {
   stSteps.textContent = `步数：${store.cmd.stepCount}`;
   stPuzzle.textContent = `谜题：${store.currentStep}~${store.currentM}*${store.currentN}`;
   stZoom.textContent = `缩放：${Math.round(renderer.zoom * 100)}%`;
-  const timerText = gameMode === 'timed'
-    ? `计时：${formatTime(timer.state === 'ready' ? 0 : timer.elapsedMs)}`
-    : `模式：练习`;
+  const timerText = gameMode === 'practice'
+    ? '练习模式'
+    : timer.state === 'idle'
+      ? '竞速模式（待打乱）'
+      : timer.state === 'ready'
+        ? '竞速模式（就绪，空格开始）'
+        : timer.state === 'running'
+          ? `竞速模式 ${formatTime(timer.elapsedMs)}`
+          : timer.state === 'solved'
+            ? `竞速模式 成绩 ${formatTime(timer.elapsedMs)}`
+            : '竞速模式 DNF';
   stTimer.textContent = timerText;
   stTimer.style.color = timer.state === 'running' ? COLORS.timer_running : COLORS.status_text;
 }
@@ -271,7 +279,10 @@ const controller = new BoardController({
   requestPaint: schedulePaint,
   onZoomChange: () => syncZoomSlider(),
   beforeMove: () => {
-    if (gameMode === 'timed' && timer.state === 'ready') return '計時模式：按空白鍵開始計時後才能滑動';
+    if (gameMode === 'timed') {
+      if (timer.state === 'idle') return '競速模式：請先使用打亂功能';
+      if (timer.state === 'ready') return '競速模式：按空白鍵開始計時後才能滑動';
+    }
     return null;
   },
   onChanged: () => {
@@ -330,7 +341,7 @@ const switchStates: SwitchState[] = [
   { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
   { key: 'coloring_enabled', label: '着色', get: () => false, set: () => {} },
   { key: 'chain_hint_enabled', label: '连锁', get: () => false, set: () => {} },
-  { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('計時中無法切換模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.reset(); showToast(v ? '模式：竞速' : '模式：练习'); schedulePaint(); } },
+  { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('計時中無法切換模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
   { key: 'macro_reverse_mode', label: '逆序宏', get: () => false, set: () => {} },
 ];
 
@@ -726,7 +737,7 @@ function handleShuffle(): void {
   renderer.animation = null;
   centerCamera();
   autosave(store);
-  timer.reset();
+  if (gameMode === 'timed') timer.enterReady(); else timer.cancel();
   schedulePaint();
 }
 
@@ -737,7 +748,7 @@ function handleReset(): void {
   renderer.animation = null;
   centerCamera();
   autosave(store);
-  timer.reset();
+  timer.cancel();
   schedulePaint();
 }
 
@@ -830,7 +841,7 @@ function handleCustomPuzzle(): void {
     renderer.animation = null;
     centerCamera();
     autosave(store);
-    timer.reset();
+    timer.cancel();
     schedulePaint();
     showToast(`切換謎題 ${step}~${m}*${n}`);
     overlay.remove();
@@ -850,7 +861,7 @@ function handlePresetPuzzle(label: string): void {
   renderer.animation = null;
   centerCamera();
   autosave(store);
-  timer.reset();
+  timer.cancel();
   schedulePaint();
   showToast(`切換謎題 ${step}~${m}*${n}`);
 }
@@ -858,8 +869,8 @@ function handlePresetPuzzle(label: string): void {
 function setGameMode(mode: 'practice' | 'timed'): void {
   if (timer.state === 'running') { showToast('計時中無法切換模式'); return; }
   gameMode = mode;
-  timer.reset();
-  showToast(mode === 'timed' ? '模式：竞速' : '模式：练习');
+  timer.cancel();
+  showToast(mode === 'timed' ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時');
   schedulePaint();
 }
 
@@ -1231,7 +1242,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' || e.key === ' ') {
     e.preventDefault();
     if (gameMode === 'timed') {
-      if (timer.state === 'ready') { timer.start(); showToast('計時開始'); schedulePaint(); }
+      if (timer.state === 'idle') { showToast('請先使用打亂功能'); }
+      else if (timer.state === 'ready') { timer.start(); showToast('計時開始'); schedulePaint(); }
       else if (timer.state === 'running') { recordDnf(); }
     }
     return;

@@ -222,9 +222,17 @@ function updateStatus() {
     stSteps.textContent = `步数：${store.cmd.stepCount}`;
     stPuzzle.textContent = `谜题：${store.currentStep}~${store.currentM}*${store.currentN}`;
     stZoom.textContent = `缩放：${Math.round(renderer.zoom * 100)}%`;
-    const timerText = gameMode === 'timed'
-        ? `计时：${formatTime(timer.state === 'ready' ? 0 : timer.elapsedMs)}`
-        : `模式：练习`;
+    const timerText = gameMode === 'practice'
+        ? '练习模式'
+        : timer.state === 'idle'
+            ? '竞速模式（待打乱）'
+            : timer.state === 'ready'
+                ? '竞速模式（就绪，空格开始）'
+                : timer.state === 'running'
+                    ? `竞速模式 ${formatTime(timer.elapsedMs)}`
+                    : timer.state === 'solved'
+                        ? `竞速模式 成绩 ${formatTime(timer.elapsedMs)}`
+                        : '竞速模式 DNF';
     stTimer.textContent = timerText;
     stTimer.style.color = timer.state === 'running' ? COLORS.timer_running : COLORS.status_text;
 }
@@ -255,8 +263,12 @@ const controller = new BoardController({
     requestPaint: schedulePaint,
     onZoomChange: () => syncZoomSlider(),
     beforeMove: () => {
-        if (gameMode === 'timed' && timer.state === 'ready')
-            return '計時模式：按空白鍵開始計時後才能滑動';
+        if (gameMode === 'timed') {
+            if (timer.state === 'idle')
+                return '競速模式：請先使用打亂功能';
+            if (timer.state === 'ready')
+                return '競速模式：按空白鍵開始計時後才能滑動';
+        }
         return null;
     },
     onChanged: () => {
@@ -312,7 +324,7 @@ const switchStates = [
     { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') {
             showToast('計時中無法切換模式');
             return;
-        } gameMode = v ? 'timed' : 'practice'; timer.reset(); showToast(v ? '模式：竞速' : '模式：练习'); schedulePaint(); } },
+        } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
     { key: 'macro_reverse_mode', label: '逆序宏', get: () => false, set: () => { } },
 ];
 function renderSwitch(s) {
@@ -723,7 +735,10 @@ function handleShuffle() {
     renderer.animation = null;
     centerCamera();
     autosave(store);
-    timer.reset();
+    if (gameMode === 'timed')
+        timer.enterReady();
+    else
+        timer.cancel();
     schedulePaint();
 }
 function handleReset() {
@@ -736,7 +751,7 @@ function handleReset() {
     renderer.animation = null;
     centerCamera();
     autosave(store);
-    timer.reset();
+    timer.cancel();
     schedulePaint();
 }
 function handleCustomPuzzle() {
@@ -833,7 +848,7 @@ function handleCustomPuzzle() {
         renderer.animation = null;
         centerCamera();
         autosave(store);
-        timer.reset();
+        timer.cancel();
         schedulePaint();
         showToast(`切換謎題 ${step}~${m}*${n}`);
         overlay.remove();
@@ -855,7 +870,7 @@ function handlePresetPuzzle(label) {
     renderer.animation = null;
     centerCamera();
     autosave(store);
-    timer.reset();
+    timer.cancel();
     schedulePaint();
     showToast(`切換謎題 ${step}~${m}*${n}`);
 }
@@ -865,8 +880,8 @@ function setGameMode(mode) {
         return;
     }
     gameMode = mode;
-    timer.reset();
-    showToast(mode === 'timed' ? '模式：竞速' : '模式：练习');
+    timer.cancel();
+    showToast(mode === 'timed' ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時');
     schedulePaint();
 }
 const menus = [
@@ -1285,7 +1300,10 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
         if (gameMode === 'timed') {
-            if (timer.state === 'ready') {
+            if (timer.state === 'idle') {
+                showToast('請先使用打亂功能');
+            }
+            else if (timer.state === 'ready') {
                 timer.start();
                 showToast('計時開始');
                 schedulePaint();
@@ -1848,8 +1866,8 @@ return { compactJsonDumps, autosave, autoload, downloadSave, saveAs, importData,
 },
     "m11": function (require) {
 /**
- * 計時器（M5）：狀態機 ready → running → solved | dnf。
- * 用 performance.now() 測量，elapsed 毫秒在 rAF 中刷新顯示。
+ * 計時器（M5，對照原版競速狀態機）
+ * 狀態：idle（待打亂）→ ready（就緒，空格開始）→ running → solved | dnf
  */
 function formatTime(ms) {
     if (ms === null)
@@ -1863,22 +1881,30 @@ function formatTime(ms) {
 }
 class Timer {
     constructor() {
-        this.state = 'ready';
+        this.state = 'idle';
         this.startMs = 0;
         this.endMs = 0;
     }
     get elapsedMs() {
         if (this.state === 'running')
             return performance.now() - this.startMs;
-        return this.endMs - this.startMs;
+        if (this.state === 'solved' || this.state === 'dnf')
+            return this.endMs - this.startMs;
+        return 0;
     }
-    /** 進入 ready（打亂後待開始）。 */
-    reset() {
+    /** 打亂完成後進入 ready（就緒，空格開始）。 */
+    enterReady() {
         this.state = 'ready';
         this.startMs = 0;
         this.endMs = 0;
     }
-    /** 首次合法移動時開始計時。 */
+    /** 取消計時 / 切模式 / 換謎題：回到 idle（待打亂）。 */
+    cancel() {
+        this.state = 'idle';
+        this.startMs = 0;
+        this.endMs = 0;
+    }
+    /** 首次合法移動或按空白：ready → running。 */
     start() {
         if (this.state !== 'ready')
             return;
@@ -1895,6 +1921,8 @@ class Timer {
     }
     /** 手動 DNF。 */
     dnf() {
+        if (this.state !== 'running')
+            return;
         this.state = 'dnf';
         this.endMs = performance.now();
     }
