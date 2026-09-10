@@ -25,6 +25,8 @@ export interface BoardControllerUI {
   onChanged?: () => void;
   /** 縮放變更時呼叫（main 同步右側縮放滑條） */
   onZoomChange?: () => void;
+  /** 移動前檢查（回傳訊息表示禁止移動，例如競速模式未開始） */
+  beforeMove?: () => string | null;
 }
 
 const DRAG_MOVE_THRESHOLD = 18;
@@ -330,6 +332,12 @@ export class BoardController {
   private animateMove(direction: Direction, clearAfter = false): void {
     const { store, renderer } = this.ui;
     const cmd = store.cmd;
+    const blocked = this.ui.beforeMove?.();
+    if (blocked) {
+      this.clearSelectionAfterMove = false;
+      this.notify(blocked);
+      return;
+    }
     this.clearSelectionAfterMove = clearAfter;
 
     if (!cmd.selectedGap) {

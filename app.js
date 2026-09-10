@@ -306,7 +306,10 @@ const switchStates = [
     { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
     { key: 'coloring_enabled', label: '着色', get: () => false, set: () => { } },
     { key: 'chain_hint_enabled', label: '连锁', get: () => false, set: () => { } },
-    { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { gameMode = v ? 'timed' : 'practice'; timer.reset(); showToast(v ? '模式：竞速' : '模式：练习'); schedulePaint(); } },
+    { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') {
+            showToast('計時中無法切換模式');
+            return;
+        } gameMode = v ? 'timed' : 'practice'; timer.reset(); showToast(v ? '模式：竞速' : '模式：练习'); schedulePaint(); } },
     { key: 'macro_reverse_mode', label: '逆序宏', get: () => false, set: () => { } },
 ];
 function renderSwitch(s) {
@@ -881,7 +884,7 @@ const menus = [
                 handlePresetPuzzle(item);
         }
     },
-    { label: '宏定义', items: ['录制', '执行', '删除'], handler: () => showToast('體驗版不含宏定義') },
+    { label: '宏定义', items: ['请下载完整版体验'], handler: () => showToast('體驗版不含宏定義') },
     { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...'], handler: (item) => {
             if (item.includes('虚拟键盘'))
                 toggleVK();
@@ -2310,6 +2313,12 @@ class BoardController {
     animateMove(direction, clearAfter = false) {
         const { store, renderer } = this.ui;
         const cmd = store.cmd;
+        const blocked = this.ui.beforeMove?.();
+        if (blocked) {
+            this.clearSelectionAfterMove = false;
+            this.notify(blocked);
+            return;
+        }
         this.clearSelectionAfterMove = clearAfter;
         if (!cmd.selectedGap) {
             this.clearSelectionAfterMove = false;
