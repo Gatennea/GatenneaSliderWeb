@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>相关数学问题 — 猫九的滑块游戏</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #0d0d0f;
+        color: #e6e6e6;
+        font-family: system-ui, "Microsoft JhengHei", sans-serif;
+        line-height: 1.7;
+      }
+      .nav {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        padding: 16px;
+        background: rgba(25, 25, 30, 0.55);
+        border-bottom: 1px solid #646464;
+      }
+      .nav a {
+        display: inline-block;
+        padding: 6px 18px;
+        border-radius: 20px;
+        font-size: 14px;
+        text-decoration: none;
+        color: #e6e6e6;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        transition: all 0.2s;
+      }
+      .nav a:hover {
+        background: #4696c8;
+        color: #fff;
+        border-color: #4696c8;
+      }
+      .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+      h1 {
+        text-align: center;
+        font-size: 24px;
+        color: #fff;
+        margin-bottom: 24px;
+      }
+      .card {
+        background: rgba(25, 25, 30, 0.55);
+        backdrop-filter: blur(5px);
+        border: 1px solid #646464;
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 20px;
+      }
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 17px;
+        color: #fff;
+        border-left: 4px solid #4696c8;
+        padding-left: 10px;
+      }
+      .card p {
+        margin: 8px 0;
+        color: #dcdcdc;
+        font-size: 14px;
+      }
+      .card strong { color: #fff; }
+      code {
+        background: #323232;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 13px;
+        color: #5aa6d8;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #646464;
+        margin: 16px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="nav">
+      <a href="index.html">主页</a>
+      <a href="update_info.html">更新日志</a>
+      <a href="math_question.html">相关数学问题</a>
+    </nav>
+    <div class="wrap">
+      <h1>游戏衍生的数学问题和解答</h1>
+
+      <section class="card">
+        <h2>假设不允许撤销，有哪些操作是不可逆的？</h2>
+        <p>答：虽然有些操作是单步不可逆的（即逆操作违规），但是我们猜想任何操作都是有限步内可逆的。我们认为单步不可逆的操作只有一种：任意两个滑块由不相邻到相邻的瞬间，简单来说就像两个部分粘到一起。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>为什么"任何操作都是有限步内可逆的"是猜想？有没有可能是假的？如果假，对游戏有什么影响？</h2>
+        <p>答：因为既没有找到反反例，也没有办法证明——这可能涉及到高深的数学理论，开发者猫九能力优先，所以只能是猜想。目前任务猜想为假的可能性极低，如果有真不可逆操作，说明存在合法但无法还原的状态，因为猫九玩过几百次完整的复原，都顺利复原了。即使假，这些状态应该极其极其稀疏，这是个概率论问题：在x个数据中放回抽样检验y次，结果只可能有两种"真/假"且不存在误判，实际上都是"真"，请问所有数据为"真"的置信度是多少？然而这个x太大了，仍然只能猜测。</p>
+        <p>扯远了。影响很明显：玩家如果遇到了无法还原的状态，有可能质疑自己的水平，感到挫败，而这有可能是游戏永远无法根除的bug。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>也没有办法"先验地"判断一个状态是否可解？也就是说不尝试求解它就判定出来。</h2>
+        <p>答：这要分成两半来看：先验可解判定，我根本不知道有没有。然而某些状态，我们可以以小到不计的时间空间复杂度先验判定出它不可解，方法就是用着色器看每种分类的滑块有多少个，比如<code>2~5*5</code>谜题必然可以分为<code>9+8+8+4</code>——打开着色器你就知道是什么意思（你可以其称为原始着色集合，每种谜题的原始着色集合都是先验、既定、永远不变的），如果一个<code>25</code>单一连通分量滑块组的状态着色后四种分类不是这个集合，那么它就不可解了。不过我仍然这样猜想：一个状态的着色集合若和原始集合相同，它就是可解的；对了，我突然想到这个可以不严谨地验证，可以算出一种原始着色集合的所有状态，看它跟反向BFS建表的数字是不是一样的，如果是，就证明了特定谜题可以先验判定是否可解，但是我们仍然不能保证判定所有谜题。</p>
+        <p>我觉得这实际上是计算机科学P=NP问题的具体投影。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>如何找到一种状态的最优解？</h2>
+        <p>答：<strong>查表求解器</strong>就是做这个的。利用图论的知识——我们先建立一个记录某种谜题所有状态的拓扑图，如果状态x可以经过一次移动到达状态y，就有x→y的单向弧，如果y也可以一次到达x，就是双向弧，把所有一步可达的状态连起来，就得到了这个图；然后用最短路径算法，本项目是简单的BFS搜索，就可以找到最优解。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>既然存在不可逆操作，查表求解器的表是怎么建立的？</h2>
+        <p>答：是<strong>反向BFS</strong>搜索。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>虽然BFS搜索很高效，但是拓扑图的节点极多，查表求解器为什么能做到1秒内求解？</h2>
+        <p>答：这很显然：<strong>哈希表</strong>。建表时给每个状态通过自定义的哈希函数算出哈希值，查表时直接用当前状态的哈希值就可以做到O(1)时间复杂度，接下来就是BFS搜索了。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>魔方拥有上帝之数，猫九滑块是否有上帝之数？</h2>
+        <p>答：当然有。只要是反向BFS搜索算完所有数据的谜题，我们都知道它的上帝之数。比如<code>2~4*4:17</code>，<code>3~4*4:30</code>，其他的看数据库，或者自己用建表脚本来算。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>每种谜题有多少种状态？</h2>
+        <p>答：<code>2~4*4</code>有559504种状态，<code>3~4*4</code>有23163种状态，其他的看数据库，或者自己用建表脚本来算。顺便一说，这些数字是把所有旋转、对称之后有可能一致的状态算作一种的，如果不算作一种，数字是多少谁知道呢。</p>
+      </section>
+
+      <hr />
+
+      <section class="card">
+        <h2>能否在建立状态表之前，直接计算状态总数？</h2>
+        <p>答：当前认为仅对1级谜题可以直接计算，可以直接查看<a href="https://oeis.org/A000105" target="_blank" rel="noopener">OEIS A000105</a>得到——自由多联骨牌计数问题，状态总数 = Free(m×n) − 1。</p>
+        <p><strong>为什么减 1？</strong> 缺失的那个形状是 1×(m×n) 的<strong>直线型多格骨牌</strong>（例如 2×3 棋盘对应 1×6 直线，3×3 棋盘对应 1×9 直线）。这种细长的形状无法通过滑动操作从紧凑的矩形产生——滑动只能让形状"变形"但不把它拉长到极限。而大于1级的谜题，只能穷举出状态总数，也许存在拟合函数。</p>
+        <p><strong>验证：</strong></p>
+        <ul>
+          <li><code>2_3_1</code>: Free(6)−1 = 35−1 = <strong>34</strong> ✓ 和状态表计数一致</li>
+          <li><code>3_3_1</code>: Free(9)−1 = 1285−1 = <strong>1284</strong> ✓ 和状态表计数一致</li>
+        </ul>
+      </section>
+    </div>
+  </body>
+</html>

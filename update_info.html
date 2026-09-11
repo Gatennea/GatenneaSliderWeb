@@ -1,0 +1,165 @@
+﻿<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>更新日志 — 猫九的滑块游戏</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #0d0d0f;
+        color: #e6e6e6;
+        font-family: system-ui, "Microsoft JhengHei", sans-serif;
+        line-height: 1.7;
+      }
+      .nav {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        padding: 16px;
+        background: rgba(25, 25, 30, 0.55);
+        border-bottom: 1px solid #646464;
+      }
+      .nav a {
+        display: inline-block;
+        padding: 6px 18px;
+        border-radius: 20px;
+        font-size: 14px;
+        text-decoration: none;
+        color: #e6e6e6;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        transition: all 0.2s;
+      }
+      .nav a:hover {
+        background: #4696c8;
+        color: #fff;
+        border-color: #4696c8;
+      }
+      .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+      h1 {
+        text-align: center;
+        font-size: 24px;
+        color: #fff;
+        margin-bottom: 24px;
+      }
+      .timeline {
+        position: relative;
+        padding-left: 30px;
+      }
+      .timeline::before {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #646464;
+      }
+      .timeline-item {
+        position: relative;
+        margin-bottom: 20px;
+      }
+      .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: -26px;
+        top: 6px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #4696c8;
+        border: 2px solid #0d0d0f;
+      }
+      .timeline-year {
+        font-size: 18px;
+        color: #4696c8;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      .timeline-date {
+        font-size: 14px;
+        color: #5aa6d8;
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+      .timeline-desc {
+        font-size: 14px;
+        color: #dcdcdc;
+      }
+      .card {
+        background: rgba(25, 25, 30, 0.55);
+        backdrop-filter: blur(5px);
+        border: 1px solid #646464;
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 20px;
+      }
+      .section-title {
+        font-size: 20px;
+        color: #fff;
+        border-left: 4px solid #4696c8;
+        padding-left: 10px;
+        margin: 24px 0 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="nav">
+      <a href="index.html">主页</a>
+      <a href="update_info.html">更新日志</a>
+      <a href="math_question.html">相关数学问题</a>
+    </nav>
+    <div class="wrap">
+      <h1>更新日志</h1>
+
+      <h2 class="section-title">更早</h2>
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-desc">猫九初步构思了该游戏的规则和机制。</div>
+        </div>
+      </div>
+
+      <h2 class="section-title">2025年</h2>
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-date">8月5日</div>
+          <div class="timeline-desc">猫九录制并上传了讲述该游戏构思的视频，发到B站</div>
+        </div>
+      </div>
+
+      <h2 class="section-title">2026年</h2>
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-date">5月</div>
+          <div class="timeline-desc">python版开始开发</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-date">8月</div>
+          <div class="timeline-desc">游戏进入内测阶段</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-date">9月</div>
+          <div class="timeline-desc">web版开始重构，两个版本都正式开源</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-date">9月8日</div>
+          <div class="timeline-desc">web版正式上线</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-date">9月9日</div>
+          <div class="timeline-desc">添加了主页</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-date">9月10日</div>
+          <div class="timeline-desc">web版复刻了原版的竞速防作弊、着色器、连锁器等功能</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-date">9月11日</div>
+          <div class="timeline-desc">添加了更新日志</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
