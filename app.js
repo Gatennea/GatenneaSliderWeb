@@ -1,4 +1,4 @@
-/* 由 scripts/bundle.mjs 自動生成；來源為已編譯的 dist/。請勿手動編輯。 */
+﻿/* 由 scripts/bundle.mjs 自動生成；來源為已編譯的 dist/。請勿手動編輯。 */
 (function () {
   var __modules = { "m0": function (require) {
 /**
@@ -244,7 +244,9 @@ function schedulePaint() {
     if (rafQueued)
         return;
     rafQueued = true;
-    requestAnimationFrame(() => {
+    // Demo 模式降低帧率：背景动画 30fps 足够，减少渲染压力
+    const rafDelay = demoFile ? 33 : 0;
+    setTimeout(() => {
         rafQueued = false;
         if (needsPaint) {
             needsPaint = false;
@@ -253,7 +255,7 @@ function schedulePaint() {
             renderer.draw(store);
             updateStatus();
         }
-    });
+    }, rafDelay);
 }
 const controller = new BoardController({
     canvas,
