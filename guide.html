@@ -1,0 +1,682 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>玩法詳解 — 貓九的滑塊遊戲</title>
+    <meta name="description" content="貓九的滑塊遊戲完整規則與術語：縫隙、滑塊組、等級 step、四種形態（矩形／三角／米字／帶序號）、操作方式、快捷鍵、競速統計、求解器與視覺輔助。" />
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #0d0d0f;
+        color: #e6e6e6;
+        font-family: system-ui, "Microsoft JhengHei", sans-serif;
+        line-height: 1.75;
+      }
+      a { color: #5aa6d8; }
+      .nav {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        padding: 16px;
+        background: rgba(25, 25, 30, 0.55);
+        border-bottom: 1px solid #646464;
+        flex-wrap: wrap;
+      }
+      .nav a {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        text-decoration: none;
+        color: #e6e6e6;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        transition: all 0.2s;
+      }
+      .nav a:hover { background: #4696c8; color: #fff; border-color: #4696c8; }
+      .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+      h1 { text-align: center; font-size: 25px; color: #fff; margin: 8px 0 6px; }
+      .sub { text-align: center; font-size: 14px; color: #9a9a9a; margin: 0 0 22px; }
+      .card {
+        background: rgba(25, 25, 30, 0.55);
+        border: 1px solid #5a5a5a;
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 18px;
+      }
+      h2 {
+        font-size: 19px;
+        color: #fff;
+        border-left: 4px solid #4696c8;
+        padding-left: 10px;
+        margin: 0 0 12px;
+      }
+      h3 { font-size: 15.5px; color: #dfe9f0; margin: 16px 0 6px; }
+      ul, ol { padding-left: 22px; margin: 8px 0; }
+      li { margin: 5px 0; }
+      table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+      th, td { border: 1px solid #464646; padding: 7px 9px; text-align: left; vertical-align: top; }
+      th { background: rgba(255,255,255,0.07); color: #fff; }
+      td.c { text-align: center; }
+      .tag {
+        display: inline-block;
+        font-size: 12px;
+        line-height: 1.6;
+        padding: 0 8px;
+        border-radius: 10px;
+        margin-right: 6px;
+        border: 1px solid;
+        white-space: nowrap;
+      }
+      .tag-full { color: #8fc7e8; border-color: #4696c8; background: rgba(70, 150, 200, 0.15); }
+      .tag-web { color: #9ad3b0; border-color: #3f8f66; background: rgba(63, 143, 102, 0.15); }
+      kbd {
+        background: #2a2a32;
+        border: 1px solid #55505f;
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-size: 12.5px;
+        font-family: ui-monospace, Consolas, monospace;
+        color: #e8e8e8;
+        white-space: nowrap;
+      }
+      code {
+        background: rgba(255,255,255,0.08);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 13px;
+        font-family: ui-monospace, Consolas, monospace;
+      }
+      .note { font-size: 13px; color: #9a9a9a; margin: 8px 0 0; }
+      .warn {
+        background: rgba(220, 170, 60, 0.10);
+        border: 1px solid rgba(220, 170, 60, 0.35);
+        border-left: 4px solid #d8a63c;
+        border-radius: 8px;
+        padding: 11px 14px;
+        font-size: 14px;
+        margin: 10px 0;
+      }
+      .toc { columns: 2; column-gap: 26px; font-size: 14px; }
+      .toc a { display: block; padding: 2px 0; }
+      .lang-switch {
+        position: fixed;
+        top: 12px; right: 12px; z-index: 10;
+        background: rgba(30, 30, 35, 0.8);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #fff; border-radius: 20px;
+        padding: 6px 14px; font-size: 14px; cursor: pointer;
+        backdrop-filter: blur(6px);
+      }
+      .lang-switch:hover { background: rgba(70, 130, 180, 0.85); }
+      .steps { display: flex; gap: 12px; flex-wrap: wrap; }
+      .step { flex: 1 1 200px; text-align: center; }
+      .step b { display: block; color: #fff; font-size: 14.5px; margin-top: 2px; }
+      .step span { display: block; font-size: 12.5px; color: #a8a8a8; line-height: 1.6; }
+      body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hant"] { display: none; }
+      body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hans"] { display: none; }
+      @media (max-width: 600px) {
+        .toc { columns: 1; }
+        .wrap { padding: 16px 12px 48px; }
+      }
+    </style>
+  </head>
+  <body data-lang="zh-Hant">
+    <button class="lang-switch" id="langSwitch" type="button">切换为简体中文</button>
+
+    <div class="wrap" data-lang="zh-Hant">
+      <nav>
+        <a href="index.html">主頁</a>
+        <a href="guide.html">玩法詳解</a>
+        <a href="update_info.html">動態・更新日誌</a>
+        <a href="math_question.html">相關數學問題</a>
+        <a href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">支持貓九</a>
+      </nav>
+
+      <h1>玩法詳解</h1>
+      <p class="sub">從規則到術語，一次講清楚。<span class="tag tag-full">完整版</span>標記的功能只在 Windows / Python 版提供。</p>
+
+      <div class="card">
+        <h2>目錄</h2>
+        <div class="toc">
+          <a href="#basic">1. 基本規則：三個動作、三條鐵律</a>
+          <a href="#terms">2. 術語速查</a>
+          <a href="#shapes">3. 四種形態</a>
+          <a href="#step">4. 尺寸與等級（step）</a>
+          <a href="#control">5. 操作方式與快捷鍵</a>
+          <a href="#mode">6. 三種遊戲模式</a>
+          <a href="#score">7. 成績與競速統計</a>
+          <a href="#solver">8. 求解器<span class="tag tag-full">完整版</span></a>
+          <a href="#macro">9. 宏（自訂公式）<span class="tag tag-full">完整版</span></a>
+          <a href="#visual">10. 視覺輔助：著色器與連鎖器</a>
+          <a href="#save">11. 存檔・導入導出</a>
+          <a href="#faq">12. 常見問題</a>
+        </div>
+      </div>
+
+      <div class="card" id="basic">
+        <h2>1. 基本規則：三個動作、三條鐵律</h2>
+        <div class="steps">
+          <div class="step">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="選縫隙">
+              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>① 選一條縫</b>
+            <span>拿起一把刀，準備切下去</span>
+          </div>
+          <div class="step">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="選滑塊組">
+              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>② 點縫的某一側</b>
+            <span>那一側、跟這塊連成一片的，整組被帶走</span>
+          </div>
+          <div class="step">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="滑動">
+              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
+              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
+            </svg>
+            <b>③ 沿著縫推</b>
+            <span>整組一起平移 <code>step</code> 格</span>
+          </div>
+        </div>
+        <div class="warn">
+          ⚠️ <b>縫不是被推的東西，縫是一把刀。</b>同一條縫，你點上面那塊還是點下面那塊，被帶走的完全不同 —— 選之前先想清楚你要切哪一邊。
+        </div>
+        <h3>三條鐵律（任何時候都不能違反）</h3>
+        <ol>
+          <li><b>不能斷開</b>：所有滑塊任何時刻都必須是一個整體（單一連通分量）。你把某一組推出去、結果它跟大部隊脫節了 —— 這步不合法。</li>
+          <li><b>不能重疊</b>：滑塊不能壓到別的滑塊身上。</li>
+          <li><b>只能沿縫</b>：一條縫只認一個方向軸（橫縫左右、豎縫上下），斜著推不允許（米字格的斜縫除外）。</li>
+        </ol>
+        <h3>過關條件</h3>
+        <p>讓所有滑塊構成一個<b>實心的矩形</b>（或大三角、米字矩陣，看形態）。它出現在畫面哪裡都沒關係、橫著算、轉了 90° 也算 —— 重點是<b>沒有缺口、沒有空洞</b>，而不是「回到最初那張圖」。</p>
+        <p class="note">這條很重要：很多人一開始誤以為要復原到打亂前的樣子，其實不用。</p>
+      </div>
+
+      <div class="card" id="terms">
+        <h2>2. 術語速查</h2>
+        <table>
+          <tr><th style="width:130px">術語</th><th>意思</th></tr>
+          <tr><td>縫隙（gap）</td><td>滑塊之間的空隙通道。方形的縫分<b>橫縫</b>（行與行之間，只能左右推）和<b>豎縫</b>（列與列之間，只能上下推）。</td></tr>
+          <tr><td>滑塊組（group）</td><td>被縫切出來的、與你點的那塊<b>連通</b>的一整片。是整片一起動，不是只有你點的那塊。</td></tr>
+          <tr><td>等級 / 步距（step）</td><td>每次移動的距離單位。選中的組整體平移 <code>step</code> 的整數倍。標籤寫成 <code>2~4*4</code>＝4×4、step 2。</td></tr>
+          <tr><td>缺角 / 缺口 / 孔洞</td><td>沒被填滿的地方。邊緣凹進去叫缺口，外面一圈完整、中間漏一塊叫孔洞 —— 孔洞比缺口難處理得多。</td></tr>
+          <tr><td>移動不變量</td><td>不管你怎麼走都不會變的東西。方形是 <code>(行 % step, 列 % step)</code>：它把滑塊分成好幾張<b>互換網</b>，同一網內的兩塊永遠可以互換位置，跨網的永遠不行。</td></tr>
+          <tr><td>互換網 / 著色</td><td>同一個移動不變量值的滑塊集合。著色器用顏色把網畫出來 —— 同色＝同一張網＝這幾塊永遠可以互換。</td></tr>
+          <tr><td>錯位態（米字）</td><td>斜著走一步後，棋盤會錯開半格，很多橫豎縫會失效。再沿斜向走一格就能錯回來。</td></tr>
+          <tr><td>DNF</td><td>Did Not Finish，該次不算成績（自己放棄、或用了解題器）。</td></tr>
+        </table>
+      </div>
+
+      <div class="card" id="shapes">
+        <h2>3. 四種形態</h2>
+        <table>
+          <tr><th>形態</th><th>長什麼樣</th><th>縫・方向</th><th>過關長這樣</th><th>求解器</th></tr>
+          <tr>
+            <td><b>矩形</b>（基礎）</td>
+            <td>方塊排在方格裡</td>
+            <td>橫縫 ↔ ／豎縫 ↕，共 4 向</td>
+            <td>任意位置的實心 m×n 矩形（轉 90° 也算）</td>
+            <td class="c">✅</td>
+          </tr>
+          <tr>
+            <td><b>三角</b></td>
+            <td>由 k² 個小正三角形拼成的大正三角</td>
+            <td>縫有<b>三族</b>（水平、+60°、−60°），滑動<b>六向</b>：<kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>D</kbd><kbd>Z</kbd><kbd>X</kbd>，正好排成六邊形</td>
+            <td>實心大正三角，可平移或轉 120°（<b>上下顛倒不行</b>）</td>
+            <td class="c">❌</td>
+          </tr>
+          <tr>
+            <td><b>米字</b></td>
+            <td>每個方格被兩條對角線切成 4 個直角三角，滑塊數是 4mn</td>
+            <td>縫有<b>四族</b>（橫邊、豎邊、兩條對角線），滑動<b>八向</b>，鍵位只在<b>虛擬鍵盤</b>（<kbd>F1</kbd>）上</td>
+            <td>實心 m×n 米字矩陣，可平移；<b>錯開半格也算復原</b></td>
+            <td class="c">❌</td>
+          </tr>
+          <tr>
+            <td><b>數字</b>（帶序號）</td>
+            <td>矩形 + 每塊帶編號（從 1 開始，按行主序）</td>
+            <td>同矩形</td>
+            <td>除了拼成實心矩形，編號還要沿某個方向<b>嚴格遞增</b>（允許整體旋轉／鏡像）</td>
+            <td class="c">❌</td>
+          </tr>
+        </table>
+        <div class="warn">
+          <b>米字格只能「兩次觸控」</b>：第一下點縫隙，第二下<b>按住</b>該側的滑塊拖動（鬆手才真的移動）。八個方向靠一次觸控猜太容易誤觸，所以乾脆不支援單次觸控。
+        </div>
+        <p class="note">三角與米字<b>沒有隨機生成題目</b>，只能用創造模式手動構造，或用內建預設：<code>1~tri4</code>、<code>2~tri6</code>、<code>2~tri8</code>、<code>1~mi4*4</code>、<code>2~mi4*4</code>、<code>2~mi6*6</code>、<code>2~mi8*8</code>。</p>
+      </div>
+
+      <div class="card" id="step">
+        <h2>4. 尺寸與等級（step）</h2>
+        <p>一個謎題由三個數字決定：<b>尺寸</b>（幾乘幾）和<b>等級 step</b>。</p>
+        <ul>
+          <li><b>step = 1</b>：一次動一格，最自由。但也因為太自由，著色器提供的資訊是「全盤同一種顏色」＝沒有資訊（所以 1 級不開著色）。</li>
+          <li><b>step = 2、3…</b>：一次要平移 step 的整數倍，看似限制更大；但滑塊同時被切成 step² 張互換網，<b>誰能換到誰一眼就能看出</b> —— 很多時候反而更好判斷。</li>
+          <li>尺寸從 3×3 的小盤到十幾階都有。覺得太難就降尺寸，覺得太簡單就升級大盤。</li>
+        </ul>
+        <p class="note">命令行可以直接指定：<code>python main.py 6 6 2</code>（6×6、step 2）、<code>python main.py 6 6 1 tri</code>（三角）、<code>python main.py 4 4 1 mi</code>（米字）。</p>
+      </div>
+
+      <div class="card" id="control">
+        <h2>5. 操作方式與快捷鍵</h2>
+        <h3>三種控制模式（可任意組合，在 選單 → 設定 → 控制 切換）</h3>
+        <table>
+          <tr><th style="width:120px">模式</th><th>怎麼玩</th></tr>
+          <tr><td><b>單次觸控</b></td><td>按住一個滑塊，朝想滑的方向<b>拖動</b>就滑走。最省事，適合新手。</td></tr>
+          <tr><td><b>兩次觸控</b></td><td>點縫隙 → 點那一側的方塊（整組被選中）→ 拖動或按方向鍵。</td></tr>
+          <tr><td><b>鼠標鍵盤</b></td><td>鼠標選縫與選組，鍵盤下達移動指令；也可用虛擬鍵盤。</td></tr>
+        </table>
+        <h3>快捷鍵</h3>
+        <table>
+          <tr><th style="width:210px">按鍵</th><th>功能</th></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> ／ <kbd>Ctrl</kbd>+<kbd>X</kbd></td><td>撤銷 ／ 重做</td></tr>
+          <tr><td><kbd>Alt</kbd>+<kbd>S</kbd></td><td>打亂</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>重置（回到打亂前）</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd> ／ <kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>保存 ／ 打開存檔</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>自動求解<span class="tag tag-full">完整版</span>（數字／三角形態停用）</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>錄製宏<span class="tag tag-full">完整版</span></td></tr>
+          <tr><td><kbd>F1</kbd> ／ <kbd>F2</kbd> ／ <kbd>F3</kbd></td><td>虛擬鍵盤 ／ 除錯面板 ／ 成績面板</td></tr>
+          <tr><td><kbd>空格</kbd></td><td>競速開始／停止；也可取消選中</td></tr>
+          <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 或方向鍵</td><td>移動（三角是六向 <kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>D</kbd><kbd>Z</kbd><kbd>X</kbd>；米字不綁物理鍵盤）</td></tr>
+        </table>
+        <h3>手機 / 觸控</h3>
+        <ul>
+          <li>單次／兩次觸控、虛擬鍵盤都能用，也可以在設定裡關閉其中幾種。</li>
+          <li><b>兩指捏合</b>縮放視圖，<b>單指拖空白處</b>平移畫面；電腦上是滾輪縮放。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="mode">
+        <h2>6. 三種遊戲模式</h2>
+        <ul>
+          <li><b>練習模式</b> —— 自由探索，不計時。熟悉規則就從這裡開始。</li>
+          <li><b>競速模式</b> —— 打亂後按<b>空格</b>開始計時，還原的瞬間自動停錶並記錄成績。全程<b>禁用求解器與宏</b>，確保公平。</li>
+          <li><b>創造模式</b><span class="tag tag-full">完整版</span> —— 自己造題：「隨機生成」挖洞（僅矩形／數字），或「手動構造」一格一格擺（矩形／三角／米字都可以）。造好後切回練習或競速開始還原。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="score">
+        <h2>7. 成績與競速統計</h2>
+        <p>成績按<b>謎題標籤</b>分組保存 —— 也就是說 4×4 step2 和 6×6 step1 的紀錄是分開算的，同樣是自己跟自己比。</p>
+        <table>
+          <tr><th style="width:120px">名詞</th><th>意思</th></tr>
+          <tr><td><b>PB</b>（單次最佳）</td><td>這個謎題你最快的一次。</td></tr>
+          <tr><td><b>Ao5 / Ao12</b></td><td>最近 5／12 次的<b>去尾平均值</b>：去掉最快和最慢，剩下的平均。魔方速擰也用這套，避免一次運氣好就「破紀錄」。</td></tr>
+          <tr><td><b>DNF</b></td><td>這局不算數（中途放棄、或用了求解器）。它在統計裡會被當成最差成績處理。</td></tr>
+        </table>
+        <p class="note">成績目前只存在你自己的電腦（或瀏覽器）裡。<b>線上排行榜正在開發中</b>。</p>
+      </div>
+
+      <div class="card" id="solver">
+        <h2>8. 求解器 <span class="tag tag-full">完整版</span></h2>
+        <p>徹底卡住時可以按 <kbd>Ctrl</kbd>+<kbd>A</kbd> 呼叫，共有 8 種算法：從「智慧聚攏粗調」「補缺宏（單洞／多洞無缺口）」一路到「查表最快求解」。</p>
+        <ul>
+          <li>解的過程會<b>一步一步播放</b>出來，你可以把它當成實際教學片看。</li>
+          <li>它不是萬能的：<b>有些局面它也解不開</b>，會給出一個盡力後的部分解。這遊戲的難度是真實的。</li>
+          <li>數字／三角／米字形態暫不開放求解器；競速模式下也禁用。</li>
+          <li>「查表求解器」需要額外下載資料檔（見主頁下載區），沒裝不會影響其它求解算法。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="macro">
+        <h2>9. 宏（自訂公式）<span class="tag tag-full">完整版</span></h2>
+        <p>把一段操作序列錄下來、取名字保存起來，之後可以反覆用，甚至逆序播放 —— 用法跟魔方的公式（OLL、PLL）是一個思路。<kbd>Ctrl</kbd>+<kbd>M</kbd> 開始錄製。</p>
+        <p class="note">宏錄的是「相對某個基準滑塊的步驟」，所以在不同局面裡也能套用。</p>
+      </div>
+
+      <div class="card" id="visual">
+        <h2>10. 視覺輔助：著色器與連鎖器</h2>
+        <h3>著色器</h3>
+        <p><code>step &gt; 1</code> 時開啟。滑塊的描邊顏色由<b>移動不變量</b>決定：<b>同色＝同一張互換網＝這幾塊永遠可以互換位置</b>。開著它玩，很快就不用再猜「這塊能不能挪到那裡」。<code>step = 1</code> 時全盤只會是同一個顏色，沒有資訊，所以預設不開。</p>
+        <h3>連鎖器</h3>
+        <p>把滑鼠移到某個格子（包括空格、包括洞）時，全場<b>與它同組的位置會一起提亮</b>。實際用途：<b>這個洞該由哪一塊來補？</b>亮起來的就是答案。</p>
+        <ul>
+          <li>三角和米字會把「朝向」也算進同組，所以 1 級也能用。</li>
+          <li>只提亮當前畫面範圍內、整塊都落在滑塊範圍裡的位置（畫到一半探出界的高亮沒有意義）。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="save">
+        <h2>11. 存檔・導入導出</h2>
+        <ul>
+          <li><b>電腦版</b>：存檔是標準的 <code>.json</code>，可以自己備份、也可以在別的電腦上打開。</li>
+          <li><b>手機 / 網頁版</b>：存在瀏覽器裡，遊戲裡有存檔列表可以切換。</li>
+          <li><b>地圖文本</b>：局面還能用純文字表示（<code>#</code>＝有塊，<code>_</code>＝空白），方便貼給朋友、貼到群裡復現同一題。</li>
+        </ul>
+        <p class="note">完整版另外提供 HTTP REST API（<code>127.0.0.1:5050</code>）和 stdin 命令行介面，想寫腳本自動跑或讓 AI 接手都可以。</p>
+      </div>
+
+      <div class="card" id="faq">
+        <h2>12. 常見問題</h2>
+        <h3>一定要復原到最初的樣子嗎？</h3>
+        <p>不用。只要拼成一個完整的實心矩形就行，位置出現在畫面哪裡都不管。</p>
+        <h3>為什麼我點了縫、點了塊，卻動不了？</h3>
+        <p>十之八九是那步<b>會讓滑塊斷開</b>或<b>撞到別的滑塊</b>。試著換一側，或先在外面把路讓出來。</p>
+        <h3>為什麼有人能推加到斜的方向？</h3>
+        <p>那是三角或米字形態 —— 它們的縫本來就有斜的。矩形形態只能橫推和縱推。</p>
+        <h3>越玩越覺得：這到底有沒有解？</h3>
+        <p>目前<b>沒有找到反例，但也沒有嚴謹證明</b> —— 它可能牽涉到相當深的數學。貓九自己完整復原過幾百次都成功了，可信度很高，但嚴格來說仍是猜想。<a href="math_question.html">相關數學問題</a>裡有完整討論。</p>
+        <h3>網頁版跟完整版差在哪裡？</h3>
+        <p>網頁版定位是<b>試玩</b>：能玩、能計時、能存檔，但求解器、四種形態、創造模式、宏這些都在 Windows / Python 版裡。想認真玩就<a href="index.html#download">下載完整版</a>。</p>
+        <h3>發現 bug 想回報？</h3>
+        <p>到 GitHub 開 issue，或用貓九留的聯絡方式（QQ / QQ 信箱，見遊戲原始碼 README）。</p>
+      </div>
+
+      <div class="card">
+        <p style="margin:0">這份詳解會隨著版本更新而補充。看到講不清楚的地方，<a href="https://github.com/Gatennea/GatenneaSliderWeb/issues" target="_blank" rel="noopener">到 GitHub 告訴貓九</a>。</p>
+      </div>
+    </div>
+
+    <div class="wrap" data-lang="zh-Hans">
+      <nav>
+        <a href="index.html">主页</a>
+        <a href="guide.html">玩法详解</a>
+        <a href="update_info.html">动态・更新日志</a>
+        <a href="math_question.html">相关数学问题</a>
+        <a href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">支持貓九</a>
+      </nav>
+
+      <h1>玩法详解</h1>
+      <p class="sub">从规则到术语，一次讲清楚。<span class="tag tag-full">完整版</span>标记的功能只在 Windows / Python 版提供。</p>
+
+      <div class="card">
+        <h2>目录</h2>
+        <div class="toc">
+          <a href="#basic">1. 基本规则：三个动作、三条铁律</a>
+          <a href="#terms">2. 术语速查</a>
+          <a href="#shapes">3. 四种形态</a>
+          <a href="#step">4. 尺寸与等级（step）</a>
+          <a href="#control">5. 操作方式与快捷键</a>
+          <a href="#mode">6. 三种游戏模式</a>
+          <a href="#score">7. 成绩与竞速统计</a>
+          <a href="#solver">8. 求解器<span class="tag tag-full">完整版</span></a>
+          <a href="#macro">9. 宏（自定义公式）<span class="tag tag-full">完整版</span></a>
+          <a href="#visual">10. 视觉辅助：着色器与连锁器</a>
+          <a href="#save">11. 存档・导入导出</a>
+          <a href="#faq">12. 常见问题</a>
+        </div>
+      </div>
+
+      <div class="card" id="basic">
+        <h2>1. 基本规则：三个动作、三条铁律</h2>
+        <div class="steps">
+          <div class="step">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="选缝隙">
+              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>① 选一条缝</b>
+            <span>拿起一把刀，准备切下去</span>
+          </div>
+          <div class="step">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="选滑块组">
+              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>② 点缝的某一侧</b>
+            <span>那一侧、跟这块连成一片的，整组被带走</span>
+          </div>
+          <div class="step">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="滑动">
+              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
+              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
+            </svg>
+            <b>③ 沿着缝推</b>
+            <span>整组一起平移 <code>step</code> 格</span>
+          </div>
+        </div>
+        <div class="warn">
+          ⚠️ <b>缝不是被推的东西，缝是一把刀。</b>同一条缝，你点上面那块还是点下面那块，被带走的完全不同 —— 选之前先想清楚你要切哪一边。
+        </div>
+        <h3>三条铁律（任何时候都不能违反）</h3>
+        <ol>
+          <li><b>不能断开</b>：所有滑块任何时刻都必须是一个整体（单一连通分量）。你把某一组推出去、结果它跟大部队脱节了 —— 这步不合法。</li>
+          <li><b>不能重叠</b>：滑块不能压到别的滑块身上。</li>
+          <li><b>只能沿缝</b>：一条缝只认一个方向轴（横缝左右、竖缝上下），斜着推不允许（米字格的斜缝除外）。</li>
+        </ol>
+        <h3>过关条件</h3>
+        <p>让所有滑块构成一个<b>实心的矩形</b>（或大三角、米字矩阵，看形态）。它出现在画面哪里都没关系、横着算、转了 90° 也算 —— 重点是<b>没有缺口、没有空洞</b>，而不是「回到最初那张图」。</p>
+        <p class="note">这条很重要：很多人一开始误以为要复原到打乱前的样子，其实不用。</p>
+      </div>
+
+      <div class="card" id="terms">
+        <h2>2. 术语速查</h2>
+        <table>
+          <tr><th style="width:130px">术语</th><th>意思</th></tr>
+          <tr><td>缝隙（gap）</td><td>滑块之间的空隙通道。方形的缝分<b>横缝</b>（行与行之间，只能左右推）和<b>竖缝</b>（列与列之间，只能上下推）。</td></tr>
+          <tr><td>滑块组（group）</td><td>被缝切出来的、与你点的那块<b>连通</b>的一整片。是整片一起动，不是只有你点的那块。</td></tr>
+          <tr><td>等级 / 步距（step）</td><td>每次移动的距离单位。选中的组整体平移 <code>step</code> 的整数倍。标签写成 <code>2~4*4</code>＝4×4、step 2。</td></tr>
+          <tr><td>缺角 / 缺口 / 孔洞</td><td>没被填满的地方。边缘凹进去叫缺口，外面一圈完整、中间漏一块叫孔洞 —— 孔洞比缺口难处理得多。</td></tr>
+          <tr><td>移动不变量</td><td>不管你怎么走都不会变的东西。方形是 <code>(行 % step, 列 % step)</code>：它把滑块分成好几张<b>互换网</b>，同一网内的两块永远可以互换位置，跨网的永远不行。</td></tr>
+          <tr><td>互换网 / 着色</td><td>同一个移动不变量值的滑块集合。着色器用颜色把网画出来 —— 同色＝同一张网＝这几块永远可以互换。</td></tr>
+          <tr><td>错位态（米字）</td><td>斜着走一步后，棋盘会错开半格，很多横竖缝会失效。再沿斜向走一格就能错回来。</td></tr>
+          <tr><td>DNF</td><td>Did Not Finish，该次不算成绩（自己放弃、或用了解题器）。</td></tr>
+        </table>
+      </div>
+
+      <div class="card" id="shapes">
+        <h2>3. 四种形态</h2>
+        <table>
+          <tr><th>形态</th><th>长什么样</th><th>缝・方向</th><th>过关长这样</th><th>求解器</th></tr>
+          <tr>
+            <td><b>矩形</b>（基础）</td>
+            <td>方块排在方格里</td>
+            <td>横缝 ↔ ／竖缝 ↕，共 4 向</td>
+            <td>任意位置的实心 m×n 矩形（转 90° 也算）</td>
+            <td class="c">✅</td>
+          </tr>
+          <tr>
+            <td><b>三角</b></td>
+            <td>由 k² 个小正三角形拼成的大正三角</td>
+            <td>缝有<b>三族</b>（水平、+60°、−60°），滑动<b>六向</b>：<kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>D</kbd><kbd>Z</kbd><kbd>X</kbd>，正好排成六边形</td>
+            <td>实心大正三角，可平移或转 120°（<b>上下颠倒不行</b>）</td>
+            <td class="c">❌</td>
+          </tr>
+          <tr>
+            <td><b>米字</b></td>
+            <td>每个方格被两条对角线切成 4 个直角三角，滑块数是 4mn</td>
+            <td>缝有<b>四族</b>（横边、竖边、两条对角线），滑动<b>八向</b>，键位只在<b>虚拟键盘</b>（<kbd>F1</kbd>）上</td>
+            <td>实心 m×n 米字矩阵，可平移；<b>错开半格也算复原</b></td>
+            <td class="c">❌</td>
+          </tr>
+          <tr>
+            <td><b>数字</b>（带序号）</td>
+            <td>矩形 + 每块带编号（从 1 开始，按行主序）</td>
+            <td>同矩形</td>
+            <td>除了拼成实心矩形，编号还要沿某个方向<b>严格递增</b>（允许整体旋转／镜像）</td>
+            <td class="c">❌</td>
+          </tr>
+        </table>
+        <div class="warn">
+          <b>米字格只能「两次触控」</b>：第一下点缝隙，第二下<b>按住</b>该侧的滑块拖动（松手才真的移动）。八个方向靠一次触控猜太容易误触，所以干脆不支持单次触控。
+        </div>
+        <p class="note">三角与米字<b>没有随机生成题目</b>，只能用创造模式手动构造，或用内置预设：<code>1~tri4</code>、<code>2~tri6</code>、<code>2~tri8</code>、<code>1~mi4*4</code>、<code>2~mi4*4</code>、<code>2~mi6*6</code>、<code>2~mi8*8</code>。</p>
+      </div>
+
+      <div class="card" id="step">
+        <h2>4. 尺寸与等级（step）</h2>
+        <p>一个谜题由三个数字决定：<b>尺寸</b>（几乘几）和<b>等级 step</b>。</p>
+        <ul>
+          <li><b>step = 1</b>：一次动一格，最自由。但也因为太自由，着色器提供的资讯是「全盘同一种颜色」＝没有资讯（所以 1 级不开着色）。</li>
+          <li><b>step = 2、3…</b>：一次要平移 step 的整数倍，看似限制更大；但滑块同时被切成 step² 张互换网，<b>谁能换到谁一眼就能看出</b> —— 很多时候反而更好判断。</li>
+          <li>尺寸从 3×3 的小盘到十几阶都有。觉得太难就降尺寸，觉得太简单就升级大盘。</li>
+        </ul>
+        <p class="note">命令行可以直接指定：<code>python main.py 6 6 2</code>（6×6、step 2）、<code>python main.py 6 6 1 tri</code>（三角）、<code>python main.py 4 4 1 mi</code>（米字）。</p>
+      </div>
+
+      <div class="card" id="control">
+        <h2>5. 操作方式与快捷键</h2>
+        <h3>三种控制模式（可任意组合，在 菜单 → 设置 → 控制 切换）</h3>
+        <table>
+          <tr><th style="width:120px">模式</th><th>怎么玩</th></tr>
+          <tr><td><b>单次触控</b></td><td>按住一个滑块，朝想滑的方向<b>拖动</b>就滑走。最省事，适合新手。</td></tr>
+          <tr><td><b>两次触控</b></td><td>点缝隙 → 点那一侧的方块（整组被选中）→ 拖动或按方向键。</td></tr>
+          <tr><td><b>鼠标键盘</b></td><td>鼠标选缝与选组，键盘下达移动指令；也可用虚拟键盘。</td></tr>
+        </table>
+        <h3>快捷键</h3>
+        <table>
+          <tr><th style="width:210px">按键</th><th>功能</th></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> ／ <kbd>Ctrl</kbd>+<kbd>X</kbd></td><td>撤销 ／ 重做</td></tr>
+          <tr><td><kbd>Alt</kbd>+<kbd>S</kbd></td><td>打乱</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>重置（回到打乱前）</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd> ／ <kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>保存 ／ 打开存档</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>自动求解<span class="tag tag-full">完整版</span>（数字／三角形态停用）</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>录制宏<span class="tag tag-full">完整版</span></td></tr>
+          <tr><td><kbd>F1</kbd> ／ <kbd>F2</kbd> ／ <kbd>F3</kbd></td><td>虚拟键盘 ／ 调试面板 ／ 成绩面板</td></tr>
+          <tr><td><kbd>空格</kbd></td><td>竞速开始／停止；也可取消选中</td></tr>
+          <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 或方向键</td><td>移动（三角是六向 <kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>D</kbd><kbd>Z</kbd><kbd>X</kbd>；米字不绑物理键盘）</td></tr>
+        </table>
+        <h3>手机 / 触控</h3>
+        <ul>
+          <li>单次／两次触控、虚拟键盘都能用，也可以在设置里关闭其中几种。</li>
+          <li><b>双指捏合</b>缩放视图，<b>单指拖空白处</b>平移画面；电脑上是滚轮缩放。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="mode">
+        <h2>6. 三种游戏模式</h2>
+        <ul>
+          <li><b>练习模式</b> —— 自由探索，不计时。熟悉规则就从这里开始。</li>
+          <li><b>竞速模式</b> —— 打乱后按<b>空格</b>开始计时，还原的瞬间自动停表并记录成绩。全程<b>禁用求解器与宏</b>，确保公平。</li>
+          <li><b>创造模式</b><span class="tag tag-full">完整版</span> —— 自己造题：「随机生成」挖洞（仅矩形／数字），或「手动构造」一格一格摆（矩形／三角／米字都可以）。造好后切回练习或竞速开始还原。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="score">
+        <h2>7. 成绩与竞速统计</h2>
+        <p>成绩按<b>谜题标签</b>分组保存 —— 也就是说 4×4 step2 和 6×6 step1 的记录是分开算的，同样是自己跟自己比。</p>
+        <table>
+          <tr><th style="width:120px">名词</th><th>意思</th></tr>
+          <tr><td><b>PB</b>（单次最佳）</td><td>这个谜题你最快的一次。</td></tr>
+          <tr><td><b>Ao5 / Ao12</b></td><td>最近 5／12 次的<b>去尾平均值</b>：去掉最快和最慢，剩下的平均。魔方速拧也用这套，避免一次运气好就「破纪录」。</td></tr>
+          <tr><td><b>DNF</b></td><td>这局不算数（中途放弃、或用了求解器）。它在统计里会被当成最差成绩处理。</td></tr>
+        </table>
+        <p class="note">成绩目前只存在你自己的电脑（或浏览器）里。<b>线上排行榜正在开发中</b>。</p>
+      </div>
+
+      <div class="card" id="solver">
+        <h2>8. 求解器 <span class="tag tag-full">完整版</span></h2>
+        <p>彻底卡住时可以按 <kbd>Ctrl</kbd>+<kbd>A</kbd> 呼叫，共有 8 种算法：从「智慧聚拢粗调」「补缺宏（单洞／多洞无缺口）」一路到「查表最快求解」。</p>
+        <ul>
+          <li>解的过程会<b>一步一步播放</b>出来，你可以把它当成实际教学片看。</li>
+          <li>它不是万能的：<b>有些局面它也解不开</b>，会给出一个尽力后的部分解。这游戏的难度是真实的。</li>
+          <li>数字／三角／米字形态暂不开放求解器；竞速模式下也禁用。</li>
+          <li>「查表求解器」需要额外下载数据包（见主页下载区），没装不会影响其它求解算法。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="macro">
+        <h2>9. 宏（自定义公式）<span class="tag tag-full">完整版</span></h2>
+        <p>把一段操作序列录下来、取名字保存起来，之后可以反复用，甚至逆序播放 —— 用法跟魔方的公式（OLL、PLL）是一个思路。<kbd>Ctrl</kbd>+<kbd>M</kbd> 开始录制。</p>
+        <p class="note">宏录的是「相对某个基准滑块的步骤」，所以在不同局面里也能套用。</p>
+      </div>
+
+      <div class="card" id="visual">
+        <h2>10. 视觉辅助：着色器与连锁器</h2>
+        <h3>着色器</h3>
+        <p><code>step &gt; 1</code> 时开启。滑块的描边颜色由<b>移动不变量</b>决定：<b>同色＝同一张互换网＝这几块永远可以互换位置</b>。开着它玩，很快就不用再猜「这块能不能挪到那里」。<code>step = 1</code> 时全盘只会是同一个颜色，没有资讯，所以预设不开。</p>
+        <h3>连锁器</h3>
+        <p>把鼠标移到某个格子（包括空格、包括洞）时，全场<b>与它同组的位置会一起提亮</b>。实际用途：<b>这个洞该由哪一块来补？</b>亮起来的就是答案。</p>
+        <ul>
+          <li>三角和米字会把「朝向」也算进同组，所以 1 级也能用。</li>
+          <li>只提亮当前画面范围内、整块都落在滑块范围里的位置（画到一半探出界的高亮没有意义）。</li>
+        </ul>
+      </div>
+
+      <div class="card" id="save">
+        <h2>11. 存档・导入导出</h2>
+        <ul>
+          <li><b>电脑版</b>：存档是标准的 <code>.json</code>，可以自己备份、也可以在别的电脑上打开。</li>
+          <li><b>手机 / 网页版</b>：存在浏览器里，游戏里有存档列表可以切换。</li>
+          <li><b>地图文本</b>：局面还能用纯文本表示（<code>#</code>＝有块，<code>_</code>＝空白），方便贴给朋友、贴到群里复现同一题。</li>
+        </ul>
+        <p class="note">完整版另外提供 HTTP REST API（<code>127.0.0.1:5050</code>）和 stdin 命令行接口，想写脚本自动跑或让 AI 接手都可以。</p>
+      </div>
+
+      <div class="card" id="faq">
+        <h2>12. 常见问题</h2>
+        <h3>一定要复原到最初的样子吗？</h3>
+        <p>不用。只要拼成一个完整的实心矩形就行，位置出现在画面哪里都不管。</p>
+        <h3>为什么我点了缝、点了块，却动不了？</h3>
+        <p>十之八九是那步<b>会让滑块断开</b>或<b>撞到别的滑块</b>。试着换一侧，或先在外面把路让出来。</p>
+        <h3>为什么有人能推加到斜的方向？</h3>
+        <p>那是三角或米字形态 —— 它们的缝本来就有斜的。矩形形态只能横推和纵推。</p>
+        <h3>越玩越觉得：这到底有没有解？</h3>
+        <p>目前<b>没有找到反例，但也没有严谨证明</b> —— 它可能牵涉到相当深的数学。貓九自己完整复原过几百次都成功了，可信度很高，但严格来说仍是猜想。<a href="math_question.html">相关数学问题</a>里有完整讨论。</p>
+        <h3>网页版跟完整版差在哪里？</h3>
+        <p>网页版定位是<b>试玩</b>：能玩、能计时、能存档，但求解器、四种形态、创造模式、宏这些都在 Windows / Python 版里。想认真玩就<a href="index.html#download">下载完整版</a>。</p>
+        <h3>发现 bug 想回报？</h3>
+        <p>到 GitHub 开 issue，或用貓九留的联系方式（QQ / QQ 邮箱，见游戏源码 README）。</p>
+      </div>
+
+      <div class="card">
+        <p style="margin:0">这份详解会随着版本更新而补充。看到讲不清楚的地方，<a href="https://github.com/Gatennea/GatenneaSliderWeb/issues" target="_blank" rel="noopener">到 GitHub 告诉貓九</a>。</p>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var button = document.getElementById('langSwitch');
+        function setLang(lang) {
+          document.body.dataset.lang = lang;
+          document.documentElement.lang = lang;
+          button.textContent = lang === 'zh-Hant' ? '切换为简体中文' : '切換為繁體中文';
+          try { localStorage.setItem('gatennea-guide-lang', lang); } catch (e) {}
+        }
+        var saved = null;
+        try { saved = localStorage.getItem('gatennea-guide-lang'); } catch (e) {}
+        setLang(saved === 'zh-Hans' || saved === 'zh-Hant' ? saved : 'zh-Hant');
+        button.addEventListener('click', function () {
+          setLang(document.body.dataset.lang === 'zh-Hant' ? 'zh-Hans' : 'zh-Hant');
+        });
+      })();
+    </script>
+  </body>
+</html>

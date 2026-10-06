@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>貓九的滑块游戏 — GatenneaSlider</title>
+    <title>貓九的滑塊遊戲 — GatenneaSlider：免費線上試玩與完整版下載</title>
+    <meta name="description" content="選一條縫、推一組方塊、把它們拼回一個實心長方形。規則 30 秒學得會，難度卻深不見底。四種形態、數不清的尺寸與等級，內建新手教程與求解器。網頁版免費試玩，Windows 完整版開源下載。" />
     <style>
       * { box-sizing: border-box; }
       body {
@@ -11,7 +12,7 @@
         background: #0d0d0f;
         color: #e6e6e6;
         font-family: system-ui, "Microsoft JhengHei", sans-serif;
-        line-height: 1.7;
+        line-height: 1.75;
       }
       .demo-bg {
         position: fixed;
@@ -21,8 +22,8 @@
         border: 0;
         z-index: 0;
         pointer-events: none;
-        opacity: 0.72;
-        filter: blur(1.5px) saturate(0.9);
+        opacity: 0.5;
+        filter: blur(1.5px) saturate(0.85);
         transform: scale(1.02);
       }
       .demo-overlay {
@@ -30,111 +31,274 @@
         inset: 0;
         z-index: 1;
         pointer-events: none;
-        background: linear-gradient(rgba(10,10,12,0.45), rgba(10,10,12,0.20));
+        background: linear-gradient(rgba(10,10,12,0.62), rgba(10,10,12,0.42));
       }
-      .wrap { position: relative; z-index: 2; max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
-      header {
-        background: rgba(25, 25, 30, 0.55);
-        backdrop-filter: blur(5px);
-        border: 1px solid #646464;
-        border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 24px;
-        text-align: center;
-      }
-      h1 { margin: 0; font-size: 28px; color: #fff; }
-      .subtitle { margin-top: 6px; color: #dcdcdc; font-size: 15px; }
-      .tags { margin-top: 10px; }
-      .tag {
-        display: inline-block;
-        background: #4696c8;
-        color: #fff;
-        border-radius: 20px;
-        padding: 2px 12px;
-        font-size: 13px;
-        margin: 3px 4px;
-      }
-      .enter-btn {
-        display: inline-block;
-        margin-top: 18px;
-        background: #4696c8;
-        color: #fff;
-        text-decoration: none;
-        padding: 12px 40px;
-        border-radius: 8px;
-        font-size: 18px;
-        font-weight: bold;
-      }
-      .enter-btn:hover { background: #5aa6d8; }
-      .donate .enter-btn { margin-top: 12px; padding: 10px 28px; font-size: 16px; }
+      .wrap { position: relative; z-index: 2; max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+      a { color: #5aa6d8; }
       .card {
-        background: rgba(25, 25, 30, 0.55);
-        backdrop-filter: blur(5px);
-        border: 1px solid #646464;
-        border-radius: 10px;
-        padding: 18px 20px;
+        background: rgba(22, 22, 27, 0.72);
+        backdrop-filter: blur(6px);
+        border: 1px solid #5a5a5a;
+        border-radius: 12px;
+        padding: 20px 22px;
         margin-bottom: 20px;
       }
       h2 {
-        margin: 0 0 10px;
-        font-size: 20px;
+        margin: 0 0 12px;
+        font-size: 21px;
         color: #fff;
         border-left: 4px solid #4696c8;
         padding-left: 10px;
       }
-      a { color: #5aa6d8; }
-      table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-      th, td { border: 1px solid #464646; padding: 8px; text-align: left; font-size: 14px; }
-      th { background: #323232; color: #fff; }
-      ul { padding-left: 20px; }
-      .imgs { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
-      .imgs figure { margin: 0; flex: 1 1 260px; }
-      .imgs img { width: 100%; border-radius: 8px; border: 1px solid #646464; }
-      .imgs figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 4px; }
-      .note { font-size: 13px; color: #aaa; }
-        .nav {
-          display: flex;
-          justify-content: center;
-          gap: 8px;
-          margin-bottom: 16px;
-        }
-        .nav a {
-          display: inline-block;
-          padding: 6px 18px;
-          border-radius: 20px;
-          font-size: 14px;
-          text-decoration: none;
-          color: #e6e6e6;
-          background: rgba(255,255,255,0.08);
-          border: 1px solid rgba(255,255,255,0.15);
-          transition: all 0.2s;
-        }
-        .nav a:hover {
-          background: #4696c8;
-          color: #fff;
-          border-color: #4696c8;
-        }
-        .lang-switch {
-          position: fixed;
-          top: 12px;
-          right: 12px;
-          z-index: 10;
-          background: rgba(30, 30, 35, 0.75);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          color: #fff;
-          border-radius: 20px;
-          padding: 6px 14px;
-          font-size: 14px;
-          cursor: pointer;
-          backdrop-filter: blur(6px);
-        }
-        .lang-switch:hover { background: rgba(70, 130, 180, 0.8); }
+      h3 { margin: 0 0 6px; font-size: 16px; color: #fff; }
+      .note { font-size: 13px; color: #a3a3a3; margin: 6px 0 0; }
+      ul { padding-left: 20px; margin: 8px 0; }
+      li { margin: 4px 0; }
+
+      /* ---------- 首屏 ---------- */
+      header.hero {
+        background: rgba(20, 24, 30, 0.72);
+        backdrop-filter: blur(6px);
+        border: 1px solid #5a5a5a;
+        border-radius: 14px;
+        padding: 32px 22px 26px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      .hero h1 { margin: 0; font-size: 30px; color: #fff; letter-spacing: 1px; }
+      .hero .brand-en {
+        display: block;
+        font-size: 14px;
+        letter-spacing: 3px;
+        color: #7fb6d6;
+        margin-top: 4px;
+        font-weight: normal;
+      }
+      .hook {
+        margin: 18px auto 0;
+        max-width: 620px;
+        font-size: 19px;
+        line-height: 1.6;
+        color: #ffffff;
+        background: linear-gradient(90deg, rgba(70,150,200,0.18), rgba(70,150,200,0.05));
+        border-left: 3px solid #4696c8;
+        border-radius: 8px;
+        padding: 12px 16px;
+      }
+      .hook em { color: #6fc0f0; font-style: normal; font-weight: bold; }
+      .hero-sub { margin: 14px 0 0; color: #cfcfcf; font-size: 15px; }
+      .btn-row {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+      .btn {
+        display: inline-block;
+        text-decoration: none;
+        border-radius: 10px;
+        font-weight: bold;
+        padding: 13px 30px;
+        font-size: 17px;
+        transition: all 0.18s;
+      }
+      .btn-primary { background: #4696c8; color: #fff; border: 1px solid #4696c8; }
+      .btn-primary:hover { background: #5aa6d8; border-color: #5aa6d8; }
+      .btn-ghost { background: rgba(255,255,255,0.06); color: #e6e6e6; border: 1px solid rgba(255,255,255,0.28); }
+      .btn-ghost:hover { background: rgba(255,255,255,0.14); color: #fff; }
+      .btn-sm { padding: 9px 20px; font-size: 14px; border-radius: 8px; }
+      .hero-note { max-width: 660px; margin: 16px auto 0; font-size: 13px; color: #a8a8a8; }
+      .hero-note strong { color: #d8d8d8; }
+
+      /* ---------- 三步演示 ---------- */
+      .steps { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 4px; }
+      .step {
+        flex: 1 1 240px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 10px;
+        padding: 12px;
+        text-align: center;
+      }
+      .step svg { display: block; margin: 0 auto 8px; }
+      .step b { display: block; color: #fff; font-size: 15px; }
+      .step span { display: block; font-size: 13px; color: #b5b5b5; margin-top: 3px; }
+
+      /* ---------- 卖点 ---------- */
+      .hook-box {
+        background: rgba(70,150,200,0.10);
+        border: 1px solid rgba(70,150,200,0.35);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        font-size: 15px;
+      }
+      .hook-box strong { color: #7fc6f2; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+      .feature {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+      .feature .ico { font-size: 20px; margin-right: 6px; }
+      .feature p { margin: 6px 0 0; font-size: 14px; color: #c6c6c6; }
+      .shapes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 4px; }
+      .shape {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+      }
+      .shape b { display: block; color: #fff; font-size: 15px; margin-top: 6px; }
+      .shape span { display: block; font-size: 12.5px; color: #b0b0b0; margin-top: 3px; line-height: 1.5; }
+
+      /* ---------- 下载 ---------- */
+      .dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+      .dl-box {
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 12px;
+        padding: 18px;
+        background: rgba(255,255,255,0.04);
+        position: relative;
+      }
+      .dl-box.dl-main {
+        border-color: #4696c8;
+        background: rgba(70,150,200,0.10);
+      }
+      .ribbon {
+        position: absolute;
+        top: -11px;
+        right: 14px;
+        background: #4696c8;
+        color: #fff;
+        font-size: 12px;
+        padding: 2px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+      }
+      .dl-box p { margin: 6px 0 0; font-size: 14px; color: #c6c6c6; }
+      .dl-box .btn { margin-top: 14px; display: inline-block; }
+      .pill {
+        display: inline-block;
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #d8d8d8;
+        font-size: 12px;
+        padding: 1px 10px;
+        border-radius: 20px;
+        vertical-align: middle;
+        margin-left: 6px;
+        font-weight: normal;
+      }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+      th, td { border: 1px solid #464646; padding: 7px 8px; text-align: left; }
+      th { background: rgba(255,255,255,0.07); color: #fff; }
+
+      /* ---------- 截图画廊（缺图自动占位） ---------- */
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 14px;
+        margin-top: 12px;
+      }
+      .pic { margin: 0; }
+      .pic-frame {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 8px;
+        border: 1px solid #5a5a5a;
+        background: rgba(255,255,255,0.03);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .pic-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .pic.missing .pic-frame {
+        border: 1px dashed #6d6d6d;
+        background: rgba(255,255,255,0.02);
+      }
+      .pic-hint { text-align: center; font-size: 12.5px; color: #949494; line-height: 1.7; padding: 8px 12px; }
+      .pic-hint .slot { display: block; color: #cfcfcf; font-size: 14px; margin-bottom: 3px; }
+      .pic-hint code { color: #7fb6d6; font-size: 11.5px; word-break: break-all; }
+      .pic-badge {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        font-size: 11px;
+        letter-spacing: 1px;
+        background: rgba(0,0,0,0.45);
+        color: #b9b9b9;
+        padding: 1px 8px;
+        border-radius: 20px;
+      }
+      .pic figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 5px; }
+      .pic.missing figcaption { color: #7e7e7e; }
+
+      /* ---------- 捐赠 / 页尾 ---------- */
+      .donate .btn { margin-top: 12px; padding: 10px 26px; font-size: 16px; }
+      footer.site {
+        text-align: center;
+        font-size: 13px;
+        color: #8f8f8f;
+        margin-top: 6px;
+        line-height: 1.9;
+      }
+      footer.site a { color: #5aa6d8; }
+
+      .nav {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .nav a {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        text-decoration: none;
+        color: #e6e6e6;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        transition: all 0.2s;
+      }
+      .nav a:hover {
+        background: #4696c8;
+        color: #fff;
+        border-color: #4696c8;
+      }
+      .lang-switch {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 10;
+        background: rgba(30, 30, 35, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        border-radius: 20px;
+        padding: 6px 14px;
+        font-size: 14px;
+        cursor: pointer;
+        backdrop-filter: blur(6px);
+      }
       .lang-switch:hover { background: rgba(70, 130, 180, 0.8); }
       .wrap[data-lang="zh-Hans"] { display: none; }
       body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hant"] { display: block; }
       body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hans"] { display: none; }
       body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hant"] { display: none; }
       body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hans"] { display: block; }
+      @media (max-width: 560px) {
+        .hero h1 { font-size: 24px; }
+        .hook { font-size: 17px; padding: 10px 12px; }
+        .btn { padding: 12px 22px; font-size: 16px; }
+        .wrap { padding: 16px 12px 48px; }
+      }
     </style>
   </head>
   <body data-lang="zh-Hant">
@@ -143,207 +307,571 @@
     <button class="lang-switch" id="langSwitch" type="button">切换为简体中文</button>
 
     <div class="wrap" data-lang="zh-Hant">
-      
+
       <nav class='nav'>
-        <a href='index.html'>主页</a>
-        <a href='update_info.html'>更新日志</a>
-        <a href='math_question.html'>相关数学问题</a>
-        <a href='https://ifdian.net/a/Gatennea' target='_blank' rel='noopener'>支持猫九</a>
-      
+        <a href='index.html'>主頁</a>
+        <a href='guide.html'>玩法詳解</a>
+        <a href='update_info.html'>動態・更新日誌</a>
+        <a href='math_question.html'>相關數學問題</a>
+        <a href='https://ifdian.net/a/Gatennea' target='_blank' rel='noopener'>支持貓九</a>
       </nav>
-      <header>
-        <h1>貓九的滑塊遊戲 GatenneaSlider</h1>
-        <div class="subtitle">分類：單機・益智・燒腦・競速</div>
-        <!-- <div class="tags"><span class="tag">滑塊</span><span class="tag">解謎</span><span class="tag">速擰</span><span class="tag">可競速</span></div> -->
-        <a class="enter-btn" href="game.html">▶ 進入遊戲</a>
+
+      <header class="hero">
+        <h1>貓九的滑塊遊戲<span class="brand-en">GATENNEASLIDER</span></h1>
+        <p class="hook">規則 <em>30 秒</em>就學得會。<br />要把這些方塊拼回實心長方形，可能需要 <em>幾萬步</em>。</p>
+        <p class="hero-sub">永久免費・程式碼開源・沒有廣告・不用安裝 —— 瀏覽器裡點開就能玩</p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="game.html">▶ 立即線上試玩</a>
+          <a class="btn btn-ghost" href="#download">⬇ 下載完整版</a>
+        </div>
+        <p class="hero-note">網頁版是 <strong>試玩</strong>：能玩、能教學、能計時、能存檔。<strong>求解器、四種形態、新手教程、視覺增強、競速統計</strong>這些完整功能，在 Windows / Python 版裡。</p>
       </header>
 
-      <section class="card">
-        <h2>這是什麼遊戲？</h2>
-        <p>這是貓九製作的第二款原創規則遊戲。玩家（或 AI）透過「選縫隙 → 選滑塊組 → 滑動」把打亂的方塊還原成一個完整的<strong>實心長方形</strong>（允許整體平移或旋轉方向，不是回到初始版面）。</p>
-        <p>它的難度非常高，適合邏輯思維強的人挑戰。</p>
-        <p>支援平台：瀏覽器 / Windows 系統 / Python + pygame 環境。</p>
-      </section>
-
-      <section class="card">
-        <h2>遊戲規則</h2>
-        <ul>
-          <li><strong>縫隙</strong>：方塊之間的空隙通道，分為橫向與縱向。</li>
-          <li><strong>一次完整移動</strong>：選縫隙 → 選滑塊組 → 移動。</li>
-          <li><strong>還原條件</strong>：把所有方塊拼成任意位置、任意方向的完整實心長方形。</li>
-        </ul>
-      </section>
-
-      <section class="card">
-        <h2>操作方式</h2>
-        <ul>
-          <li><strong>滑鼠/桌上型</strong>：點縫隙 → 點方塊 → W/A/S/D 或拖拽滑動；也可直接拖拽滑塊，依拖拽方向判定縫隙與滑動方向。</li>
-          <li><strong>手機/觸控</strong>：支援單次觸控（直接拖拽即滑動）、兩次觸控、虛擬鍵盤，也支援兩指捏合縮放與拖拽平移地圖。</li>
-          <li><strong>控制模式</strong>：單次觸控、兩次觸控、鼠標鍵盤控制可任意開關。</li>
-        </ul>
-      </section>
-
-      <section class="card">
-        <h2>功能</h2>
-        <ul>
-          <li>撤銷 / 重做 / 重置 / 自動打亂</li>
-          <li>練習模式與競速計時、DNF、成績面板（Ao5 / Ao12）</li>
-          <li>存檔：電腦可用原版格式 .json；手機可用瀏覽器內存檔列表</li>
-          <li>多種尺寸與難度的謎題</li>
-          <li>鼠標滾輪 / 兩指捏合縮放，視圖可平移</li>
-          <li>動畫：滑動動畫、選中動畫、撤銷/重做動畫佇列</li>
-        </ul>
-      </section>
-
-      <section class="card">
-        <h2>下載連結</h2>
-        <p>貓九把遊戲的不同部分拆成多個連結，供不同需要的人下載。</p>
-        <p>版本說明：核心上就是兩種架構，<strong>Web 版</strong>和 <strong>Python 版</strong>。</p>
-        <table>
-          <tr><th>版本</th><th>連結</th><th>需下載</th><th>依賴</th><th>介紹</th></tr>
-          <tr><td>Web 版</td><td><a href="game.html">點擊即玩</a></td><td>否</td><td>聯網・瀏覽器</td><td>功能較精簡</td></tr>
-          <tr><td>Win 版</td><td><a href="https://github.com/Gatennea/GatenneaSlider/releases/latest/download/GatenneaSlider-Windows.zip" target="_blank" rel="noopener">GitHub 下載</a></td><td>是</td><td>Windows 系統</td><td>完整版，由 Python 版編譯而來</td></tr>
-          <tr><td>離線 Web 版</td><td><a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">GitHub 下載</a></td><td>是</td><td>瀏覽器</td><td>功能較精簡</td></tr>
-          <tr><td>Python 版</td><td><a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">GitHub 下載</a></td><td>是</td><td>Python + pygame 環境</td><td>完整版</td></tr>
-          <tr><td>資料庫</td><td><a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">雲盤下載</a></td><td>是</td><td>Win 版 / Python 版遊戲</td><td>特殊功能（查表求解器資料）</td></tr>
-        </table>
-        <p class="note">說明：資料庫指的是遊戲功能「查表求解器」執行時需要的資料；若缺失，該求解器無法使用。因為它不是核心功能，且與遊戲更新互不相干，所以專門提供連結。</p>
-        <p class="note">Win 版版本號形如 v197-20261006：197 是 Git 提交數，20261006 是打包日期。連結固定指向最新版，以後發新版不用再改連結。</p>
-      </section>
-
-      <section class="card">
-        <h2>遊戲展示</h2>
-        <p>2025 年，貓九發布了遊戲構思，用正方體磁鐵（巴克球）展示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁鐵設計了一種高難度謎題：貓九滑塊</a></p>
-        <p>2026 年，計畫錄製遊戲介紹並發布到 B 站。</p>
-        <div class="imgs">
-          <figure><img src="images/1.新手教程.png" alt="新手教程" /><figcaption>新手教程</figcaption></figure>
-          <figure><img src="images/2.py版竞速中.png" alt="Python 版競速中" /><figcaption>Python 版競速中</figcaption></figure>
-          <figure><img src="images/3.求解器正在运行.png" alt="求解器運行中" /><figcaption>求解器運行中</figcaption></figure>
-          <figure><img src="images/4.网页版.png" alt="網頁版" /><figcaption>網頁版</figcaption></figure>
+      <section class="card" id="how">
+        <h2>怎麼玩：只有三個動作</h2>
+        <div class="steps">
+          <div class="step">
+            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="選縫隙示意">
+              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
+              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>① 選一條縫隙</b>
+            <span>方塊之間的通道，橫縫只能左右推，縱縫只能上下推</span>
+          </div>
+          <div class="step">
+            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="選滑塊組示意">
+              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
+              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>② 點縫隙的一側</b>
+            <span>縫會像一把刀，切出與該方塊連通的一整塊，整組一起帶走</span>
+          </div>
+          <div class="step">
+            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="滑動示意">
+              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
+              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
+              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
+            </svg>
+            <b>③ 沿縫的方向推</b>
+            <span>整組一起平移，方塊之間永遠不能斷開、不能重疊</span>
+          </div>
         </div>
-        <p>遊戲提供了多種尺寸和難度的謎題，適合不斷挑戰自己。更多內容待更新。</p>
+        <p><strong>還原條件</strong>：讓所有方塊構成一個完整的<strong>實心長方形</strong> —— 位置在哪裡不重要、橫著豎著都算，重點是沒有缺口、沒有空洞（不是要你回到初始版面）。</p>
+        <p>網站背景正在自動播放示範。想看詳細規則、術語、各種模式和快捷鍵，到<a href="guide.html">玩法詳解</a>。</p>
       </section>
 
-      <section class="card">
-        <h2>關於 Web 版</h2>
-        <p>目前 Web 版定位為「體驗版」：能玩、能還原、能計時、能存檔；部分進階功能不在 Web 版實現，完整功能請下載 Windows / Python 版本。</p>
-        <p class="note">最後更新時間：2026.10.6</p>
+      <section class="card" id="features">
+        <h2>為什麼值得一玩</h2>
+        <div class="hook-box">
+          <strong>看著簡單，玩著難。</strong>規則一分鐘就講完了，但你會發現「把方塊聚攏」和「把洞補起來」是兩件完全不同的事 —— 常常只剩最後兩三塊不聽話，卻要先把整盤拆開再繞回來。<strong>就連作者自己寫的求解器，也有解不開的局面。</strong>
+        </div>
+        <div class="grid">
+          <div class="feature">
+            <h3><span class="ico">🔲</span>四種謎題形態</h3>
+            <p>矩形、三角、米字、數字 —— 同一套規則，四種完全不同的手感。每種的連通方式與邊界都不一樣。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">📐</span>各種尺寸與等級</h3>
+            <p>從 3×3 的小盤到十幾階的大盤；<b>等級（step）</b>決定移動的距離單位 —— 每次只能平移 step 的整數倍。等級越高，方塊就會被數學規律切成越多張「互換網」，跨網的兩塊永遠換不了。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🎲</span>數不盡的變化</h3>
+            <p>每一局都是隨機打亂的。同一個尺寸同一個等級，也可以玩上百次不重樣，而且沒有「背答案」這回事。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🎓</span>新手教程</h3>
+            <p>不看任何說明也能上手：內建引導關卡，從最簡單的局面開始，一步步教你怎麼看縫、怎麼帶動方塊。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🤖</span>內建求解器</h3>
+            <p>徹底卡住時，讓程式幫你解：可以一步一步播放它的走法，也能只看它給出的思路。看 AI 犯難也挺有意思。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🎨</span>視覺增強</h3>
+            <p><b>著色器</b>按移動不變量替方塊描邊上色 —— 同色就代表「這幾塊永遠可以互換」；<b>連鎖器</b>在你指到某個空位時，把全場補得進那裡的位置一起提亮。哪些事辦得到、哪些辦不到，看一眼就知道。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🧮</span>涉及高深數學</h3>
+            <p>這套規則背後連著群論、置換、晶格自同構這些東西。有興趣可以看<a href="math_question.html">相關數學問題</a>。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">⏱️</span>可競速</h3>
+            <p>計時、DNF、Ao5 / Ao12 去尾平均 —— 和魔方速擰一樣的統計口徑，適合自己刷記錄。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🆓</span>開源・永久免費</h3>
+            <p>程式碼公開在 GitHub（AGPL-3.0）。永遠免費，永遠沒有廣告，也不會有一天突然收費。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="shapes">
+        <h2>四種形態：規則相同，腦子完全不同</h2>
+        <div class="shapes">
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="矩形形態">
+              <rect x="14" y="14" width="20" height="20" fill="#4696c8" /><rect x="38" y="14" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="14" width="20" height="20" fill="#4696c8" /><rect x="86" y="14" width="20" height="20" fill="#4696c8" />
+              <rect x="14" y="38" width="20" height="20" fill="#4696c8" /><rect x="38" y="38" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="38" width="20" height="20" fill="#4696c8" /><rect x="86" y="38" width="20" height="20" fill="#4696c8" />
+              <rect x="14" y="62" width="20" height="20" fill="#4696c8" /><rect x="38" y="62" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="62" width="20" height="20" fill="#4696c8" /><rect x="86" y="62" width="20" height="20" fill="#4696c8" />
+              <rect x="14" y="86" width="20" height="20" fill="#4696c8" /><rect x="38" y="86" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="86" width="20" height="20" fill="#4696c8" /><rect x="86" y="86" width="20" height="20" fill="#4696c8" />
+            </svg>
+            <b>矩形</b>
+            <span>最基礎的形態，方塊擺在方格裡，目標是拼回實心長方形</span>
+          </div>
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="三角形態">
+              <polygon points="60,12 36,55 84,55" fill="#8d63c8" />
+              <polygon points="12,102 36,55 60,102" fill="#6b4aa0" />
+              <polygon points="60,102 84,55 108,102" fill="#6b4aa0" />
+              <polygon points="36,55 12,102 60,102" fill="none" />
+              <line x1="36" y1="55" x2="84" y2="55" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="60" y1="12" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="36" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="84" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
+            </svg>
+            <b>三角</b>
+            <span>方塊是正三角形，密鋪成斜向座標；縫的方向、連通的定義全都換了一套</span>
+          </div>
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="米字形態">
+              <rect x="14" y="14" width="92" height="92" fill="#3f8f70" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="14" y1="14" x2="106" y2="106" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="106" y1="14" x2="14" y2="106" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="60" y1="14" x2="60" y2="106" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="14" y1="60" x2="106" y2="60" stroke="#0d0d0f" stroke-width="2" />
+            </svg>
+            <b>米字</b>
+            <span>每格被兩條對角線切成 4 塊直角小三角，滑塊數直接翻四倍 —— 光是搞清楚「動的是哪一塊」就夠嗆</span>
+          </div>
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="数字形態">
+              <rect x="14" y="14" width="26" height="26" fill="#c8a34a" /><rect x="44" y="14" width="26" height="26" fill="#c8a34a" />
+              <rect x="74" y="14" width="26" height="26" fill="#c8a34a" />
+              <rect x="14" y="44" width="26" height="26" fill="#c8a34a" /><rect x="44" y="44" width="26" height="26" fill="#c8a34a" />
+              <rect x="74" y="44" width="26" height="26" fill="#c8a34a" />
+              <rect x="14" y="74" width="26" height="26" fill="#c8a34a" /><rect x="44" y="74" width="26" height="26" fill="#c8a34a" />
+              <rect x="74" y="74" width="26" height="26" fill="#c8a34a" />
+              <text x="27" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">1</text>
+              <text x="57" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">2</text>
+              <text x="87" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">3</text>
+              <text x="27" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">4</text>
+              <text x="57" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">5</text>
+              <text x="87" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">6</text>
+              <text x="27" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">7</text>
+              <text x="57" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">8</text>
+              <text x="87" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">9</text>
+            </svg>
+            <b>數字</b>
+            <span>每塊方塊帶序號，還原要求順序也對 —— 難度直接再上一層</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="download">
+        <h2>下載</h2>
+        <div class="dl-grid">
+          <div class="dl-box">
+            <h3>線上試玩（網頁版）</h3>
+            <p>不用下載、不用安裝、不用註冊，點開就能玩。<strong>先用這個確定你想不想玩。</strong></p>
+            <p class="note">功能較精簡：以矩形形態和基礎計時、存檔為主。</p>
+            <a class="btn btn-primary btn-sm" href="game.html">▶ 現在就開始</a>
+          </div>
+          <div class="dl-box dl-main">
+            <span class="ribbon">推薦</span>
+            <h3>Windows 完整版</h3>
+            <p>四種形態 + 內建求解器 + 新手教程 + 視覺增強 + 競速統計 + 存檔匯出 —— 想認真玩就下載這個。</p>
+            <p class="note">解壓後雙擊 GatenneaSlider.exe 即可，不需要安裝 Python。首次啟動約 5 秒（殺毒軟體在掃），之後約 2 秒。</p>
+            <a class="btn btn-primary btn-sm" href="https://github.com/Gatennea/GatenneaSlider/releases/latest/download/GatenneaSlider-Windows.zip" target="_blank" rel="noopener">⬇ 下載 ZIP（約 31 MB）</a>
+          </div>
+        </div>
+        <p class="note" style="margin-top:14px">其他選擇：<a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">Python 原始碼</a>（裝好 pygame 直接跑）・<a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">離線網頁版</a>（整站打包，斷網也能玩）・<a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">查表求解器資料庫</a>（可選；沒裝只會讓「查表求解器」不可用，其它功能不受影響）。</p>
+        <p class="note">版本號長得像 <code>v197-20261006</code>：<code>197</code> 是 Git 提交數，<code>20261006</code> 是打包日期，一眼就能比出新舊。上面的下載連結固定指向最新版，不用到處找。</p>
+        <p class="note">程式沒有數位簽章，Windows SmartScreen 或 360 可能跳出攔截提示，選「仍要執行」即可。Release 頁面附了 SHA256 校驗值，下載後可用 <code>certutil -hashfile 檔名.zip SHA256</code> 核對。</p>
+      </section>
+
+      <section class="card" id="rank">
+        <h2>成績排行榜<span class="pill">開發中</span></h2>
+        <p>目前成績只保存在你自己的電腦或瀏覽器裡。貓九正在架設後端，做完之後你可以在網站上提交成績，跟其他人比誰解得更快、誰的 Ao5 更低。</p>
+        <p class="note">在那之前，先在完整版裡自己刷記錄吧 —— 計時口徑跟魔方速擰是一套（DNF / Ao5 / Ao12）。有想法或建議也歡迎告訴貓九。</p>
+      </section>
+
+      <section class="card" id="news">
+        <h2>動態與計畫</h2>
+        <ul>
+          <li><strong>已完成</strong>：四種形態（矩形 / 三角 / 米字 / 數字）、新手教程、內建求解器、著色與連鎖視覺增強、Windows 單檔發行、網站捐赠入口。</li>
+          <li><strong>正在做</strong>：成績排行榜後端（成績上傳與排名）、介面動效與視覺回饋優化、更多形態的求解器強度。</li>
+          <li><strong>在想</strong>：行動版體驗強化、自動更新機制、更多教程關卡。</li>
+        </ul>
+        <p>完整的版本歷史在<a href="update_info.html">動態・更新日誌</a>，裡面同時記錄網路版與 Python 版的改動。</p>
+      </section>
+
+      <section class="card" id="showcase">
+        <h2>遊戲展示</h2>
+        <p>2025 年，貓九發布了遊戲構思，用正方體磁鐵（巴克球）在實體桌面上演示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁鐵設計了一種高難度謎題：貓九滑塊</a>。</p>
+        <p class="note">下方的空格是<b>自動補位</b>的：只要把截圖放進網站的 <code>images/</code> 資料夾、檔名改成方框裡顯示的那個名字，重新整理頁面就會自動出現，不用改網頁。<br />建議挑：三種進階形態各一張、著色器與連鎖器各一張、成績面板一張、手機操作一張。</p>
+        <div class="gallery">
+          <figure class="pic" data-file="images/1.新手教程.png"><div class="pic-frame"></div><figcaption>新手教程</figcaption></figure>
+          <figure class="pic" data-file="images/2.py版竞速中.png"><div class="pic-frame"></div><figcaption>Python 版競速中</figcaption></figure>
+          <figure class="pic" data-file="images/3.求解器正在运行.png"><div class="pic-frame"></div><figcaption>求解器運行中</figcaption></figure>
+          <figure class="pic" data-file="images/4.网页版.png"><div class="pic-frame"></div><figcaption>網頁版</figcaption></figure>
+          <figure class="pic" data-file="images/5.矩形形態.png"><div class="pic-frame"></div><figcaption>矩形形態</figcaption></figure>
+          <figure class="pic" data-file="images/6.三角形態.png"><div class="pic-frame"></div><figcaption>三角形態</figcaption></figure>
+          <figure class="pic" data-file="images/7.米字形態.png"><div class="pic-frame"></div><figcaption>米字形態</figcaption></figure>
+          <figure class="pic" data-file="images/8.數字形態.png"><div class="pic-frame"></div><figcaption>數字形態</figcaption></figure>
+          <figure class="pic" data-file="images/9.著色器.png"><div class="pic-frame"></div><figcaption>著色器（按移動不變量上色）</figcaption></figure>
+          <figure class="pic" data-file="images/10.連鎖器.png"><div class="pic-frame"></div><figcaption>連鎖器（高亮連帶方塊）</figcaption></figure>
+          <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>選縫隙・箭頭按鍵</figcaption></figure>
+          <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成績面板（Ao5 / Ao12）</figcaption></figure>
+          <figure class="pic" data-file="images/13.手機觸控.png"><div class="pic-frame"></div><figcaption>手機・觸控操作</figcaption></figure>
+        </div>
+        <p class="note">以上截圖來自 Python 版 / 網頁版，實際介面可能隨版本略有不同。</p>
       </section>
 
       <section class="card donate">
         <h2>支持貓九</h2>
-        <p>這個遊戲完全免費、沒有廣告、程式碼開源。如果你玩得開心，可以在愛發電上支持一下 —— 它會變成我做下一關、下一個形態的時間。</p>
-        <a class="enter-btn" href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">去愛發電支持</a>
-        <p class="note">自願，不影響任何功能；不支持也歡迎常來玩。</p>
+        <p>這個遊戲完全免費、沒有廣告、程式碼開源。如果你玩得開心，可以在愛發電上支持一下 —— 它會變成貓九做下一關、下一個形態、下一個後端的時間。</p>
+        <a class="btn btn-primary" href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">去愛發電支持</a>
+        <p class="note">完全自願，不影響任何功能；不支持也一樣歡迎常來玩，把遊戲分享給朋友就是很大的幫助。</p>
       </section>
+
+      <footer class="site">
+        © 2026 貓九 ・ 以 <a href="https://github.com/Gatennea/GatenneaSlider/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a> 授權開源 ・ 永久免費，永無廣告<br />
+        <a href="https://github.com/Gatennea/GatenneaSlider" target="_blank" rel="noopener">遊戲原始碼</a> ・ <a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">網站原始碼</a> ・ <a href="update_info.html">更新日誌</a>
+      </footer>
     </div>
 
     <div class="wrap" data-lang="zh-Hans">
-      
+
       <nav class='nav'>
         <a href='index.html'>主页</a>
-        <a href='update_info.html'>更新日志</a>
+        <a href='guide.html'>玩法详解</a>
+        <a href='update_info.html'>动态・更新日志</a>
         <a href='math_question.html'>相关数学问题</a>
-        <a href='https://ifdian.net/a/Gatennea' target='_blank' rel='noopener'>支持猫九</a>
-      
+        <a href='https://ifdian.net/a/Gatennea' target='_blank' rel='noopener'>支持貓九</a>
       </nav>
-      <header>
-        <h1>猫九的滑块游戏 GatenneaSlider</h1>
-        <div class="subtitle">分类：单机・益智・烧脑・竞速</div>
-        <!-- <div class="tags"><span class="tag">滑块</span><span class="tag">解谜</span><span class="tag">速拧</span><span class="tag">可竞速</span></div> -->
-        <a class="enter-btn" href="game.html">▶ 进入游戏</a>
+
+      <header class="hero">
+        <h1>貓九的滑块游戏<span class="brand-en">GATENNEASLIDER</span></h1>
+        <p class="hook">规则 <em>30 秒</em>就学得会。<br />要把这些方块拼回实心长方形，可能需要 <em>几万步</em>。</p>
+        <p class="hero-sub">永久免费・代码开源・没有广告・不用安装 —— 浏览器里点开就能玩</p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="game.html">▶ 立即在线试玩</a>
+          <a class="btn btn-ghost" href="#download">⬇ 下载完整版</a>
+        </div>
+        <p class="hero-note">网页版是 <strong>试玩</strong>：能玩、能教学、能计时、能存档。<strong>求解器、四种形态、新手教程、视觉增强、竞速统计</strong>这些完整功能，在 Windows / Python 版里。</p>
       </header>
 
-      <section class="card">
-        <h2>这是什么游戏？</h2>
-        <p>这是猫九制作的第二款原创规则游戏。玩家（或 AI）通过「选缝隙 → 选滑块组 → 滑动」把打乱的方块还原成一个完整的<strong>实心长方形</strong>（允许整体平移或旋转方向，不是回到初始版面）。</p>
-        <p>它的难度非常高，适合逻辑思维强的玩家挑战。</p>
-        <p>支持平台：浏览器 / Windows 系统 / Python + pygame 环境。</p>
-      </section>
-
-      <section class="card">
-        <h2>游戏规则</h2>
-        <ul>
-          <li><strong>缝隙</strong>：方块之间的空隙通道，分为横向缝隙和纵向缝隙。</li>
-          <li><strong>一次完整移动</strong>：选缝隙 → 选滑块组 → 移动。</li>
-          <li><strong>还原条件</strong>：把所有方块拼成任意位置、任意方向的完整实心长方形。</li>
-        </ul>
-      </section>
-
-      <section class="card">
-        <h2>操作方式</h2>
-        <ul>
-          <li><strong>鼠标/桌面</strong>：点缝隙 → 点方块 → W/A/S/D 或拖拽滑动；也可以直接拖拽滑块，根据拖拽方向判定缝隙与滑动方向。</li>
-          <li><strong>手机/触控</strong>：支持单次触控（直接拖拽滑动）、两次触控、虚拟键盘，也支持双指捏合缩放与拖拽平移地图。</li>
-          <li><strong>控制模式</strong>：单次触控、两次触控、鼠标键盘控制可自由开关。</li>
-        </ul>
-      </section>
-
-      <section class="card">
-        <h2>功能</h2>
-        <ul>
-          <li>撤销 / 重做 / 重置 / 自动打乱</li>
-          <li>练习模式与竞速计时、DNF、成绩面板（Ao5 / Ao12）</li>
-          <li>存档：电脑可用原版格式 .json；手机可用浏览器内存档列表</li>
-          <li>多种尺寸与难度的谜题</li>
-          <li>鼠标滚轮 / 双指捏合缩放，视图可平移</li>
-          <li>动画：滑动动画、选中动画、撤销/重做动画队列</li>
-        </ul>
-      </section>
-
-      <section class="card">
-        <h2>下载链接</h2>
-        <p>猫九把游戏的不同部分拆成多个链接，供不同需要的人下载。</p>
-        <p>版本说明：核心上就是两种架构，<strong>Web 版</strong>和 <strong>Python 版</strong>。</p>
-        <table>
-          <tr><th>版本</th><th>链接</th><th>需下载</th><th>依赖</th><th>介绍</th></tr>
-          <tr><td>Web 版</td><td><a href="game.html">点击即玩</a></td><td>否</td><td>联网・浏览器</td><td>功能较精简</td></tr>
-          <tr><td>Win 版</td><td><a href="https://github.com/Gatennea/GatenneaSlider/releases/latest/download/GatenneaSlider-Windows.zip" target="_blank" rel="noopener">GitHub 下载</a></td><td>是</td><td>Windows 系统</td><td>完整版，由 Python 版编译而来</td></tr>
-          <tr><td>离线 Web 版</td><td><a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">GitHub 下载</a></td><td>是</td><td>浏览器</td><td>功能较精简</td></tr>
-          <tr><td>Python 版</td><td><a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">GitHub 下载</a></td><td>是</td><td>Python + pygame 环境</td><td>完整版</td></tr>
-          <tr><td>数据库</td><td><a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">网盘下载</a></td><td>是</td><td>Win 版 / Python 版游戏</td><td>特殊功能（查表求解器资料）</td></tr>
-        </table>
-        <p class="note">说明：数据库指的是游戏功能「查表求解器」运行时需要的数据；若缺失，该求解器无法使用。因为它不是核心功能，且与游戏更新互不相干，所以专门提供链接。</p>
-        <p class="note">Win 版版本号形如 v197-20261006：197 是 Git 提交数，20261006 是打包日期。链接固定指向最新版，以后发新版不用再改链接。</p>
-      </section>
-
-      <section class="card">
-        <h2>游戏展示</h2>
-        <p>2025 年，猫九发布了游戏构思，用正方体磁铁（巴克球）展示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[猫九]我用磁铁设计了一种高难度谜题：猫九滑块</a></p>
-        <p>2026 年，计划录制游戏介绍并发布到 B 站。</p>
-        <div class="imgs">
-          <figure><img src="images/1.新手教程.png" alt="新手教程" /><figcaption>新手教程</figcaption></figure>
-          <figure><img src="images/2.py版竞速中.png" alt="Python 版竞速中" /><figcaption>Python 版竞速中</figcaption></figure>
-          <figure><img src="images/3.求解器正在运行.png" alt="求解器运行中" /><figcaption>求解器运行中</figcaption></figure>
-          <figure><img src="images/4.网页版.png" alt="网页版" /><figcaption>网页版</figcaption></figure>
+      <section class="card" id="how">
+        <h2>怎么玩：只有三个动作</h2>
+        <div class="steps">
+          <div class="step">
+            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="选缝隙示意">
+              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
+              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>① 选一条缝隙</b>
+            <span>方块之间的通道，横缝只能左右推，纵缝只能上下推</span>
+          </div>
+          <div class="step">
+            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="选滑块组示意">
+              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
+              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
+              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
+            </svg>
+            <b>② 点缝隙的一侧</b>
+            <span>缝会像一把刀，切出与该方块连通的一整块，整组一起带走</span>
+          </div>
+          <div class="step">
+            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="滑动示意">
+              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
+              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
+              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
+              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
+              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
+              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
+            </svg>
+            <b>③ 沿缝的方向推</b>
+            <span>整组一起平移，方块之间永远不能断开、不能重叠</span>
+          </div>
         </div>
-        <p>游戏提供了多种尺寸和难度的谜题，适合不断挑战自己。更多内容待更新。</p>
+        <p><strong>还原条件</strong>：让所有方块构成一个完整的<strong>实心长方形</strong> —— 位置在哪里不重要、横着竖着都算，重点是没有缺口、没有空洞（不是要你回到初始版面）。</p>
+        <p>网站背景正在自动播放演示。想看详细规则、术语、各种模式和快捷键，到<a href="guide.html">玩法详解</a>。</p>
       </section>
 
-      <section class="card">
-        <h2>关于 Web 版</h2>
-        <p>目前 Web 版定位为「体验版」：能玩、能还原、能计时、能存档；部分进阶功能不在 Web 版实现，完整功能请下载 Windows / Python 版本。</p>
-        <p class="note">最后更新时间：2026.10.6</p>
+      <section class="card" id="features">
+        <h2>为什么值得一玩</h2>
+        <div class="hook-box">
+          <strong>看着简单，玩着难。</strong>规则一分钟就讲完了，但你会发现「把方块聚拢」和「把洞补起来」是两件完全不同的事 —— 常常只剩最后两三块不听话，却要先把整盘拆开再绕回来。<strong>就连作者自己写的求解器，也有解不开的局面。</strong>
+        </div>
+        <div class="grid">
+          <div class="feature">
+            <h3><span class="ico">🔲</span>四种谜题形态</h3>
+            <p>矩形、三角、米字、数字 —— 同一套规则，四种完全不同的手感。每种的连通方式与边界都不一样。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">📐</span>各种尺寸与等级</h3>
+            <p>从 3×3 的小盘到十几阶的大盘；<b>等级（step）</b>决定移动的距离单位 —— 每次只能平移 step 的整数倍。等级越高，方块就会被数学规律切成越多张「互换网」，跨网的两块永远换不了。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🎲</span>数不尽的变化</h3>
+            <p>每一局都是随机打乱的。同一个尺寸同一个等级，也可以玩上百次不重样，而且没有「背答案」这回事。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🎓</span>新手教程</h3>
+            <p>不看任何说明也能上手：内置引导关卡，从最简单的局面开始，一步步教你怎么看缝、怎么带动方块。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🤖</span>内置求解器</h3>
+            <p>彻底卡住时，让程序帮你解：可以一步一步播放它的走法，也能只看它给出的思路。看 AI 犯难也挺有意思。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🎨</span>视觉增强</h3>
+            <p><b>着色器</b>按移动不变量给方块描边上色 —— 同色就代表「这几块永远可以互换」；<b>连锁器</b>在你指到某个空位时，把全场补得进那里的位置一起提亮。哪些事办得到、哪些办不到，看一眼就知道。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🧮</span>涉及高深数学</h3>
+            <p>这套规则背后连着群论、置换、晶格自同构这些东西。有兴趣可以看<a href="math_question.html">相关数学问题</a>。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">⏱️</span>可竞速</h3>
+            <p>计时、DNF、Ao5 / Ao12 去尾平均 —— 和魔方速拧一样的统计口径，适合自己刷记录。</p>
+          </div>
+          <div class="feature">
+            <h3><span class="ico">🆓</span>开源・永久免费</h3>
+            <p>代码公开在 GitHub（AGPL-3.0）。永远免费，永远没有广告，也不会有一天突然收费。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="shapes">
+        <h2>四种形态：规则相同，脑子完全不同</h2>
+        <div class="shapes">
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="矩形形态">
+              <rect x="14" y="14" width="20" height="20" fill="#4696c8" /><rect x="38" y="14" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="14" width="20" height="20" fill="#4696c8" /><rect x="86" y="14" width="20" height="20" fill="#4696c8" />
+              <rect x="14" y="38" width="20" height="20" fill="#4696c8" /><rect x="38" y="38" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="38" width="20" height="20" fill="#4696c8" /><rect x="86" y="38" width="20" height="20" fill="#4696c8" />
+              <rect x="14" y="62" width="20" height="20" fill="#4696c8" /><rect x="38" y="62" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="62" width="20" height="20" fill="#4696c8" /><rect x="86" y="62" width="20" height="20" fill="#4696c8" />
+              <rect x="14" y="86" width="20" height="20" fill="#4696c8" /><rect x="38" y="86" width="20" height="20" fill="#4696c8" />
+              <rect x="62" y="86" width="20" height="20" fill="#4696c8" /><rect x="86" y="86" width="20" height="20" fill="#4696c8" />
+            </svg>
+            <b>矩形</b>
+            <span>最基础的形态，方块摆在方格里，目标是拼回实心长方形</span>
+          </div>
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="三角形态">
+              <polygon points="60,12 36,55 84,55" fill="#8d63c8" />
+              <polygon points="12,102 36,55 60,102" fill="#6b4aa0" />
+              <polygon points="60,102 84,55 108,102" fill="#6b4aa0" />
+              <line x1="36" y1="55" x2="84" y2="55" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="60" y1="12" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="36" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="84" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
+            </svg>
+            <b>三角</b>
+            <span>方块是正三角形，密铺成斜向坐标；缝的方向、连通的定义全都换了一套</span>
+          </div>
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="米字形态">
+              <rect x="14" y="14" width="92" height="92" fill="#3f8f70" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="14" y1="14" x2="106" y2="106" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="106" y1="14" x2="14" y2="106" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="60" y1="14" x2="60" y2="106" stroke="#0d0d0f" stroke-width="2" />
+              <line x1="14" y1="60" x2="106" y2="60" stroke="#0d0d0f" stroke-width="2" />
+            </svg>
+            <b>米字</b>
+            <span>每格被两条对角线切成 4 块直角小三角，滑块数直接翻四倍 —— 光是搞清楚「动的是哪一块」就够呛</span>
+          </div>
+          <div class="shape">
+            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="数字形态">
+              <rect x="14" y="14" width="26" height="26" fill="#c8a34a" /><rect x="44" y="14" width="26" height="26" fill="#c8a34a" />
+              <rect x="74" y="14" width="26" height="26" fill="#c8a34a" />
+              <rect x="14" y="44" width="26" height="26" fill="#c8a34a" /><rect x="44" y="44" width="26" height="26" fill="#c8a34a" />
+              <rect x="74" y="44" width="26" height="26" fill="#c8a34a" />
+              <rect x="14" y="74" width="26" height="26" fill="#c8a34a" /><rect x="44" y="74" width="26" height="26" fill="#c8a34a" />
+              <rect x="74" y="74" width="26" height="26" fill="#c8a34a" />
+              <text x="27" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">1</text>
+              <text x="57" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">2</text>
+              <text x="87" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">3</text>
+              <text x="27" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">4</text>
+              <text x="57" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">5</text>
+              <text x="87" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">6</text>
+              <text x="27" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">7</text>
+              <text x="57" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">8</text>
+              <text x="87" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">9</text>
+            </svg>
+            <b>数字</b>
+            <span>每块方块带序号，还原要求顺序也对 —— 难度直接再上一层</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="download">
+        <h2>下载</h2>
+        <div class="dl-grid">
+          <div class="dl-box">
+            <h3>在线试玩（网页版）</h3>
+            <p>不用下载、不用安装、不用注册，点开就能玩。<strong>先用这个确定你想不想玩。</strong></p>
+            <p class="note">功能较精简：以矩形形态和基础计时、存档为主。</p>
+            <a class="btn btn-primary btn-sm" href="game.html">▶ 现在就开始</a>
+          </div>
+          <div class="dl-box dl-main">
+            <span class="ribbon">推荐</span>
+            <h3>Windows 完整版</h3>
+            <p>四种形态 + 内置求解器 + 新手教程 + 视觉增强 + 竞速统计 + 存档导出 —— 想认真玩就下载这个。</p>
+            <p class="note">解压后双击 GatenneaSlider.exe 即可，不需要安装 Python。首次启动约 5 秒（杀毒软件在扫），之后约 2 秒。</p>
+            <a class="btn btn-primary btn-sm" href="https://github.com/Gatennea/GatenneaSlider/releases/latest/download/GatenneaSlider-Windows.zip" target="_blank" rel="noopener">⬇ 下载 ZIP（约 31 MB）</a>
+          </div>
+        </div>
+        <p class="note" style="margin-top:14px">其他选择：<a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">Python 源码</a>（装好 pygame 直接跑）・<a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">离线网页版</a>（整站打包，断网也能玩）・<a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">查表求解器数据库</a>（可选；没装只会让「查表求解器」不可用，其它功能不受影响）。</p>
+        <p class="note">版本号长得像 <code>v197-20261006</code>：<code>197</code> 是 Git 提交数，<code>20261006</code> 是打包日期，一眼就能比出新旧。上面的下载链接固定指向最新版，不用到处找。</p>
+        <p class="note">程序没有数字签名，Windows SmartScreen 或 360 可能弹出拦截提示，选「仍要运行」即可。Release 页面附了 SHA256 校验值，下载后可用 <code>certutil -hashfile 文件名.zip SHA256</code> 核对。</p>
+      </section>
+
+      <section class="card" id="rank">
+        <h2>成绩排行榜<span class="pill">开发中</span></h2>
+        <p>目前成绩只保存在你自己的电脑或浏览器里。貓九正在架设后端，做完之后你可以在网站上提交成绩，跟其他人比谁解得更快、谁的 Ao5 更低。</p>
+        <p class="note">在那之前，先在完整版里自己刷记录吧 —— 计时口径跟魔方速拧是一套（DNF / Ao5 / Ao12）。有想法或建议也欢迎告诉貓九。</p>
+      </section>
+
+      <section class="card" id="news">
+        <h2>动态与计划</h2>
+        <ul>
+          <li><strong>已完成</strong>：四种形态（矩形 / 三角 / 米字 / 数字）、新手教程、内置求解器、着色与连锁视觉增强、Windows 单档发行、网站捐赠入口。</li>
+          <li><strong>正在做</strong>：成绩排行榜后端（成绩上传与排名）、界面动效与视觉反馈优化、更多形态的求解器强度。</li>
+          <li><strong>在想</strong>：手机版体验强化、自动更新机制、更多教程关卡。</li>
+        </ul>
+        <p>完整的版本历史在<a href="update_info.html">动态・更新日志</a>，里面同时记录网页版与 Python 版的改动。</p>
+      </section>
+
+      <section class="card" id="showcase">
+        <h2>游戏展示</h2>
+        <p>2025 年，貓九发布了游戏构思，用正方体磁铁（巴克球）在实体桌面上演示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁铁设计了一种高难度谜题：貓九滑块</a>。</p>
+        <p class="note">下方的空格是<b>自动补位</b>的：只要把截图放进网站的 <code>images/</code> 文件夹、文件名改成方框里显示的那个名字，刷新页面就会自动出现，不用改网页。<br />建议挑：三种进阶形态各一张、着色器与连锁器各一张、成绩面板一张、手机操作一张。</p>
+        <div class="gallery">
+          <figure class="pic" data-file="images/1.新手教程.png"><div class="pic-frame"></div><figcaption>新手教程</figcaption></figure>
+          <figure class="pic" data-file="images/2.py版竞速中.png"><div class="pic-frame"></div><figcaption>Python 版竞速中</figcaption></figure>
+          <figure class="pic" data-file="images/3.求解器正在运行.png"><div class="pic-frame"></div><figcaption>求解器运行中</figcaption></figure>
+          <figure class="pic" data-file="images/4.网页版.png"><div class="pic-frame"></div><figcaption>网页版</figcaption></figure>
+          <figure class="pic" data-file="images/5.矩形形態.png"><div class="pic-frame"></div><figcaption>矩形形态</figcaption></figure>
+          <figure class="pic" data-file="images/6.三角形態.png"><div class="pic-frame"></div><figcaption>三角形态</figcaption></figure>
+          <figure class="pic" data-file="images/7.米字形態.png"><div class="pic-frame"></div><figcaption>米字形态</figcaption></figure>
+          <figure class="pic" data-file="images/8.數字形態.png"><div class="pic-frame"></div><figcaption>数字形态</figcaption></figure>
+          <figure class="pic" data-file="images/9.著色器.png"><div class="pic-frame"></div><figcaption>着色器（按移动不变量上色）</figcaption></figure>
+          <figure class="pic" data-file="images/10.連鎖器.png"><div class="pic-frame"></div><figcaption>连锁器（高亮连带方块）</figcaption></figure>
+          <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>选缝隙・箭头按键</figcaption></figure>
+          <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成绩面板（Ao5 / Ao12）</figcaption></figure>
+          <figure class="pic" data-file="images/13.手機觸控.png"><div class="pic-frame"></div><figcaption>手机・触控操作</figcaption></figure>
+        </div>
+        <p class="note">以上截图来自 Python 版 / 网页版，实际界面可能随版本略有不同。</p>
       </section>
 
       <section class="card donate">
-        <h2>支持猫九</h2>
-        <p>这个游戏完全免费、没有广告、代码开源。如果你玩得开心，可以在爱发电上支持一下 —— 它会变成我做下一关、下一个形态的时间。</p>
-        <a class="enter-btn" href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">去爱发电支持</a>
-        <p class="note">自愿，不影响任何功能；不支持也欢迎常来玩。</p>
+        <h2>支持貓九</h2>
+        <p>这个游戏完全免费、没有广告、代码开源。如果你玩得开心，可以在爱发电上支持一下 —— 它会变成貓九做下一关、下一个形态、下一个后端的时间。</p>
+        <a class="btn btn-primary" href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">去爱发电支持</a>
+        <p class="note">完全自愿，不影响任何功能；不支持也一样欢迎常来玩，把游戏分享给朋友就是很大的帮助。</p>
       </section>
+
+      <footer class="site">
+        © 2026 貓九 ・ 以 <a href="https://github.com/Gatennea/GatenneaSlider/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a> 授权开源 ・ 永久免费，永无广告<br />
+        <a href="https://github.com/Gatennea/GatenneaSlider" target="_blank" rel="noopener">游戏源码</a> ・ <a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">网站源码</a> ・ <a href="update_info.html">更新日志</a>
+      </footer>
     </div>
 
     <script>
       (function () {
         var button = document.getElementById('langSwitch');
+        // 画廊：图存在就显示，不存在就留一个虚线空位并提示该放哪个文件名。
+        // 好处是把截图丢进 images/、按提示命名，刷新即可补位，不必再改 HTML。
+        var HINT = {
+          'zh-Hant': ['待補截圖', '放這個路徑後重新整理就會出現'],
+          'zh-Hans': ['待补截图', '放这个路径后刷新就会出现']
+        };
+        function renderGallery(lang) {
+          var pics = document.querySelectorAll('.pic');
+          var words = HINT[lang] || HINT['zh-Hant'];
+          for (var i = 0; i < pics.length; i++) {
+            (function (pic) {
+              var file = pic.getAttribute('data-file') || '';
+              var frame = pic.querySelector('.pic-frame');
+              if (!frame) return;
+              if (pic.getAttribute('data-state') === 'ok') return;
+              var img = new Image();
+              img.onload = function () {
+                pic.setAttribute('data-state', 'ok');
+                pic.classList.remove('missing');
+                img.className = 'pic-img';
+                img.alt = (pic.querySelector('figcaption') || {}).textContent || '';
+                frame.innerHTML = '';
+                frame.appendChild(img);
+              };
+              img.onerror = function () {
+                pic.setAttribute('data-state', 'missing');
+                pic.classList.add('missing');
+                frame.innerHTML =
+                  '<span class="pic-badge">TODO</span>' +
+                  '<div class="pic-hint"><span class="slot">' + words[0] + '</span>' +
+                  '<code>' + file + '</code><br />' + words[1] + '</div>';
+              };
+              img.src = file;
+            })(pics[i]);
+          }
+        }
         function setLang(lang) {
           document.body.dataset.lang = lang;
           document.documentElement.lang = lang;
-          button.textContent = lang === 'zh-Hant' ? '切换为简体中文' : '切换为繁體中文';
+          button.textContent = lang === 'zh-Hant' ? '切换为简体中文' : '切換為繁體中文';
           document.title = lang === 'zh-Hant'
-            ? '貓九的滑塊遊戲 GatenneaSlider'
-            : '猫九的滑块游戏 GatenneaSlider';
+            ? '貓九的滑塊遊戲 — GatenneaSlider：免費線上試玩與完整版下載'
+            : '貓九的滑块游戏 — GatenneaSlider：免费在线试玩与完整版下载';
+          renderGallery(lang);
           try { localStorage.setItem('gatennea-home-lang', lang); } catch (e) {}
         }
         var saved = null;
