@@ -26,7 +26,7 @@
       }
       .nav a {
         display: inline-block;
-        padding: 6px 16px;
+        padding: 6px 18px;
         border-radius: 20px;
         font-size: 14px;
         text-decoration: none;
@@ -37,8 +37,13 @@
       }
       .nav a:hover { background: #4696c8; color: #fff; border-color: #4696c8; }
       .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
-      h1 { text-align: center; font-size: 24px; color: #fff; margin: 8px 0 6px; }
-      .sub { text-align: center; font-size: 14px; color: #9a9a9a; margin: 0 0 22px; }
+      h1 { text-align: center; font-size: 24px; color: #fff; margin: 24px 0 6px; }
+      .sub {
+        text-align: center;
+        font-size: 13px;
+        color: #9a9a9a;
+        margin: 0 0 24px;
+      }
       .card {
         background: rgba(25, 25, 30, 0.55);
         backdrop-filter: blur(5px);
@@ -142,26 +147,37 @@
         overflow: hidden;
       }
       .pic-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-      body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hant"] { display: none; }
-      body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hans"] { display: none; }
+      body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hant"],
+      body[data-lang="zh-Hans"] nav[data-lang="zh-Hant"] { display: none; }
+      body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hans"],
+      body[data-lang="zh-Hant"] nav[data-lang="zh-Hans"] { display: none; }
       @media (max-width: 600px) {
         .toc { columns: 1; }
         .wrap { padding: 16px 12px 48px; }
+        /* 右上角有固定语言按钮，窄屏时给导航条让出位置，避免被压住 */
+        .nav { padding-top: 52px; }
       }
     </style>
   </head>
   <body data-lang="zh-Hant">
     <button class="lang-switch" id="langSwitch" type="button">切换为简体中文</button>
 
-    <div class="wrap" data-lang="zh-Hant">
-      <nav>
-        <a href="index.html">主頁</a>
-        <a href="guide.html">玩法詳解</a>
-        <a href="update_info.html">動態・更新日誌</a>
-        <a href="math_question.html">相關數學問題</a>
-        <a href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">支持貓九</a>
-      </nav>
+    <nav class="nav" data-lang="zh-Hant">
+      <a href="index.html">主頁</a>
+      <a href="guide.html">玩法詳解</a>
+      <a href="update_info.html">動態・更新日誌</a>
+      <a href="math_question.html">相關數學問題</a>
+      <a href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">支持貓九</a>
+    </nav>
+    <nav class="nav" data-lang="zh-Hans">
+      <a href="index.html">主页</a>
+      <a href="guide.html">玩法详解</a>
+      <a href="update_info.html">动态・更新日志</a>
+      <a href="math_question.html">相关数学问题</a>
+      <a href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">支持貓九</a>
+    </nav>
 
+    <div class="wrap" data-lang="zh-Hant">
       <h1>玩法詳解</h1>
       <p class="sub">從規則到術語，一次講清楚。<span class="tag tag-full">完整版</span>標記的功能只在 Windows / Python 版提供。</p>
 
@@ -383,14 +399,6 @@
     </div>
 
     <div class="wrap" data-lang="zh-Hans">
-      <nav>
-        <a href="index.html">主页</a>
-        <a href="guide.html">玩法详解</a>
-        <a href="update_info.html">动态・更新日志</a>
-        <a href="math_question.html">相关数学问题</a>
-        <a href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">支持貓九</a>
-      </nav>
-
       <h1>玩法详解</h1>
       <p class="sub">从规则到术语，一次讲清楚。<span class="tag tag-full">完整版</span>标记的功能只在 Windows / Python 版提供。</p>
 
