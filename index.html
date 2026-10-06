@@ -112,19 +112,26 @@
       .hero-note strong { color: #d8d8d8; }
 
       /* ---------- 三步演示 ---------- */
-      .steps { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 4px; }
-      .step {
-        flex: 1 1 240px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 10px;
-        padding: 12px;
-        text-align: center;
-      }
-      .step svg { display: block; margin: 0 auto 8px; }
-      .step b { display: block; color: #fff; font-size: 15px; }
+      .steps { display: flex; gap: 16px; flex-wrap: wrap; margin: 6px 0 4px; align-items: center; }
+      .step { flex: 1 1 260px; text-align: center; }
+      .step .pic-frame { max-width: 360px; margin: 0 auto; }
+      .step b { display: block; color: #fff; font-size: 15px; margin-top: 8px; }
       .step span { display: block; font-size: 13px; color: #b5b5b5; margin-top: 3px; }
-
+      .how-list { flex: 1 1 300px; text-align: left; margin: 0; padding-left: 4px; }
+      .how-list li { margin: 10px 0; list-style: none; }
+      .how-list b { color: #fff; }
+      .how-list .n {
+        display: inline-block;
+        background: #4696c8;
+        color: #fff;
+        border-radius: 50%;
+        width: 22px; height: 22px;
+        line-height: 22px;
+        text-align: center;
+        font-size: 13px;
+        margin-right: 8px;
+      }
+      /* 形态卡片 */
       /* ---------- 卖点 ---------- */
       .hook-box {
         background: rgba(70,150,200,0.10);
@@ -142,9 +149,9 @@
         border-radius: 10px;
         padding: 14px 16px;
       }
-      .feature .ico { font-size: 20px; margin-right: 6px; }
       .feature p { margin: 6px 0 0; font-size: 14px; color: #c6c6c6; }
-      .shapes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 4px; }
+      .shapes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 4px; }
+      .shape .pic-frame { aspect-ratio: 16 / 10; }
       .shape {
         background: rgba(255,255,255,0.04);
         border: 1px solid rgba(255,255,255,0.12);
@@ -331,52 +338,15 @@
         <h2>怎麼玩：只有三個動作</h2>
         <div class="steps">
           <div class="step">
-            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="選縫隙示意">
-              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
-              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>① 選一條縫隙</b>
-            <span>方塊之間的通道，橫縫只能左右推，縱縫只能上下推</span>
+            <div class="pic-frame"><img class="pic-img" src="images/11.縫隙與箭頭按鍵.png" alt="選中縫隙與滑塊組，兩側是方向按鍵" /></div>
+            <b>遊戲實際長這樣</b>
+            <span>紅色是選中的縫，綠色是整組被帶走的滑塊，兩側是方向按鍵</span>
           </div>
-          <div class="step">
-            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="選滑塊組示意">
-              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
-              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>② 點縫隙的一側</b>
-            <span>縫會像一把刀，切出與該方塊連通的一整塊，整組一起帶走</span>
-          </div>
-          <div class="step">
-            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="滑動示意">
-              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
-              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
-              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
-            </svg>
-            <b>③ 沿縫的方向推</b>
-            <span>整組一起平移，方塊之間永遠不能斷開、不能重疊</span>
-          </div>
+          <ol class="how-list">
+            <li><span class="n">1</span><b>選一條縫</b>：橫縫只能左右推，豎縫只能上下推。</li>
+            <li><span class="n">2</span><b>點縫的某一側</b>：與那塊連通的一整片整組被選中，一起動。</li>
+            <li><span class="n">3</span><b>沿縫的方向推</b>：整組一起平移，不能斷開、不能重疊。</li>
+          </ol>
         </div>
         <p><strong>還原條件</strong>：讓所有方塊構成一個完整的<strong>實心長方形</strong> —— 位置在哪裡不重要、橫著豎著都算，重點是沒有缺口、沒有空洞（不是要你回到初始版面）。</p>
         <p>網站背景正在自動播放示範。想看詳細規則、術語、各種模式和快捷鍵，到<a href="guide.html">玩法詳解</a>。</p>
@@ -385,43 +355,43 @@
       <section class="card" id="features">
         <h2>為什麼值得一玩</h2>
         <div class="hook-box">
-          <strong>看著簡單，玩著難。</strong>規則一分鐘就講完了，但你會發現「把方塊聚攏」和「把洞補起來」是兩件完全不同的事 —— 常常只剩最後兩三塊不聽話，卻要先把整盤拆開再繞回來。<strong>就連作者自己寫的求解器，也有解不開的局面。</strong>
+          <strong>看著簡單，玩著難。</strong>規則一分鐘就講完，但「看起來能走的那一步」常常是陷阱 —— 走錯一步，可能得先把整盤拆開繞回來。<strong>就連作者自己寫的求解器，也有解不開的局面。</strong>
         </div>
         <div class="grid">
           <div class="feature">
-            <h3><span class="ico">🔲</span>四種謎題形態</h3>
+            <h3>四種謎題形態</h3>
             <p>矩形、三角、米字、數字 —— 同一套規則，四種完全不同的手感。每種的連通方式與邊界都不一樣。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">📐</span>各種尺寸與等級</h3>
+            <h3>各種尺寸與等級</h3>
             <p>從 3×3 的小盤到十幾階的大盤；<b>等級（step）</b>決定移動的距離單位 —— 每次只能平移 step 的整數倍。等級越高，方塊就會被數學規律切成越多張「互換網」，跨網的兩塊永遠換不了。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🎲</span>數不盡的變化</h3>
+            <h3>數不盡的變化</h3>
             <p>每一局都是隨機打亂的。同一個尺寸同一個等級，也可以玩上百次不重樣，而且沒有「背答案」這回事。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🎓</span>新手教程</h3>
+            <h3>新手教程</h3>
             <p>不看任何說明也能上手：內建引導關卡，從最簡單的局面開始，一步步教你怎麼看縫、怎麼帶動方塊。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🤖</span>內建求解器</h3>
+            <h3>內建求解器</h3>
             <p>徹底卡住時，讓程式幫你解：可以一步一步播放它的走法，也能只看它給出的思路。看 AI 犯難也挺有意思。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🎨</span>視覺增強</h3>
+            <h3>視覺增強</h3>
             <p><b>著色器</b>按移動不變量替方塊描邊上色 —— 同色就代表「這幾塊永遠可以互換」；<b>連鎖器</b>在你指到某個空位時，把全場補得進那裡的位置一起提亮。哪些事辦得到、哪些辦不到，看一眼就知道。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🧮</span>涉及高深數學</h3>
+            <h3>涉及高深數學</h3>
             <p>這套規則背後連著群論、置換、晶格自同構這些東西。有興趣可以看<a href="math_question.html">相關數學問題</a>。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">⏱️</span>可競速</h3>
+            <h3>可競速</h3>
             <p>計時、DNF、Ao5 / Ao12 去尾平均 —— 和魔方速擰一樣的統計口徑，適合自己刷記錄。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🆓</span>開源・永久免費</h3>
+            <h3>開源・永久免費</h3>
             <p>程式碼公開在 GitHub（AGPL-3.0）。永遠免費，永遠沒有廣告，也不會有一天突然收費。</p>
           </div>
         </div>
@@ -431,62 +401,22 @@
         <h2>四種形態：規則相同，腦子完全不同</h2>
         <div class="shapes">
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="矩形形態">
-              <rect x="14" y="14" width="20" height="20" fill="#4696c8" /><rect x="38" y="14" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="14" width="20" height="20" fill="#4696c8" /><rect x="86" y="14" width="20" height="20" fill="#4696c8" />
-              <rect x="14" y="38" width="20" height="20" fill="#4696c8" /><rect x="38" y="38" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="38" width="20" height="20" fill="#4696c8" /><rect x="86" y="38" width="20" height="20" fill="#4696c8" />
-              <rect x="14" y="62" width="20" height="20" fill="#4696c8" /><rect x="38" y="62" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="62" width="20" height="20" fill="#4696c8" /><rect x="86" y="62" width="20" height="20" fill="#4696c8" />
-              <rect x="14" y="86" width="20" height="20" fill="#4696c8" /><rect x="38" y="86" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="86" width="20" height="20" fill="#4696c8" /><rect x="86" y="86" width="20" height="20" fill="#4696c8" />
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/5.矩形形態.png" alt="矩形形态截图" /></div>
             <b>矩形</b>
             <span>最基礎的形態，方塊擺在方格裡，目標是拼回實心長方形</span>
           </div>
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="三角形態">
-              <polygon points="60,12 36,55 84,55" fill="#8d63c8" />
-              <polygon points="12,102 36,55 60,102" fill="#6b4aa0" />
-              <polygon points="60,102 84,55 108,102" fill="#6b4aa0" />
-              <polygon points="36,55 12,102 60,102" fill="none" />
-              <line x1="36" y1="55" x2="84" y2="55" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="60" y1="12" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="36" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="84" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/6.三角形態.png" alt="三角形态截图" /></div>
             <b>三角</b>
             <span>方塊是正三角形，密鋪成斜向座標；縫的方向、連通的定義全都換了一套</span>
           </div>
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="米字形態">
-              <rect x="14" y="14" width="92" height="92" fill="#3f8f70" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="14" y1="14" x2="106" y2="106" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="106" y1="14" x2="14" y2="106" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="60" y1="14" x2="60" y2="106" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="14" y1="60" x2="106" y2="60" stroke="#0d0d0f" stroke-width="2" />
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/7.米字形態.png" alt="米字形态截图" /></div>
             <b>米字</b>
             <span>每格被兩條對角線切成 4 塊直角小三角，滑塊數直接翻四倍 —— 光是搞清楚「動的是哪一塊」就夠嗆</span>
           </div>
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="数字形態">
-              <rect x="14" y="14" width="26" height="26" fill="#c8a34a" /><rect x="44" y="14" width="26" height="26" fill="#c8a34a" />
-              <rect x="74" y="14" width="26" height="26" fill="#c8a34a" />
-              <rect x="14" y="44" width="26" height="26" fill="#c8a34a" /><rect x="44" y="44" width="26" height="26" fill="#c8a34a" />
-              <rect x="74" y="44" width="26" height="26" fill="#c8a34a" />
-              <rect x="14" y="74" width="26" height="26" fill="#c8a34a" /><rect x="44" y="74" width="26" height="26" fill="#c8a34a" />
-              <rect x="74" y="74" width="26" height="26" fill="#c8a34a" />
-              <text x="27" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">1</text>
-              <text x="57" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">2</text>
-              <text x="87" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">3</text>
-              <text x="27" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">4</text>
-              <text x="57" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">5</text>
-              <text x="87" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">6</text>
-              <text x="27" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">7</text>
-              <text x="57" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">8</text>
-              <text x="87" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">9</text>
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/8.數字形態.png" alt="数字形态截图" /></div>
             <b>數字</b>
             <span>每塊方塊帶序號，還原要求順序也對 —— 難度直接再上一層</span>
           </div>
@@ -591,52 +521,15 @@
         <h2>怎么玩：只有三个动作</h2>
         <div class="steps">
           <div class="step">
-            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="选缝隙示意">
-              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
-              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>① 选一条缝隙</b>
-            <span>方块之间的通道，横缝只能左右推，纵缝只能上下推</span>
+            <div class="pic-frame"><img class="pic-img" src="images/11.縫隙與箭頭按鍵.png" alt="选中缝隙与滑块组，两侧是方向按键" /></div>
+            <b>游戏实际长这样</b>
+            <span>红色是选中的缝，绿色是整组被带走的滑块，两侧是方向按键</span>
           </div>
-          <div class="step">
-            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="选滑块组示意">
-              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
-              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>② 点缝隙的一侧</b>
-            <span>缝会像一把刀，切出与该方块连通的一整块，整组一起带走</span>
-          </div>
-          <div class="step">
-            <svg width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="滑动示意">
-              <rect x="10" y="10" width="100" height="100" fill="none" stroke="#3a3a3a" />
-              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
-              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
-            </svg>
-            <b>③ 沿缝的方向推</b>
-            <span>整组一起平移，方块之间永远不能断开、不能重叠</span>
-          </div>
+          <ol class="how-list">
+            <li><span class="n">1</span><b>选一条缝</b>：横缝只能左右推，竖缝只能上下推。</li>
+            <li><span class="n">2</span><b>点缝的某一侧</b>：与那块连通的一整片整组被选中，一起动。</li>
+            <li><span class="n">3</span><b>沿缝的方向推</b>：整组一起平移，不能断开、不能重叠。</li>
+          </ol>
         </div>
         <p><strong>还原条件</strong>：让所有方块构成一个完整的<strong>实心长方形</strong> —— 位置在哪里不重要、横着竖着都算，重点是没有缺口、没有空洞（不是要你回到初始版面）。</p>
         <p>网站背景正在自动播放演示。想看详细规则、术语、各种模式和快捷键，到<a href="guide.html">玩法详解</a>。</p>
@@ -645,43 +538,43 @@
       <section class="card" id="features">
         <h2>为什么值得一玩</h2>
         <div class="hook-box">
-          <strong>看着简单，玩着难。</strong>规则一分钟就讲完了，但你会发现「把方块聚拢」和「把洞补起来」是两件完全不同的事 —— 常常只剩最后两三块不听话，却要先把整盘拆开再绕回来。<strong>就连作者自己写的求解器，也有解不开的局面。</strong>
+          <strong>看着简单，玩着难。</strong>规则一分钟讲完，但「看起来能走的那一步」常常是陷阱 —— 走错一步，可能得先把整盘拆开绕回来。<strong>就连作者自己写的求解器，也有解不开的局面。</strong>
         </div>
         <div class="grid">
           <div class="feature">
-            <h3><span class="ico">🔲</span>四种谜题形态</h3>
+            <h3>四种谜题形态</h3>
             <p>矩形、三角、米字、数字 —— 同一套规则，四种完全不同的手感。每种的连通方式与边界都不一样。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">📐</span>各种尺寸与等级</h3>
+            <h3>各种尺寸与等级</h3>
             <p>从 3×3 的小盘到十几阶的大盘；<b>等级（step）</b>决定移动的距离单位 —— 每次只能平移 step 的整数倍。等级越高，方块就会被数学规律切成越多张「互换网」，跨网的两块永远换不了。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🎲</span>数不尽的变化</h3>
+            <h3>数不尽的变化</h3>
             <p>每一局都是随机打乱的。同一个尺寸同一个等级，也可以玩上百次不重样，而且没有「背答案」这回事。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🎓</span>新手教程</h3>
+            <h3>新手教程</h3>
             <p>不看任何说明也能上手：内置引导关卡，从最简单的局面开始，一步步教你怎么看缝、怎么带动方块。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🤖</span>内置求解器</h3>
+            <h3>内置求解器</h3>
             <p>彻底卡住时，让程序帮你解：可以一步一步播放它的走法，也能只看它给出的思路。看 AI 犯难也挺有意思。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🎨</span>视觉增强</h3>
+            <h3>视觉增强</h3>
             <p><b>着色器</b>按移动不变量给方块描边上色 —— 同色就代表「这几块永远可以互换」；<b>连锁器</b>在你指到某个空位时，把全场补得进那里的位置一起提亮。哪些事办得到、哪些办不到，看一眼就知道。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🧮</span>涉及高深数学</h3>
+            <h3>涉及高深数学</h3>
             <p>这套规则背后连着群论、置换、晶格自同构这些东西。有兴趣可以看<a href="math_question.html">相关数学问题</a>。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">⏱️</span>可竞速</h3>
+            <h3>可竞速</h3>
             <p>计时、DNF、Ao5 / Ao12 去尾平均 —— 和魔方速拧一样的统计口径，适合自己刷记录。</p>
           </div>
           <div class="feature">
-            <h3><span class="ico">🆓</span>开源・永久免费</h3>
+            <h3>开源・永久免费</h3>
             <p>代码公开在 GitHub（AGPL-3.0）。永远免费，永远没有广告，也不会有一天突然收费。</p>
           </div>
         </div>
@@ -691,61 +584,22 @@
         <h2>四种形态：规则相同，脑子完全不同</h2>
         <div class="shapes">
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="矩形形态">
-              <rect x="14" y="14" width="20" height="20" fill="#4696c8" /><rect x="38" y="14" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="14" width="20" height="20" fill="#4696c8" /><rect x="86" y="14" width="20" height="20" fill="#4696c8" />
-              <rect x="14" y="38" width="20" height="20" fill="#4696c8" /><rect x="38" y="38" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="38" width="20" height="20" fill="#4696c8" /><rect x="86" y="38" width="20" height="20" fill="#4696c8" />
-              <rect x="14" y="62" width="20" height="20" fill="#4696c8" /><rect x="38" y="62" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="62" width="20" height="20" fill="#4696c8" /><rect x="86" y="62" width="20" height="20" fill="#4696c8" />
-              <rect x="14" y="86" width="20" height="20" fill="#4696c8" /><rect x="38" y="86" width="20" height="20" fill="#4696c8" />
-              <rect x="62" y="86" width="20" height="20" fill="#4696c8" /><rect x="86" y="86" width="20" height="20" fill="#4696c8" />
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/5.矩形形態.png" alt="矩形形态截图" /></div>
             <b>矩形</b>
             <span>最基础的形态，方块摆在方格里，目标是拼回实心长方形</span>
           </div>
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="三角形态">
-              <polygon points="60,12 36,55 84,55" fill="#8d63c8" />
-              <polygon points="12,102 36,55 60,102" fill="#6b4aa0" />
-              <polygon points="60,102 84,55 108,102" fill="#6b4aa0" />
-              <line x1="36" y1="55" x2="84" y2="55" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="60" y1="12" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="36" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="84" y1="55" x2="60" y2="102" stroke="#0d0d0f" stroke-width="2" />
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/6.三角形態.png" alt="三角形态截图" /></div>
             <b>三角</b>
             <span>方块是正三角形，密铺成斜向坐标；缝的方向、连通的定义全都换了一套</span>
           </div>
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="米字形态">
-              <rect x="14" y="14" width="92" height="92" fill="#3f8f70" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="14" y1="14" x2="106" y2="106" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="106" y1="14" x2="14" y2="106" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="60" y1="14" x2="60" y2="106" stroke="#0d0d0f" stroke-width="2" />
-              <line x1="14" y1="60" x2="106" y2="60" stroke="#0d0d0f" stroke-width="2" />
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/7.米字形態.png" alt="米字形态截图" /></div>
             <b>米字</b>
             <span>每格被两条对角线切成 4 块直角小三角，滑块数直接翻四倍 —— 光是搞清楚「动的是哪一块」就够呛</span>
           </div>
           <div class="shape">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="数字形态">
-              <rect x="14" y="14" width="26" height="26" fill="#c8a34a" /><rect x="44" y="14" width="26" height="26" fill="#c8a34a" />
-              <rect x="74" y="14" width="26" height="26" fill="#c8a34a" />
-              <rect x="14" y="44" width="26" height="26" fill="#c8a34a" /><rect x="44" y="44" width="26" height="26" fill="#c8a34a" />
-              <rect x="74" y="44" width="26" height="26" fill="#c8a34a" />
-              <rect x="14" y="74" width="26" height="26" fill="#c8a34a" /><rect x="44" y="74" width="26" height="26" fill="#c8a34a" />
-              <rect x="74" y="74" width="26" height="26" fill="#c8a34a" />
-              <text x="27" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">1</text>
-              <text x="57" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">2</text>
-              <text x="87" y="33" font-size="16" fill="#1a1a1a" text-anchor="middle">3</text>
-              <text x="27" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">4</text>
-              <text x="57" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">5</text>
-              <text x="87" y="63" font-size="16" fill="#1a1a1a" text-anchor="middle">6</text>
-              <text x="27" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">7</text>
-              <text x="57" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">8</text>
-              <text x="87" y="93" font-size="16" fill="#1a1a1a" text-anchor="middle">9</text>
-            </svg>
+            <div class="pic-frame"><img class="pic-img" src="images/8.數字形態.png" alt="数字形态截图" /></div>
             <b>数字</b>
             <span>每块方块带序号，还原要求顺序也对 —— 难度直接再上一层</span>
           </div>

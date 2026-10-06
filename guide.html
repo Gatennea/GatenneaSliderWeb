@@ -37,17 +37,18 @@
       }
       .nav a:hover { background: #4696c8; color: #fff; border-color: #4696c8; }
       .wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
-      h1 { text-align: center; font-size: 25px; color: #fff; margin: 8px 0 6px; }
+      h1 { text-align: center; font-size: 24px; color: #fff; margin: 8px 0 6px; }
       .sub { text-align: center; font-size: 14px; color: #9a9a9a; margin: 0 0 22px; }
       .card {
         background: rgba(25, 25, 30, 0.55);
-        border: 1px solid #5a5a5a;
+        backdrop-filter: blur(5px);
+        border: 1px solid #646464;
         border-radius: 10px;
         padding: 18px 20px;
-        margin-bottom: 18px;
+        margin-bottom: 20px;
       }
       h2 {
-        font-size: 19px;
+        font-size: 17px;
         color: #fff;
         border-left: 4px solid #4696c8;
         padding-left: 10px;
@@ -112,10 +113,35 @@
         backdrop-filter: blur(6px);
       }
       .lang-switch:hover { background: rgba(70, 130, 180, 0.85); }
-      .steps { display: flex; gap: 12px; flex-wrap: wrap; }
-      .step { flex: 1 1 200px; text-align: center; }
-      .step b { display: block; color: #fff; font-size: 14.5px; margin-top: 2px; }
+      .steps { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+      .step { flex: 1 1 260px; text-align: center; }
+      .step .pic-frame { max-width: 360px; margin: 0 auto; }
+      .step b { display: block; color: #fff; font-size: 14.5px; margin-top: 8px; }
       .step span { display: block; font-size: 12.5px; color: #a8a8a8; line-height: 1.6; }
+      .how-list { flex: 1 1 300px; text-align: left; margin: 0; padding-left: 4px; }
+      .how-list li { margin: 10px 0; list-style: none; }
+      .how-list b { color: #fff; }
+      .how-list .n {
+        display: inline-block;
+        background: #4696c8;
+        color: #fff;
+        border-radius: 50%;
+        width: 22px; height: 22px;
+        line-height: 22px;
+        text-align: center;
+        font-size: 13px;
+        margin-right: 8px;
+      }
+      .pic-frame {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 8px;
+        border: 1px solid #646464;
+        background: rgba(255,255,255,0.03);
+        overflow: hidden;
+      }
+      .pic-img { width: 100%; height: 100%; object-fit: cover; display: block; }
       body[data-lang="zh-Hans"] .wrap[data-lang="zh-Hant"] { display: none; }
       body[data-lang="zh-Hant"] .wrap[data-lang="zh-Hans"] { display: none; }
       @media (max-width: 600px) {
@@ -161,52 +187,18 @@
         <h2>1. 基本規則：三個動作、三條鐵律</h2>
         <div class="steps">
           <div class="step">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="選縫隙">
-              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>① 選一條縫</b>
-            <span>拿起一把刀，準備切下去</span>
+            <div class="pic-frame"><img class="pic-img" src="images/11.縫隙與箭頭按鍵.png" alt="選中縫隙與滑塊組" /></div>
+            <b>遊戲實際長這樣</b>
+            <span>紅色是選中的縫，綠色是整組被帶走的滑塊</span>
           </div>
-          <div class="step">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="選滑塊組">
-              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>② 點縫的某一側</b>
-            <span>那一側、跟這塊連成一片的，整組被帶走</span>
-          </div>
-          <div class="step">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="滑動">
-              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
-              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
-            </svg>
-            <b>③ 沿著縫推</b>
-            <span>整組一起平移 <code>step</code> 格</span>
-          </div>
+          <ol class="how-list">
+            <li><span class="n">1</span><b>選一條縫</b>：橫縫只能左右推，豎縫只能上下推。</li>
+            <li><span class="n">2</span><b>點縫的某一側</b>：與那塊連通的一整片整組被選中。</li>
+            <li><span class="n">3</span><b>沿縫的方向推</b>：整組一起平移 step 格。</li>
+          </ol>
         </div>
         <div class="warn">
-          ⚠️ <b>縫不是被推的東西，縫是一把刀。</b>同一條縫，你點上面那塊還是點下面那塊，被帶走的完全不同 —— 選之前先想清楚你要切哪一邊。
+          <b>縫不是被推的東西，縫是一把刀。</b>同一條縫，你點上面那塊還是點下面那塊，被帶走的完全不同 —— 選之前先想清楚你要切哪一邊。
         </div>
         <h3>三條鐵律（任何時候都不能違反）</h3>
         <ol>
@@ -226,10 +218,6 @@
           <tr><td>縫隙（gap）</td><td>滑塊之間的空隙通道。方形的縫分<b>橫縫</b>（行與行之間，只能左右推）和<b>豎縫</b>（列與列之間，只能上下推）。</td></tr>
           <tr><td>滑塊組（group）</td><td>被縫切出來的、與你點的那塊<b>連通</b>的一整片。是整片一起動，不是只有你點的那塊。</td></tr>
           <tr><td>等級 / 步距（step）</td><td>每次移動的距離單位。選中的組整體平移 <code>step</code> 的整數倍。標籤寫成 <code>2~4*4</code>＝4×4、step 2。</td></tr>
-          <tr><td>缺角 / 缺口 / 孔洞</td><td>沒被填滿的地方。邊緣凹進去叫缺口，外面一圈完整、中間漏一塊叫孔洞 —— 孔洞比缺口難處理得多。</td></tr>
-          <tr><td>移動不變量</td><td>不管你怎麼走都不會變的東西。方形是 <code>(行 % step, 列 % step)</code>：它把滑塊分成好幾張<b>互換網</b>，同一網內的兩塊永遠可以互換位置，跨網的永遠不行。</td></tr>
-          <tr><td>互換網 / 著色</td><td>同一個移動不變量值的滑塊集合。著色器用顏色把網畫出來 —— 同色＝同一張網＝這幾塊永遠可以互換。</td></tr>
-          <tr><td>錯位態（米字）</td><td>斜著走一步後，棋盤會錯開半格，很多橫豎縫會失效。再沿斜向走一格就能錯回來。</td></tr>
           <tr><td>DNF</td><td>Did Not Finish，該次不算成績（自己放棄、或用了解題器）。</td></tr>
         </table>
       </div>
@@ -243,28 +231,28 @@
             <td>方塊排在方格裡</td>
             <td>橫縫 ↔ ／豎縫 ↕，共 4 向</td>
             <td>任意位置的實心 m×n 矩形（轉 90° 也算）</td>
-            <td class="c">✅</td>
+            <td class="c">可用</td>
           </tr>
           <tr>
             <td><b>三角</b></td>
             <td>由 k² 個小正三角形拼成的大正三角</td>
             <td>縫有<b>三族</b>（水平、+60°、−60°），滑動<b>六向</b>：<kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>D</kbd><kbd>Z</kbd><kbd>X</kbd>，正好排成六邊形</td>
             <td>實心大正三角，可平移或轉 120°（<b>上下顛倒不行</b>）</td>
-            <td class="c">❌</td>
+            <td class="c">暫不支援</td>
           </tr>
           <tr>
             <td><b>米字</b></td>
             <td>每個方格被兩條對角線切成 4 個直角三角，滑塊數是 4mn</td>
             <td>縫有<b>四族</b>（橫邊、豎邊、兩條對角線），滑動<b>八向</b>，鍵位只在<b>虛擬鍵盤</b>（<kbd>F1</kbd>）上</td>
             <td>實心 m×n 米字矩陣，可平移；<b>錯開半格也算復原</b></td>
-            <td class="c">❌</td>
+            <td class="c">暫不支援</td>
           </tr>
           <tr>
             <td><b>數字</b>（帶序號）</td>
             <td>矩形 + 每塊帶編號（從 1 開始，按行主序）</td>
             <td>同矩形</td>
             <td>除了拼成實心矩形，編號還要沿某個方向<b>嚴格遞增</b>（允許整體旋轉／鏡像）</td>
-            <td class="c">❌</td>
+            <td class="c">暫不支援</td>
           </tr>
         </table>
         <div class="warn">
@@ -278,7 +266,7 @@
         <p>一個謎題由三個數字決定：<b>尺寸</b>（幾乘幾）和<b>等級 step</b>。</p>
         <ul>
           <li><b>step = 1</b>：一次動一格，最自由。但也因為太自由，著色器提供的資訊是「全盤同一種顏色」＝沒有資訊（所以 1 級不開著色）。</li>
-          <li><b>step = 2、3…</b>：一次要平移 step 的整數倍，看似限制更大；但滑塊同時被切成 step² 張互換網，<b>誰能換到誰一眼就能看出</b> —— 很多時候反而更好判斷。</li>
+          <li><b>step = 2、3…</b>：一次要平移 step 的整數倍，看似限制更大；但<b>哪些方塊永遠換不到彼此</b>是有規律的，等級越高反而越好推理。</li>
           <li>尺寸從 3×3 的小盤到十幾階都有。覺得太難就降尺寸，覺得太簡單就升級大盤。</li>
         </ul>
         <p class="note">命令行可以直接指定：<code>python main.py 6 6 2</code>（6×6、step 2）、<code>python main.py 6 6 1 tri</code>（三角）、<code>python main.py 4 4 1 mi</code>（米字）。</p>
@@ -354,7 +342,7 @@
       <div class="card" id="visual">
         <h2>10. 視覺輔助：著色器與連鎖器</h2>
         <h3>著色器</h3>
-        <p><code>step &gt; 1</code> 時開啟。滑塊的描邊顏色由<b>移動不變量</b>決定：<b>同色＝同一張互換網＝這幾塊永遠可以互換位置</b>。開著它玩，很快就不用再猜「這塊能不能挪到那裡」。<code>step = 1</code> 時全盤只會是同一個顏色，沒有資訊，所以預設不開。</p>
+        <p><code>step &gt; 1</code> 時開啟。滑塊的描邊顏色由<b>位置除以 step 的餘數</b>決定：<b>同色＝同一組＝這幾塊永遠可以互換位置</b>。開著它玩，很快就不用再猜「這塊能不能挪到那裡」。<code>step = 1</code> 時全盤只會是同一個顏色，沒有資訊，所以預設不開。</p>
         <h3>連鎖器</h3>
         <p>把滑鼠移到某個格子（包括空格、包括洞）時，全場<b>與它同組的位置會一起提亮</b>。實際用途：<b>這個洞該由哪一塊來補？</b>亮起來的就是答案。</p>
         <ul>
@@ -428,52 +416,18 @@
         <h2>1. 基本规则：三个动作、三条铁律</h2>
         <div class="steps">
           <div class="step">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="选缝隙">
-              <rect x="12" y="14" width="18" height="18" fill="#3f4a56" /><rect x="36" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="38" width="18" height="18" fill="#3f4a56" /><rect x="36" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="62" width="18" height="18" fill="#3f4a56" /><rect x="36" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="12" y="86" width="18" height="18" fill="#3f4a56" /><rect x="36" y="86" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>① 选一条缝</b>
-            <span>拿起一把刀，准备切下去</span>
+            <div class="pic-frame"><img class="pic-img" src="images/11.縫隙與箭頭按鍵.png" alt="选中缝隙与滑块组" /></div>
+            <b>游戏实际长这样</b>
+            <span>红色是选中的缝，绿色是整组被带走的滑块</span>
           </div>
-          <div class="step">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="选滑块组">
-              <rect x="12" y="14" width="18" height="18" fill="#6fd06f" /><rect x="36" y="14" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="38" width="18" height="18" fill="#6fd06f" /><rect x="36" y="38" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="62" width="18" height="18" fill="#6fd06f" /><rect x="36" y="62" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="86" width="18" height="18" fill="#6fd06f" /><rect x="36" y="86" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="14" width="18" height="18" fill="#3f4a56" /><rect x="84" y="14" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="38" width="18" height="18" fill="#3f4a56" /><rect x="84" y="38" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="62" width="18" height="18" fill="#3f4a56" /><rect x="84" y="62" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="86" width="18" height="18" fill="#3f4a56" /><rect x="84" y="86" width="18" height="18" fill="#3f4a56" />
-              <line x1="56" y1="8" x2="56" y2="112" stroke="#e8564a" stroke-width="4" stroke-linecap="round" />
-            </svg>
-            <b>② 点缝的某一侧</b>
-            <span>那一侧、跟这块连成一片的，整组被带走</span>
-          </div>
-          <div class="step">
-            <svg width="96" height="96" viewBox="0 0 120 120" role="img" aria-label="滑动">
-              <rect x="12" y="6" width="18" height="18" fill="#6fd06f" /><rect x="36" y="6" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="30" width="18" height="18" fill="#6fd06f" /><rect x="36" y="30" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="54" width="18" height="18" fill="#6fd06f" /><rect x="36" y="54" width="18" height="18" fill="#6fd06f" />
-              <rect x="12" y="78" width="18" height="18" fill="#6fd06f" /><rect x="36" y="78" width="18" height="18" fill="#6fd06f" />
-              <rect x="60" y="30" width="18" height="18" fill="#3f4a56" /><rect x="84" y="30" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="54" width="18" height="18" fill="#3f4a56" /><rect x="84" y="54" width="18" height="18" fill="#3f4a56" />
-              <rect x="60" y="78" width="18" height="18" fill="#3f4a56" /><rect x="84" y="78" width="18" height="18" fill="#3f4a56" />
-              <path d="M26 84 L26 104 M20 98 L26 104 L32 98" stroke="#8fd6ff" stroke-width="3" fill="none" stroke-linecap="round" />
-            </svg>
-            <b>③ 沿着缝推</b>
-            <span>整组一起平移 <code>step</code> 格</span>
-          </div>
+          <ol class="how-list">
+            <li><span class="n">1</span><b>选一条缝</b>：横缝只能左右推，竖缝只能上下推。</li>
+            <li><span class="n">2</span><b>点缝的某一侧</b>：与那块连通的一整片整组被选中。</li>
+            <li><span class="n">3</span><b>沿缝的方向推</b>：整组一起平移 step 格。</li>
+          </ol>
         </div>
         <div class="warn">
-          ⚠️ <b>缝不是被推的东西，缝是一把刀。</b>同一条缝，你点上面那块还是点下面那块，被带走的完全不同 —— 选之前先想清楚你要切哪一边。
+          <b>缝不是被推的东西，缝是一把刀。</b>同一条缝，你点上面那块还是点下面那块，被带走的完全不同 —— 选之前先想清楚你要切哪一边。
         </div>
         <h3>三条铁律（任何时候都不能违反）</h3>
         <ol>
@@ -493,10 +447,6 @@
           <tr><td>缝隙（gap）</td><td>滑块之间的空隙通道。方形的缝分<b>横缝</b>（行与行之间，只能左右推）和<b>竖缝</b>（列与列之间，只能上下推）。</td></tr>
           <tr><td>滑块组（group）</td><td>被缝切出来的、与你点的那块<b>连通</b>的一整片。是整片一起动，不是只有你点的那块。</td></tr>
           <tr><td>等级 / 步距（step）</td><td>每次移动的距离单位。选中的组整体平移 <code>step</code> 的整数倍。标签写成 <code>2~4*4</code>＝4×4、step 2。</td></tr>
-          <tr><td>缺角 / 缺口 / 孔洞</td><td>没被填满的地方。边缘凹进去叫缺口，外面一圈完整、中间漏一块叫孔洞 —— 孔洞比缺口难处理得多。</td></tr>
-          <tr><td>移动不变量</td><td>不管你怎么走都不会变的东西。方形是 <code>(行 % step, 列 % step)</code>：它把滑块分成好几张<b>互换网</b>，同一网内的两块永远可以互换位置，跨网的永远不行。</td></tr>
-          <tr><td>互换网 / 着色</td><td>同一个移动不变量值的滑块集合。着色器用颜色把网画出来 —— 同色＝同一张网＝这几块永远可以互换。</td></tr>
-          <tr><td>错位态（米字）</td><td>斜着走一步后，棋盘会错开半格，很多横竖缝会失效。再沿斜向走一格就能错回来。</td></tr>
           <tr><td>DNF</td><td>Did Not Finish，该次不算成绩（自己放弃、或用了解题器）。</td></tr>
         </table>
       </div>
@@ -510,28 +460,28 @@
             <td>方块排在方格里</td>
             <td>横缝 ↔ ／竖缝 ↕，共 4 向</td>
             <td>任意位置的实心 m×n 矩形（转 90° 也算）</td>
-            <td class="c">✅</td>
+            <td class="c">可用</td>
           </tr>
           <tr>
             <td><b>三角</b></td>
             <td>由 k² 个小正三角形拼成的大正三角</td>
             <td>缝有<b>三族</b>（水平、+60°、−60°），滑动<b>六向</b>：<kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>D</kbd><kbd>Z</kbd><kbd>X</kbd>，正好排成六边形</td>
             <td>实心大正三角，可平移或转 120°（<b>上下颠倒不行</b>）</td>
-            <td class="c">❌</td>
+            <td class="c">暂不支持</td>
           </tr>
           <tr>
             <td><b>米字</b></td>
             <td>每个方格被两条对角线切成 4 个直角三角，滑块数是 4mn</td>
             <td>缝有<b>四族</b>（横边、竖边、两条对角线），滑动<b>八向</b>，键位只在<b>虚拟键盘</b>（<kbd>F1</kbd>）上</td>
             <td>实心 m×n 米字矩阵，可平移；<b>错开半格也算复原</b></td>
-            <td class="c">❌</td>
+            <td class="c">暂不支持</td>
           </tr>
           <tr>
             <td><b>数字</b>（带序号）</td>
             <td>矩形 + 每块带编号（从 1 开始，按行主序）</td>
             <td>同矩形</td>
             <td>除了拼成实心矩形，编号还要沿某个方向<b>严格递增</b>（允许整体旋转／镜像）</td>
-            <td class="c">❌</td>
+            <td class="c">暂不支持</td>
           </tr>
         </table>
         <div class="warn">
@@ -545,7 +495,7 @@
         <p>一个谜题由三个数字决定：<b>尺寸</b>（几乘几）和<b>等级 step</b>。</p>
         <ul>
           <li><b>step = 1</b>：一次动一格，最自由。但也因为太自由，着色器提供的资讯是「全盘同一种颜色」＝没有资讯（所以 1 级不开着色）。</li>
-          <li><b>step = 2、3…</b>：一次要平移 step 的整数倍，看似限制更大；但滑块同时被切成 step² 张互换网，<b>谁能换到谁一眼就能看出</b> —— 很多时候反而更好判断。</li>
+          <li><b>step = 2、3…</b>：一次要平移 step 的整数倍，看似限制更大；但<b>哪些方块永远换不到彼此</b>是有规律的，等级越高反而越好推理。</li>
           <li>尺寸从 3×3 的小盘到十几阶都有。觉得太难就降尺寸，觉得太简单就升级大盘。</li>
         </ul>
         <p class="note">命令行可以直接指定：<code>python main.py 6 6 2</code>（6×6、step 2）、<code>python main.py 6 6 1 tri</code>（三角）、<code>python main.py 4 4 1 mi</code>（米字）。</p>
@@ -621,7 +571,7 @@
       <div class="card" id="visual">
         <h2>10. 视觉辅助：着色器与连锁器</h2>
         <h3>着色器</h3>
-        <p><code>step &gt; 1</code> 时开启。滑块的描边颜色由<b>移动不变量</b>决定：<b>同色＝同一张互换网＝这几块永远可以互换位置</b>。开着它玩，很快就不用再猜「这块能不能挪到那里」。<code>step = 1</code> 时全盘只会是同一个颜色，没有资讯，所以预设不开。</p>
+        <p><code>step &gt; 1</code> 时开启。滑块的描边颜色由<b>位置除以 step 的余数</b>决定：<b>同色＝同一组＝这几块永远可以互换位置</b>。开着它玩，很快就不用再猜「这块能不能挪到那里」。<code>step = 1</code> 时全盘只会是同一个颜色，没有资讯，所以预设不开。</p>
         <h3>连锁器</h3>
         <p>把鼠标移到某个格子（包括空格、包括洞）时，全场<b>与它同组的位置会一起提亮</b>。实际用途：<b>这个洞该由哪一块来补？</b>亮起来的就是答案。</p>
         <ul>
