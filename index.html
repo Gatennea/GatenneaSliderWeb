@@ -375,12 +375,24 @@
             <p>不看任何說明也能上手：內建引導關卡，從最簡單的局面開始，一步步教你怎麼看縫、怎麼帶動方塊。</p>
           </div>
           <div class="feature">
+            <h3>五種操作方式</h3>
+            <p>鍵鼠、單次拖動、兩次拖動、箭頭按鍵、虛擬鍵盤 —— 桌面和手機都順手，各自有開關能自由組合。</p>
+          </div>
+          <div class="feature">
             <h3>內建求解器</h3>
             <p>徹底卡住時，讓程式幫你解：可以一步一步播放它的走法，也能只看它給出的思路。看 AI 犯難也挺有意思。</p>
           </div>
           <div class="feature">
             <h3>視覺增強</h3>
             <p><b>著色器</b>按移動不變量替方塊描邊上色 —— 同色就代表「這幾塊永遠可以互換」；<b>連鎖器</b>在你指到某個空位時，把全場補得進那裡的位置一起提亮。哪些事辦得到、哪些辦不到，看一眼就知道。</p>
+          </div>
+          <div class="feature">
+            <h3>宏（自訂公式）</h3>
+            <p>像魔方公式一樣：錄製一連串操作、命名保存，之後一鍵播放或逆序播放。卡關時琢磨出的套路可以存下來反覆用。</p>
+          </div>
+          <div class="feature">
+            <h3>懸浮面板</h3>
+            <p>虛擬鍵盤（F1）、調試面板（F2）、成績面板（F3）都是可拖動的浮動小窗，位置和開關狀態它自己會記住。</p>
           </div>
           <div class="feature">
             <h3>涉及高深數學</h3>
@@ -423,6 +435,47 @@
         </div>
       </section>
 
+      <section class="card" id="step">
+        <h2>尺寸與等級（step）：換個等級，就是另一款遊戲</h2>
+        <p>每一局的難度由 <b>尺寸 × 等級</b> 決定。尺寸是盤子有多大（3×3 到十幾階）；<b>等級 step 是移動的距離單位</b> —— 每次只能平移 step 的整數倍。</p>
+        <p>step=1 最自由，相鄰就能走；step=2 每次至少走兩格，方塊被數學規律切成 4 張互不來往的「網」；step=3 切成 9 張。<b>打開著色器看得最清楚：顏色數剛好是 step²。</b></p>
+        <div class="steps">
+          <div class="step">
+            <div class="pic-frame"><img class="pic-img" src="images/14.等級step.png" alt="同一個 6×6 在 step=1／2／3 下的著色分組對照" /></div>
+            <b>同一個 6×6，等級 1・2・3</b>
+            <span>顏色數 = step²：1 色 → 4 色 → 9 色，能互換的範圍一層層縮小</span>
+          </div>
+        </div>
+        <p class="note">等級越高，走法越受限制，題目也越刁鑽 —— 同一個尺寸換個等級，難度完全是兩回事。</p>
+      </section>
+
+      <section class="card" id="control">
+        <h2>五種操作方式：鍵鼠、觸控、面板，怎麼順手怎麼來</h2>
+        <div class="grid">
+          <div class="feature">
+            <h3>鍵鼠控制</h3>
+            <p>方向鍵 / WASD 移動，配合點縫、點塊；桌面玩家的主力方式。</p>
+          </div>
+          <div class="feature">
+            <h3>單次拖動</h3>
+            <p>按住滑塊直接拖，一步到位 —— 觸控螢幕上最直覺的方式。</p>
+          </div>
+          <div class="feature">
+            <h3>兩次拖動</h3>
+            <p>先點縫隙、再點方塊、然後拖動 —— 和原版一致的三段式，大盤上方便精確定位。</p>
+          </div>
+          <div class="feature">
+            <h3>箭頭按鍵</h3>
+            <p>選中之後，畫面上會浮出方向按鍵，點一下走一步，手指不用對準格子。</p>
+          </div>
+          <div class="feature">
+            <h3>虛擬鍵盤</h3>
+            <p>F1 叫出的浮動小鍵盤，方向鍵和功能鍵都在裡面 —— 純觸控也能用到全部功能。</p>
+          </div>
+        </div>
+        <p class="note">五種方式都有獨立開關，可以隨意組合，也可以只留一種。</p>
+      </section>
+
       <section class="card" id="download">
         <h2>下載</h2>
         <div class="dl-grid">
@@ -454,7 +507,7 @@
       <section class="card" id="news">
         <h2>動態與計畫</h2>
         <ul>
-          <li><strong>已完成</strong>：四種形態（矩形 / 三角 / 米字 / 數字）、新手教程、內建求解器、著色與連鎖視覺增強、Windows 單檔發行、網站捐赠入口。</li>
+          <li><strong>已完成</strong>：四種形態（矩形 / 三角 / 米字 / 數字）、新手教程、內建求解器、著色與連鎖視覺增強、宏系統與懸浮面板、Windows 單檔發行、網站捐赠入口。</li>
           <li><strong>正在做</strong>：成績排行榜後端（成績上傳與排名）、介面動效與視覺回饋優化、更多形態的求解器強度。</li>
           <li><strong>在想</strong>：行動版體驗強化、自動更新機制、更多教程關卡。</li>
         </ul>
@@ -479,6 +532,7 @@
           <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>選縫隙・箭頭按鍵</figcaption></figure>
           <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成績面板（Ao5 / Ao12）</figcaption></figure>
           <figure class="pic" data-file="images/13.手機觸控.png"><div class="pic-frame"></div><figcaption>手機・觸控操作</figcaption></figure>
+          <figure class="pic" data-file="images/14.等級step.png"><div class="pic-frame"></div><figcaption>等級 step 對照（著色器開：顏色數 = step²）</figcaption></figure>
         </div>
         <p class="note">以上截圖來自 Python 版 / 網頁版，實際介面可能隨版本略有不同。</p>
       </section>
@@ -558,12 +612,24 @@
             <p>不看任何说明也能上手：内置引导关卡，从最简单的局面开始，一步步教你怎么看缝、怎么带动方块。</p>
           </div>
           <div class="feature">
+            <h3>五种操作方式</h3>
+            <p>键鼠、单次拖动、两次拖动、箭头按键、虚拟键盘 —— 桌面和手机都顺手，各自有开关能自由组合。</p>
+          </div>
+          <div class="feature">
             <h3>内置求解器</h3>
             <p>彻底卡住时，让程序帮你解：可以一步一步播放它的走法，也能只看它给出的思路。看 AI 犯难也挺有意思。</p>
           </div>
           <div class="feature">
             <h3>视觉增强</h3>
             <p><b>着色器</b>按移动不变量给方块描边上色 —— 同色就代表「这几块永远可以互换」；<b>连锁器</b>在你指到某个空位时，把全场补得进那里的位置一起提亮。哪些事办得到、哪些办不到，看一眼就知道。</p>
+          </div>
+          <div class="feature">
+            <h3>宏（自定义公式）</h3>
+            <p>像魔方公式一样：录制一串操作、命名保存，之后一键播放或逆序播放。卡关时琢磨出的套路可以存下来反复用。</p>
+          </div>
+          <div class="feature">
+            <h3>悬浮面板</h3>
+            <p>虚拟键盘（F1）、调试面板（F2）、成绩面板（F3）都是可拖动的浮动小窗，位置和开关状态它自己会记住。</p>
           </div>
           <div class="feature">
             <h3>涉及高深数学</h3>
@@ -606,6 +672,47 @@
         </div>
       </section>
 
+      <section class="card" id="step">
+        <h2>尺寸与等级（step）：换个等级，就是另一款游戏</h2>
+        <p>每一局的难度由 <b>尺寸 × 等级</b> 决定。尺寸是盘子有多大（3×3 到十几阶）；<b>等级 step 是移动的距离单位</b> —— 每次只能平移 step 的整数倍。</p>
+        <p>step=1 最自由，相邻就能走；step=2 每次至少走两格，方块被数学规律切成 4 张互不来往的「网」；step=3 切成 9 张。<b>打开着色器看得最清楚：颜色数刚好是 step²。</b></p>
+        <div class="steps">
+          <div class="step">
+            <div class="pic-frame"><img class="pic-img" src="images/14.等級step.png" alt="同一个 6×6 在 step=1／2／3 下的着色分组对照" /></div>
+            <b>同一个 6×6，等级 1・2・3</b>
+            <span>颜色数 = step²：1 色 → 4 色 → 9 色，能互换的范围一层层缩小</span>
+          </div>
+        </div>
+        <p class="note">等级越高，走法越受限制，题目也越刁钻 —— 同一个尺寸换个等级，难度完全是两回事。</p>
+      </section>
+
+      <section class="card" id="control">
+        <h2>五种操作方式：键鼠、触控、面板，怎么顺手怎么来</h2>
+        <div class="grid">
+          <div class="feature">
+            <h3>键鼠控制</h3>
+            <p>方向键 / WASD 移动，配合点缝、点块；桌面玩家的主力方式。</p>
+          </div>
+          <div class="feature">
+            <h3>单次拖动</h3>
+            <p>按住滑块直接拖，一步到位 —— 触控屏幕上最直觉的方式。</p>
+          </div>
+          <div class="feature">
+            <h3>两次拖动</h3>
+            <p>先点缝隙、再点方块、然后拖动 —— 和原版一致的三段式，大盘上方便精确定位。</p>
+          </div>
+          <div class="feature">
+            <h3>箭头按键</h3>
+            <p>选中之后，画面上会浮出方向按键，点一下走一步，手指不用对准格子。</p>
+          </div>
+          <div class="feature">
+            <h3>虚拟键盘</h3>
+            <p>F1 叫出的浮动小键盘，方向键和功能键都在里面 —— 纯触控也能用到全部功能。</p>
+          </div>
+        </div>
+        <p class="note">五种方式都有独立开关，可以随意组合，也可以只留一种。</p>
+      </section>
+
       <section class="card" id="download">
         <h2>下载</h2>
         <div class="dl-grid">
@@ -637,7 +744,7 @@
       <section class="card" id="news">
         <h2>动态与计划</h2>
         <ul>
-          <li><strong>已完成</strong>：四种形态（矩形 / 三角 / 米字 / 数字）、新手教程、内置求解器、着色与连锁视觉增强、Windows 单档发行、网站捐赠入口。</li>
+          <li><strong>已完成</strong>：四种形态（矩形 / 三角 / 米字 / 数字）、新手教程、内置求解器、着色与连锁视觉增强、宏系统与悬浮面板、Windows 单档发行、网站捐赠入口。</li>
           <li><strong>正在做</strong>：成绩排行榜后端（成绩上传与排名）、界面动效与视觉反馈优化、更多形态的求解器强度。</li>
           <li><strong>在想</strong>：手机版体验强化、自动更新机制、更多教程关卡。</li>
         </ul>
@@ -662,6 +769,7 @@
           <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>选缝隙・箭头按键</figcaption></figure>
           <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成绩面板（Ao5 / Ao12）</figcaption></figure>
           <figure class="pic" data-file="images/13.手機觸控.png"><div class="pic-frame"></div><figcaption>手机・触控操作</figcaption></figure>
+          <figure class="pic" data-file="images/14.等級step.png"><div class="pic-frame"></div><figcaption>等级 step 对照（着色器开：颜色数 = step²）</figcaption></figure>
         </div>
         <p class="note">以上截图来自 Python 版 / 网页版，实际界面可能随版本略有不同。</p>
       </section>
