@@ -51,6 +51,17 @@
         padding-left: 10px;
       }
       h3 { margin: 0 0 6px; font-size: 16px; color: #fff; }
+      /* ---------- 對照表（霸免對比表 / 類比魔方） ---------- */
+      .tbl-scroll { overflow-x: auto; margin-top: 12px; }
+      table.cmp { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 480px; }
+      table.cmp th, table.cmp td { border: 1px solid rgba(255,255,255,0.14); padding: 8px 10px; text-align: left; vertical-align: top; }
+      table.cmp thead th { background: rgba(255,255,255,0.07); color: #fff; font-weight: 600; }
+      table.cmp tbody tr:nth-child(even) { background: rgba(255,255,255,0.025); }
+      table.cmp td.c { text-align: center; white-space: nowrap; }
+      table.cmp td.y { color: #87cf92; }
+      table.cmp td.n { color: #9c9c9c; }
+      table.cmp td b { color: #fff; }
+      @media (max-width: 600px) { table.cmp { font-size: 12.5px; } }
       .note { font-size: 13px; color: #a3a3a3; margin: 6px 0 0; }
       ul { padding-left: 20px; margin: 8px 0; }
       li { margin: 4px 0; }
@@ -325,13 +336,13 @@
 
       <header class="hero">
         <h1>貓九的滑塊遊戲<span class="brand-en">GATENNEASLIDER</span></h1>
-        <p class="hook">規則 <em>30 秒</em>就學得會。<br />要把這些方塊拼回實心長方形，可能需要 <em>幾萬步</em>。</p>
+        <p class="hook">規則 <em>30 秒</em>就能記住。<br />但是 <em>30 分鐘</em>可能都玩不會。</p>
         <p class="hero-sub">永久免費・程式碼開源・沒有廣告・不用安裝 —— 瀏覽器裡點開就能玩</p>
         <div class="btn-row">
           <a class="btn btn-primary" href="game.html">▶ 立即線上試玩</a>
           <a class="btn btn-ghost" href="#download">⬇ 下載完整版</a>
         </div>
-        <p class="hero-note">網頁版是 <strong>試玩</strong>：能玩、能教學、能計時、能存檔。<strong>求解器、四種形態、新手教程、視覺增強、競速統計</strong>這些完整功能，在 Windows / Python 版裡。</p>
+        <p class="hero-note">網頁版是 <strong>試玩</strong>：能打亂還原、能計時、能存檔。<strong>求解器、異形謎題、新手教程、宏定義</strong>這些完整功能，在完整版裡。</p>
       </header>
 
       <section class="card" id="how">
@@ -343,56 +354,59 @@
             <span>紅色是選中的縫，綠色是整組被帶走的滑塊，兩側是方向按鍵</span>
           </div>
           <ol class="how-list">
-            <li><span class="n">1</span><b>選一條縫</b>：橫縫只能左右推，豎縫只能上下推。</li>
-            <li><span class="n">2</span><b>點縫的某一側</b>：與那塊連通的一整片整組被選中，一起動。</li>
-            <li><span class="n">3</span><b>沿縫的方向推</b>：整組一起平移，不能斷開、不能重疊。</li>
+            <li><span class="n">1</span><b>選一條縫</b>：相當於劃一刀，把滑塊組切成幾個部分。</li>
+            <li><span class="n">2</span><b>點某一個滑塊</b>：與那塊連通的一整片整組被選中。</li>
+            <li><span class="n">3</span><b>完成滑動</b>：選中的部分一起滑動特定距離（由「等級」決定），如果任何時候斷開或重疊，就不能往這個方向滑動。</li>
           </ol>
         </div>
-        <p><strong>還原條件</strong>：讓所有方塊構成一個完整的<strong>實心長方形</strong> —— 位置在哪裡不重要、橫著豎著都算，重點是沒有缺口、沒有空洞（不是要你回到初始版面）。</p>
+        <p><strong>還原條件</strong>：讓所有方塊構成一整塊完整的<strong>實心長方形</strong> —— 沒有缺口、沒有空洞。位置在哪裡不重要、轉 90 度也算（不是要你回到初始版面）。<strong>預設尺寸都是正方形</strong>，所以最常碰到的目標就是拼回一個正方形；自訂 7×9 這類不等邊的盤時，目標就是 7×9 的實心長方形。</p>
         <p>網站背景正在自動播放示範。想看詳細規則、術語、各種模式和快捷鍵，到<a href="guide.html">玩法詳解</a>。</p>
       </section>
 
       <section class="card" id="features">
         <h2>為什麼值得一玩</h2>
         <div class="hook-box">
-          <strong>看著簡單，玩著難。</strong>規則一分鐘就講完，但「看起來能走的那一步」常常是陷阱 —— 走錯一步，可能得先把整盤拆開繞回來。<strong>就連作者自己寫的求解器，也有解不開的局面。</strong>
+          <strong>看著簡單，玩著難。</strong>規則三十秒就講完，但不能斷開、不能重疊的限制讓你四處碰壁。<strong>就連作者自己寫的求解器，也有解不開的局面。</strong>
         </div>
         <div class="grid">
           <div class="feature">
-            <h3>四種謎題形態</h3>
-            <p>矩形、三角、米字、數字 —— 同一套規則，四種完全不同的手感。每種的連通方式與邊界都不一樣。</p>
+            <h3>四種謎題形態（僅完整版）</h3>
+            <p>矩形、三角、米字、數字 —— 同一套規則，思路通用但解法有差異，各有各的難點。建議先學會矩形謎題。</p>
+            <p><strong>註：</strong>網頁版只有矩形謎題。</p>
           </div>
           <div class="feature">
             <h3>各種尺寸與等級</h3>
-            <p>從 3×3 的小盤到十幾階的大盤；<b>等級（step）</b>決定移動的距離單位 —— 每次只能平移 step 的整數倍。等級越高，方塊就會被數學規律切成越多張「互換網」，跨網的兩塊永遠換不了。</p>
+            <p>8×8 太難？先試試 6×6！想要 4 級的 7×9 謎題？直接點「自訂」！<b>等級</b>決定移動的距離單位 —— 每次只能平移等級的整數倍格數。等級越高，限制越多，需要更強的規劃能力。</p>
           </div>
           <div class="feature">
             <h3>數不盡的變化</h3>
-            <p>每一局都是隨機打亂的。同一個尺寸同一個等級，也可以玩上百次不重樣，而且沒有「背答案」這回事。</p>
+            <p>每一局都是隨機打亂的。同一個尺寸同一個等級，也可以玩幾千幾萬次不重樣，不存在標準的解法。</p>
           </div>
           <div class="feature">
-            <h3>新手教程</h3>
+            <h3>新手教程（僅完整版）</h3>
             <p>不看任何說明也能上手：內建引導關卡，從最簡單的局面開始，一步步教你怎麼看縫、怎麼帶動方塊。</p>
+            <p><strong>註：</strong>網頁版無新手教程。</p>
           </div>
           <div class="feature">
             <h3>五種操作方式</h3>
             <p>鍵鼠、單次拖動、兩次拖動、箭頭按鍵、虛擬鍵盤 —— 桌面和手機都順手，各自有開關能自由組合。</p>
           </div>
           <div class="feature">
-            <h3>內建求解器</h3>
-            <p>徹底卡住時，讓程式幫你解：可以一步一步播放它的走法，也能只看它給出的思路。看 AI 犯難也挺有意思。</p>
+            <h3>內建求解器（僅完整版）</h3>
+            <p>讓程式幫你解，看看它的思路對你有什麼啟發：點擊「設定 - 求解器」選擇演算法，保存後點「編輯 - 求解」等程式運算。</p>
+            <p><strong>註：</strong>網頁版無求解器。</p>
           </div>
           <div class="feature">
             <h3>視覺增強</h3>
             <p><b>著色器</b>按移動不變量替方塊描邊上色 —— 同色就代表「這幾塊永遠可以互換」；<b>連鎖器</b>在你指到某個空位時，把全場補得進那裡的位置一起提亮。哪些事辦得到、哪些辦不到，看一眼就知道。</p>
           </div>
           <div class="feature">
-            <h3>宏（自訂公式）</h3>
-            <p>像魔方公式一樣：錄製一連串操作、命名保存，之後一鍵播放或逆序播放。卡關時琢磨出的套路可以存下來反覆用。</p>
+            <h3>宏功能</h3>
+            <p>像魔術方塊公式一樣：錄製一串操作、命名保存，之後一鍵播放或逆序播放。卡關時琢磨出的套路可以存下來反覆用。</p>
           </div>
           <div class="feature">
             <h3>懸浮面板</h3>
-            <p>虛擬鍵盤（F1）、調試面板（F2）、成績面板（F3）都是可拖動的浮動小窗，位置和開關狀態它自己會記住。</p>
+            <p>虛擬鍵盤（F1）、調試面板（F2）、成績面板（F3）都是可拖動的浮動小窗，位置和開關狀態它自己會記住，隨時開關。</p>
           </div>
           <div class="feature">
             <h3>涉及高深數學</h3>
@@ -400,11 +414,11 @@
           </div>
           <div class="feature">
             <h3>可競速</h3>
-            <p>計時、DNF、Ao5 / Ao12 去尾平均 —— 和魔方速擰一樣的統計口徑，適合自己刷記錄。</p>
+            <p>成績面板記錄步數與時間，有單次、五次平均、十二次平均等，和魔術方塊速擰一樣的統計口徑，適合自己刷記錄。</p>
           </div>
           <div class="feature">
             <h3>開源・永久免費</h3>
-            <p>程式碼公開在 GitHub（AGPL-3.0）。永遠免費，永遠沒有廣告，也不會有一天突然收費。</p>
+            <p>程式碼公開在 GitHub（AGPL-3.0），下載原始碼後可自由修改。永遠免費，沒有廣告，也不會有一天突然收費。</p>
           </div>
         </div>
       </section>
@@ -415,54 +429,79 @@
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/5.矩形形態.png" alt="矩形形态截图" /></div>
             <b>矩形</b>
-            <span>最基礎的形態，方塊擺在方格裡，目標是拼回實心長方形</span>
+            <span>基礎而經典的形態，這是萬惡之源 —— 想玩明白其他謎題，得先過這一關！</span>
           </div>
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/6.三角形態.png" alt="三角形态截图" /></div>
             <b>三角</b>
-            <span>方塊是正三角形，密鋪成斜向座標；縫的方向、連通的定義全都換了一套</span>
+            <span>正三角形滑塊，有正反兩種朝向，猜猜策略會有什麼差別？</span>
           </div>
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/7.米字形態.png" alt="米字形态截图" /></div>
             <b>米字</b>
-            <span>每格被兩條對角線切成 4 塊直角小三角，滑塊數直接翻四倍 —— 光是搞清楚「動的是哪一塊」就夠嗆</span>
+            <span>每格被兩條對角線切成 4 塊直角小三角，滑塊數直接翻四倍，斜著移動還會鎖住某些橫向縫隙 —— 太可怕了～</span>
           </div>
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/8.數字形態.png" alt="数字形态截图" /></div>
             <b>數字</b>
-            <span>每塊方塊帶序號，還原要求順序也對 —— 難度直接再上一層</span>
+            <span>只拼成矩形可不行喔，數字還得按正確順序排好。</span>
           </div>
         </div>
       </section>
 
       <section class="card" id="step">
-        <h2>尺寸與等級（step）：換個等級，就是另一款遊戲</h2>
-        <p>每一局的難度由 <b>尺寸 × 等級</b> 決定。尺寸是盤子有多大（3×3 到十幾階）；<b>等級 step 是移動的距離單位</b> —— 每次只能平移 step 的整數倍。</p>
-        <p>step=1 最自由，相鄰就能走；step=2 每次至少走兩格，方塊被數學規律切成 4 張互不來往的「網」；step=3 切成 9 張。<b>打開著色器看得最清楚：顏色數剛好是 step²。</b></p>
+        <h2>尺寸與等級：換個等級，就是另一個難度</h2>
+        <p>每一局的難度由 <b>尺寸 + 等級</b> 決定。尺寸指的是還原狀態的長與寬；<b>等級是移動的距離單位</b> —— 每次只能平移等級的整數倍格數。</p>
+        <p>1 級最自由，相鄰且同向就能互換；2 級每次至少走兩格，方塊被規則劃分到 4 種隱形的分組；3 級則是 9 種分組。<b>打開著色器看得最清楚：顏色數剛好是等級²。</b></p>
         <div class="steps">
           <div class="step">
             <div class="pic-frame"><img class="pic-img" src="images/14.等級step.png" alt="同一個 6×6 在 step=1／2／3 下的著色分組對照" /></div>
             <b>同一個 6×6，等級 1・2・3</b>
-            <span>顏色數 = step²：1 色 → 4 色 → 9 色，能互換的範圍一層層縮小</span>
+            <span>顏色數 = 等級²：1 色 → 4 色 → 9 色，能互換的範圍一層層縮小</span>
           </div>
         </div>
-        <p class="note">等級越高，走法越受限制，題目也越刁鑽 —— 同一個尺寸換個等級，難度完全是兩回事。</p>
+        <p class="note">等級越高，走法越受限制：看起來能走、實際上走不過去的地方越來越多，步步為營。</p>
       </section>
 
+      <section class="card" id="cube">
+        <h2>如果你玩過魔術方塊，這樣理解最快</h2>
+        <p>作者是速擰玩家，整套設計都在向魔術方塊看齊：<b>一次滑動就相當於一次轉動</b>，<b>打亂、還原、DNF、Ao5、Ao12</b>這些說法也是直接沿用速擰的習慣。</p>
+        <div class="tbl-scroll">
+          <table class="cmp">
+            <thead>
+              <tr><th>魔術方塊</th><th>貓九的滑塊遊戲</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>正階魔方（二階、三階、四階……）</td><td>正方形謎題（4×4、6×6、8×8……）</td></tr>
+              <tr><td>不等階魔方（2×3×4、3×4×5……）</td><td>不等邊矩形謎題（5×8、7×9……）</td></tr>
+              <tr><td>異形魔方（金字塔、斜轉、五魔方……）</td><td>三角、米字、數字形態</td></tr>
+              <tr><td>轉動一層</td><td>沿一條縫推動一整片</td></tr>
+              <tr><td>打亂 → 復原</td><td>打亂 → 還原</td></tr>
+              <tr><td>上帝之數 20（三階已被證明）</td><td>未知 —— 連作者寫的求解器都有解不開的局面</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="hook-box" style="margin-top:14px">
+          <strong>難度怎麼抓？作者的建議是：等級 2 的 6×6，大概就相當於三階魔術方塊的難度。</strong>先把它拿下，再往上加尺寸、加等級、換形態。
+        </div>
+        <p class="note">但底層完全不同：魔術方塊的轉動永遠可逆、狀態總數是個已知的大數；這裡的滑動被「不能斷開、不能重疊」兩條鐵律卡死，常常看起來能走、其實一步都挪不動 —— 難也就難在這裡。</p>
+      </section>
+
+      
       <section class="card" id="control">
-        <h2>五種操作方式：鍵鼠、觸控、面板，怎麼順手怎麼來</h2>
+        <h2>五種操作方式：怎麼順手怎麼來</h2>
         <div class="grid">
           <div class="feature">
             <h3>鍵鼠控制</h3>
-            <p>方向鍵 / WASD 移動，配合點縫、點塊；桌面玩家的主力方式。</p>
+            <p>經典操作：方向鍵 / WASD 移動，配合點縫、點塊；競速時最方便的方式。</p>
           </div>
           <div class="feature">
             <h3>單次拖動</h3>
-            <p>按住滑塊直接拖，一步到位 —— 觸控螢幕上最直覺的方式。</p>
+            <p>按住滑塊直接拖，一步到位，非常方便，適合電腦單手操作，也適合手機、平板。</p>
           </div>
           <div class="feature">
             <h3>兩次拖動</h3>
-            <p>先點縫隙、再點方塊、然後拖動 —— 和原版一致的三段式，大盤上方便精確定位。</p>
+            <p>先點縫隙、再按住方塊拖動 —— 不容易誤觸。</p>
           </div>
           <div class="feature">
             <h3>箭頭按鍵</h3>
@@ -470,12 +509,43 @@
           </div>
           <div class="feature">
             <h3>虛擬鍵盤</h3>
-            <p>F1 叫出的浮動小鍵盤，方向鍵和功能鍵都在裡面 —— 純觸控也能用到全部功能。</p>
+            <p>F1 叫出的浮動小鍵盤，適合習慣鍵鼠控制、手邊沒有鍵盤時臨時用。</p>
           </div>
         </div>
         <p class="note">五種方式都有獨立開關，可以隨意組合，也可以只留一種。</p>
       </section>
 
+      <section class="card" id="compare">
+        <h2>網頁版 vs 完整版：到底差在哪裡</h2>
+        <p>網頁版不是「功能被閹割的半成品」，而是<b>同一套玩法的完整試玩</b> —— 核心操作、打亂還原、計時統計、視覺輔助一個不少，存檔和成績都存在你自己瀏覽器裡。<b>缺的是形態、求解器、教程、宏這些深度功能</b>，它們在同樣免費的完整版裡。</p>
+        <div class="tbl-scroll">
+          <table class="cmp">
+            <thead>
+              <tr><th>功能</th><th>網頁版（免費試玩）</th><th>完整版 Windows / Python（同樣免費）</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>矩形謎題・打亂與還原</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>尺寸與等級自訂（含 7×9 這類不等邊）</td><td class="c y">有</td><td class="c y">有（限制相同：等級 &lt; 最長邊）</td></tr>
+              <tr><td>三角 / 米字 / 數字形態</td><td class="c n">無</td><td class="c y">有</td></tr>
+              <tr><td>練習模式 / 競速模式・計時・計步</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>成績統計（最佳成績・Ao5・Ao12・DNF）</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>著色器 / 連鎖器視覺輔助</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>三種控制模式（鍵鼠・單次拖動・兩次拖動）</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>虛擬鍵盤（F1）・成績面板（F3）</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>箭頭按鍵・調試面板（F2）・快捷鍵自訂</td><td class="c n">無</td><td class="c y">有</td></tr>
+              <tr><td>內建求解器（多種演算法・自動求解）</td><td class="c n">無</td><td class="c y">有</td></tr>
+              <tr><td>新手教程</td><td class="c n">無</td><td class="c y">有</td></tr>
+              <tr><td>宏定義（錄製・命名・播放・逆序播放）</td><td class="c n">無</td><td class="c y">有</td></tr>
+              <tr><td>存檔</td><td class="c">瀏覽器本機（多槽位）</td><td class="c">本機檔案，可備份</td></tr>
+              <tr><td>離線使用</td><td class="c">可把整站打包帶走</td><td class="c y">中（本身就是離線程式）</td></tr>
+              <tr><td>安裝</td><td class="c">不用裝，開瀏覽器就玩</td><td class="c">免安裝，解壓後雙擊即用</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">一句話建議：<b>先在瀏覽器裡玩兩局試試手感，覺得有意思再去下載完整版</b> —— 兩個版本都免費、都開源，不存在「付錢才能玩到」的部分。</p>
+      </section>
+
+      
       <section class="card" id="download">
         <h2>下載</h2>
         <div class="dl-grid">
@@ -495,7 +565,7 @@
         </div>
         <p class="note" style="margin-top:14px">其他選擇：<a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">Python 原始碼</a>（裝好 pygame 直接跑）・<a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">離線網頁版</a>（整站打包，斷網也能玩）・<a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">查表求解器資料庫</a>（可選；沒裝只會讓「查表求解器」不可用，其它功能不受影響）。</p>
         <p class="note">版本號長得像 <code>v197-20261006</code>：<code>197</code> 是 Git 提交數，<code>20261006</code> 是打包日期，一眼就能比出新舊。上面的下載連結固定指向最新版，不用到處找。</p>
-        <p class="note">程式沒有數位簽章，Windows SmartScreen 或 360 可能跳出攔截提示，選「仍要執行」即可。Release 頁面附了 SHA256 校驗值，下載後可用 <code>certutil -hashfile 檔名.zip SHA256</code> 核對。</p>
+        <p class="note">程式沒有數位簽章，某些防毒軟體可能跳出攔截提示，選「仍要執行」即可。Release 頁面附了 SHA256 校驗值，下載後可用 <code>certutil -hashfile 檔名.zip SHA256</code> 核對。</p>
       </section>
 
       <section class="card" id="rank">
@@ -562,13 +632,13 @@
 
       <header class="hero">
         <h1>貓九的滑块游戏<span class="brand-en">GATENNEASLIDER</span></h1>
-        <p class="hook">规则 <em>30 秒</em>就学得会。<br />要把这些方块拼回实心长方形，可能需要 <em>几万步</em>。</p>
+        <p class="hook">规则 <em>30 秒</em>就能记住。<br />但是 <em>30分钟</em>可能都玩不会。</p>
         <p class="hero-sub">永久免费・代码开源・没有广告・不用安装 —— 浏览器里点开就能玩</p>
         <div class="btn-row">
           <a class="btn btn-primary" href="game.html">▶ 立即在线试玩</a>
           <a class="btn btn-ghost" href="#download">⬇ 下载完整版</a>
         </div>
-        <p class="hero-note">网页版是 <strong>试玩</strong>：能玩、能教学、能计时、能存档。<strong>求解器、四种形态、新手教程、视觉增强、竞速统计</strong>这些完整功能，在 Windows / Python 版里。</p>
+        <p class="hero-note">网页版是 <strong>试玩</strong>：能打乱还原、能计时、能存档。<strong>求解器、异形谜题、新手教程、宏定义</strong>这些完整功能，在完整版里。</p>
       </header>
 
       <section class="card" id="how">
@@ -580,56 +650,59 @@
             <span>红色是选中的缝，绿色是整组被带走的滑块，两侧是方向按键</span>
           </div>
           <ol class="how-list">
-            <li><span class="n">1</span><b>选一条缝</b>：横缝只能左右推，竖缝只能上下推。</li>
-            <li><span class="n">2</span><b>点缝的某一侧</b>：与那块连通的一整片整组被选中，一起动。</li>
-            <li><span class="n">3</span><b>沿缝的方向推</b>：整组一起平移，不能断开、不能重叠。</li>
+            <li><span class="n">1</span><b>选一条缝</b>：相当于划一刀，把滑块组切成几个部分。</li>
+            <li><span class="n">2</span><b>点某一个滑块</b>：与那块连通的一整片整组被选中。</li>
+            <li><span class="n">3</span><b>完成滑动</b>：选中的部分一起滑动特定距离（由“等级”决定），如果任何时候断开或重叠就不能向这个方向滑动。</li>
           </ol>
         </div>
-        <p><strong>还原条件</strong>：让所有方块构成一个完整的<strong>实心长方形</strong> —— 位置在哪里不重要、横着竖着都算，重点是没有缺口、没有空洞（不是要你回到初始版面）。</p>
+        <p><strong>还原条件</strong>：让所有方块构成一个完整的<strong>实心正方形</strong></p>
         <p>网站背景正在自动播放演示。想看详细规则、术语、各种模式和快捷键，到<a href="guide.html">玩法详解</a>。</p>
       </section>
 
       <section class="card" id="features">
         <h2>为什么值得一玩</h2>
         <div class="hook-box">
-          <strong>看着简单，玩着难。</strong>规则一分钟讲完，但「看起来能走的那一步」常常是陷阱 —— 走错一步，可能得先把整盘拆开绕回来。<strong>就连作者自己写的求解器，也有解不开的局面。</strong>
+          <strong>看着简单，玩着难。</strong>规则三十秒看讲完，但不能断开、不能重叠的限制让你四处碰壁。<strong>就连作者自己写的求解器，也有解不开的局面。</strong>
         </div>
         <div class="grid">
           <div class="feature">
-            <h3>四种谜题形态</h3>
-            <p>矩形、三角、米字、数字 —— 同一套规则，四种完全不同的手感。每种的连通方式与边界都不一样。</p>
+            <h3>四种谜题形态（仅完整版）</h3>
+            <p>矩形、三角、米字、数字 —— 同一套规则，思路通用但解法有差异，各有各的难点。建议先学会矩形谜题。</p>
+			<p><strong>注：</strong>网页版只有矩形谜题。</p>
           </div>
           <div class="feature">
             <h3>各种尺寸与等级</h3>
-            <p>从 3×3 的小盘到十几阶的大盘；<b>等级（step）</b>决定移动的距离单位 —— 每次只能平移 step 的整数倍。等级越高，方块就会被数学规律切成越多张「互换网」，跨网的两块永远换不了。</p>
+            <p>8*8太难？先试试6*6！想要4级7*9谜题？直接点“自定义”！<b>等级</b>决定移动的距离单位 —— 每次只能平移等级的整数倍格数。等级越高，限制越多，需要更强的规划能力。</p>
           </div>
           <div class="feature">
             <h3>数不尽的变化</h3>
-            <p>每一局都是随机打乱的。同一个尺寸同一个等级，也可以玩上百次不重样，而且没有「背答案」这回事。</p>
+            <p>每一局都是随机打乱的。同一个尺寸同一个等级，也可以玩几千几万次不重样，不存在标准的解法。</p>
           </div>
           <div class="feature">
-            <h3>新手教程</h3>
+            <h3>新手教程（仅完整版）</h3>
             <p>不看任何说明也能上手：内置引导关卡，从最简单的局面开始，一步步教你怎么看缝、怎么带动方块。</p>
+			<p><strong>注：</strong>网页版无新手教程。</p>
           </div>
           <div class="feature">
             <h3>五种操作方式</h3>
             <p>键鼠、单次拖动、两次拖动、箭头按键、虚拟键盘 —— 桌面和手机都顺手，各自有开关能自由组合。</p>
           </div>
           <div class="feature">
-            <h3>内置求解器</h3>
-            <p>彻底卡住时，让程序帮你解：可以一步一步播放它的走法，也能只看它给出的思路。看 AI 犯难也挺有意思。</p>
+            <h3>内置求解器（仅完整版）</h3>
+            <p>让程序帮你解，看看它的思路对你有什么启发：点击设置-求解器，选择算法，保存后点击编辑-求解等程序运算。</p>
+			<p><strong>注：</strong>网页版无求解器。</p>
           </div>
           <div class="feature">
             <h3>视觉增强</h3>
             <p><b>着色器</b>按移动不变量给方块描边上色 —— 同色就代表「这几块永远可以互换」；<b>连锁器</b>在你指到某个空位时，把全场补得进那里的位置一起提亮。哪些事办得到、哪些办不到，看一眼就知道。</p>
           </div>
           <div class="feature">
-            <h3>宏（自定义公式）</h3>
+            <h3>宏功能</h3>
             <p>像魔方公式一样：录制一串操作、命名保存，之后一键播放或逆序播放。卡关时琢磨出的套路可以存下来反复用。</p>
           </div>
           <div class="feature">
             <h3>悬浮面板</h3>
-            <p>虚拟键盘（F1）、调试面板（F2）、成绩面板（F3）都是可拖动的浮动小窗，位置和开关状态它自己会记住。</p>
+            <p>虚拟键盘（F1）、调试面板（F2）、成绩面板（F3）都是可拖动的浮动小窗，随时开关</p>
           </div>
           <div class="feature">
             <h3>涉及高深数学</h3>
@@ -637,11 +710,11 @@
           </div>
           <div class="feature">
             <h3>可竞速</h3>
-            <p>计时、DNF、Ao5 / Ao12 去尾平均 —— 和魔方速拧一样的统计口径，适合自己刷记录。</p>
+            <p>成绩面板记录步数、时间，有单次、五次平均、十二次平均等，和魔方速拧一样的统计口径，适合自己刷记录。</p>
           </div>
           <div class="feature">
             <h3>开源・永久免费</h3>
-            <p>代码公开在 GitHub（AGPL-3.0）。永远免费，永远没有广告，也不会有一天突然收费。</p>
+            <p>代码公开在 GitHub（AGPL-3.0），下载源代码后可自由修改。永远免费，没有广告，也不会有一天突然收费。</p>
           </div>
         </div>
       </section>
@@ -652,65 +725,121 @@
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/5.矩形形態.png" alt="矩形形态截图" /></div>
             <b>矩形</b>
-            <span>最基础的形态，方块摆在方格里，目标是拼回实心长方形</span>
+            <span>基础而经典的形态，这是万恶之源，想玩明白其他谜题先过这一关！</span>
           </div>
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/6.三角形態.png" alt="三角形态截图" /></div>
             <b>三角</b>
-            <span>方块是正三角形，密铺成斜向坐标；缝的方向、连通的定义全都换了一套</span>
+            <span>正三角形滑块，有两种方向，猜猜策略有什么区别？</span>
           </div>
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/7.米字形態.png" alt="米字形态截图" /></div>
             <b>米字</b>
-            <span>每格被两条对角线切成 4 块直角小三角，滑块数直接翻四倍 —— 光是搞清楚「动的是哪一块」就够呛</span>
+            <span>每格被两条对角线切成 4 块直角小三角，滑块数直接翻四倍，斜着移动还会锁住某些横向缝隙，太可怕了~</span>
           </div>
           <div class="shape">
             <div class="pic-frame"><img class="pic-img" src="images/8.數字形態.png" alt="数字形态截图" /></div>
             <b>数字</b>
-            <span>每块方块带序号，还原要求顺序也对 —— 难度直接再上一层</span>
+            <span>只拼成矩形可不行哦，还需要数字按正确顺序排列。</span>
           </div>
         </div>
       </section>
 
       <section class="card" id="step">
-        <h2>尺寸与等级（step）：换个等级，就是另一款游戏</h2>
-        <p>每一局的难度由 <b>尺寸 × 等级</b> 决定。尺寸是盘子有多大（3×3 到十几阶）；<b>等级 step 是移动的距离单位</b> —— 每次只能平移 step 的整数倍。</p>
-        <p>step=1 最自由，相邻就能走；step=2 每次至少走两格，方块被数学规律切成 4 张互不来往的「网」；step=3 切成 9 张。<b>打开着色器看得最清楚：颜色数刚好是 step²。</b></p>
+        <h2>尺寸与等级：换个等级，就是另一个难度</h2>
+        <p>每一局的难度由 <b>尺寸 + 等级</b> 决定。尺寸指的是还原状态的长宽；<b>等级是移动的距离单位</b> —— 每次只能平移等级的整数倍格子数。</p>
+        <p>1级 最自由，相邻且同向就能互换；2级 每次至少走两格，方块被规则划分到4种隐形的分组；3级 9种分组。<b>打开着色器看得最清楚：颜色数刚好是 等级²。</b></p>
         <div class="steps">
           <div class="step">
             <div class="pic-frame"><img class="pic-img" src="images/14.等級step.png" alt="同一个 6×6 在 step=1／2／3 下的着色分组对照" /></div>
             <b>同一个 6×6，等级 1・2・3</b>
-            <span>颜色数 = step²：1 色 → 4 色 → 9 色，能互换的范围一层层缩小</span>
+            <span>颜色数 = 等级²：1 色 → 4 色 → 9 色，能互换的范围一层层缩小</span>
           </div>
         </div>
-        <p class="note">等级越高，走法越受限制，题目也越刁钻 —— 同一个尺寸换个等级，难度完全是两回事。</p>
+        <p class="note">等级越高，走法越受限制，看起来能走，实际上走不过去的地方越来越多，步步为营。</p>
+      </section>
+
+      
+      <section class="card" id="cube">
+        <h2>如果你玩过魔方，这样理解最快</h2>
+        <p>作者是速拧玩家，整套设计都在向魔方看齐：<b>一次滑动就相当于一次转动</b>，<b>打乱、还原、DNF、Ao5、Ao12</b>这些说法也是直接沿用速拧的习惯。</p>
+        <div class="tbl-scroll">
+          <table class="cmp">
+            <thead>
+              <tr><th>魔方</th><th>貓九的滑块游戏</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>正阶魔方（二阶、三阶、四阶……）</td><td>正方形谜题（4×4、6×6、8×8……）</td></tr>
+              <tr><td>不等阶魔方（2×3×4、3×4×5……）</td><td>不等边矩形谜题（5×8、7×9……）</td></tr>
+              <tr><td>异形魔方（金字塔、斜转、五魔方……）</td><td>三角、米字、数字形态</td></tr>
+              <tr><td>转动一层</td><td>沿一条缝推动一整片</td></tr>
+              <tr><td>打乱 → 复原</td><td>打乱 → 还原</td></tr>
+              <tr><td>上帝之数 20（三阶已被证明）</td><td>未知 —— 连作者写的求解器都有解不开的局面</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="hook-box" style="margin-top:14px">
+          <strong>难度怎么抓？作者的建议是：等级 2 的 6×6，大概就相当于三阶魔方的难度。</strong>先把它拿下，再往上加尺寸、加等级、换形态。
+        </div>
+        <p class="note">但底层完全不同：魔方的转动永远可逆、状态总数是已知的大数；这里的滑动被「不能断开、不能重叠」两条铁律卡死，常常看起来能走、其实一步都挪不动 —— 难也就难在这里。</p>
       </section>
 
       <section class="card" id="control">
-        <h2>五种操作方式：键鼠、触控、面板，怎么顺手怎么来</h2>
+        <h2>五种操作方式：怎么顺手怎么来</h2>
         <div class="grid">
           <div class="feature">
             <h3>键鼠控制</h3>
-            <p>方向键 / WASD 移动，配合点缝、点块；桌面玩家的主力方式。</p>
+            <p>经典操作，方向键 / WASD 移动，配合点缝、点块；竞速时最方便的方式。</p>
           </div>
           <div class="feature">
             <h3>单次拖动</h3>
-            <p>按住滑块直接拖，一步到位 —— 触控屏幕上最直觉的方式。</p>
+            <p>按住滑块直接拖，一步到位，非常方便，适合电脑单手或手机、平板玩家。</p>
           </div>
           <div class="feature">
             <h3>两次拖动</h3>
-            <p>先点缝隙、再点方块、然后拖动 —— 和原版一致的三段式，大盘上方便精确定位。</p>
+            <p>先点缝隙、再按住方块拖动，不容易误触。</p>
           </div>
           <div class="feature">
             <h3>箭头按键</h3>
-            <p>选中之后，画面上会浮出方向按键，点一下走一步，手指不用对准格子。</p>
+            <p>选中之后，画面上会浮出方向按键，点一下走一步。</p>
           </div>
           <div class="feature">
             <h3>虚拟键盘</h3>
-            <p>F1 叫出的浮动小键盘，方向键和功能键都在里面 —— 纯触控也能用到全部功能。</p>
+            <p>F1 叫出的浮动小键盘，适合习惯键鼠控制的人临时使用。</p>
           </div>
         </div>
         <p class="note">五种方式都有独立开关，可以随意组合，也可以只留一种。</p>
+      </section>
+
+      
+      <section class="card" id="compare">
+        <h2>网页版 vs 完整版：到底差在哪里</h2>
+        <p>网页版不是「功能被阉割的半成品」，而是<b>同一套玩法的完整试玩</b> —— 核心操作、打乱还原、计时统计、视觉辅助一个不少，存档和成绩都存在你自己浏览器里。<b>缺的是形态、求解器、教程、宏这些深度功能</b>，它们在同样免费的完整版里。</p>
+        <div class="tbl-scroll">
+          <table class="cmp">
+            <thead>
+              <tr><th>功能</th><th>网页版（免费试玩）</th><th>完整版 Windows / Python（同样免费）</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>矩形谜题・打乱与还原</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>尺寸与等级自定义（含 7×9 这类不等边）</td><td class="c y">有</td><td class="c y">有（限制相同：等级 &lt; 最长边）</td></tr>
+              <tr><td>三角 / 米字 / 数字形态</td><td class="c n">无</td><td class="c y">有</td></tr>
+              <tr><td>练习模式 / 竞速模式・计时・计步</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>成绩统计（最佳成绩・Ao5・Ao12・DNF）</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>着色器 / 连锁器视觉辅助</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>三种控制模式（键鼠・单次拖动・两次拖动）</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>虚拟键盘（F1）・成绩面板（F3）</td><td class="c y">有</td><td class="c y">有</td></tr>
+              <tr><td>箭头按键・调试面板（F2）・快捷键自定义</td><td class="c n">无</td><td class="c y">有</td></tr>
+              <tr><td>内置求解器（多种算法・自动求解）</td><td class="c n">无</td><td class="c y">有</td></tr>
+              <tr><td>新手教程</td><td class="c n">无</td><td class="c y">有</td></tr>
+              <tr><td>宏定义（录制・命名・播放・逆序播放）</td><td class="c n">无</td><td class="c y">有</td></tr>
+              <tr><td>存档</td><td class="c">浏览器本机（多槽位）</td><td class="c">本机文件，可备份</td></tr>
+              <tr><td>离线使用</td><td class="c">可把整站打包带走</td><td class="c y">中（本身就是离线程序）</td></tr>
+              <tr><td>安装</td><td class="c">不用装，开浏览器就玩</td><td class="c">免安装，解压后双击即用</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">一句话建议：<b>先在浏览器里玩两局试试手感，觉得有意思再去下载完整版</b> —— 两个版本都免费、都开源，不存在「付钱才能玩到」的部分。</p>
       </section>
 
       <section class="card" id="download">
@@ -732,7 +861,7 @@
         </div>
         <p class="note" style="margin-top:14px">其他选择：<a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">Python 源码</a>（装好 pygame 直接跑）・<a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">离线网页版</a>（整站打包，断网也能玩）・<a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">查表求解器数据库</a>（可选；没装只会让「查表求解器」不可用，其它功能不受影响）。</p>
         <p class="note">版本号长得像 <code>v197-20261006</code>：<code>197</code> 是 Git 提交数，<code>20261006</code> 是打包日期，一眼就能比出新旧。上面的下载链接固定指向最新版，不用到处找。</p>
-        <p class="note">程序没有数字签名，Windows SmartScreen 或 360 可能弹出拦截提示，选「仍要运行」即可。Release 页面附了 SHA256 校验值，下载后可用 <code>certutil -hashfile 文件名.zip SHA256</code> 核对。</p>
+        <p class="note">程序没有数字签名，某些杀毒软件可能弹出拦截提示，选「仍要运行」即可。Release 页面附了 SHA256 校验值，下载后可用 <code>certutil -hashfile 文件名.zip SHA256</code> 核对。</p>
       </section>
 
       <section class="card" id="rank">

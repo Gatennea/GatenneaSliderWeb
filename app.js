@@ -1,4 +1,4 @@
-﻿/* 由 scripts/bundle.mjs 自動生成；來源為已編譯的 dist/。請勿手動編輯。 */
+/* 由 scripts/bundle.mjs 自動生成；來源為已編譯的 dist/。請勿手動編輯。 */
 (function () {
   var __modules = { "m0": function (require) {
 /**
@@ -185,6 +185,97 @@ toast.style.fontSize = '13px';
 toast.style.pointerEvents = 'none';
 app.appendChild(toast);
 let toastTimer = 0;
+// ---------- 完整版功能入口 ----------
+/** Windows 完整版下載直鏈（附件名固定，永久指向最新版） */
+const FULL_VERSION_URL = 'https://github.com/Gatennea/GatenneaSlider/releases/latest/download/GatenneaSlider-Windows.zip';
+/** 官網首頁（#compare 是「網頁版 vs 完整版」功能對比表） */
+const HOME_URL = 'https://gatennea.github.io/GatenneaSliderWeb/';
+const BRAND_COLOR = '#4696c8';
+/**
+ * 完整版專屬功能的說明框。
+ *
+ * 體驗版刻意沿用完整版的選單結構，做不到的項目一律標成灰色 + 「完整版」角標，
+ * 點下去不會靜默無反應，而是告訴使用者這功能是什麼、去哪裡拿。
+ * 原則同 game.py 的 SOLVER_FORM_SUPPORT：不支援就明確說，不要偷偷換成別的東西。
+ */
+function showFullVersionDialog(feature) {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0,0,0,0.55)';
+    overlay.style.zIndex = '3000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.addEventListener('click', () => overlay.remove());
+    const box = document.createElement('div');
+    box.style.background = COLORS.dialog_bg;
+    box.style.border = `1px solid ${COLORS.dialog_border}`;
+    box.style.borderRadius = '8px';
+    box.style.padding = '20px';
+    box.style.width = 'min(380px, 90vw)';
+    box.style.color = COLORS.dialog_text;
+    box.style.fontSize = '13px';
+    box.style.lineHeight = '1.7';
+    box.addEventListener('click', (e) => e.stopPropagation());
+    const title = document.createElement('div');
+    title.textContent = feature.replace(/\.\.\.$/, '');
+    title.style.fontSize = '15px';
+    title.style.color = '#fff';
+    title.style.marginBottom = '6px';
+    box.appendChild(title);
+    const tagRow = document.createElement('div');
+    tagRow.textContent = '完整版功能';
+    tagRow.style.display = 'inline-block';
+    tagRow.style.fontSize = '11px';
+    tagRow.style.background = BRAND_COLOR;
+    tagRow.style.color = '#fff';
+    tagRow.style.borderRadius = '3px';
+    tagRow.style.padding = '1px 7px';
+    tagRow.style.marginBottom = '10px';
+    box.appendChild(tagRow);
+    const body = document.createElement('div');
+    body.textContent =
+        '這個功能只有 Windows / Python 完整版才有。' +
+            '網頁體驗版保留的是核心玩法：隨機打亂與還原、計時與成績統計、著色與連鎖視覺輔助、' +
+            '本機存檔、三種控制模式。';
+    box.appendChild(body);
+    const hint = document.createElement('div');
+    hint.textContent = '完整版一樣免費開源，不用自己裝 Python，解壓後雙擊即可執行。';
+    hint.style.color = '#9a9a9a';
+    hint.style.marginTop = '6px';
+    box.appendChild(hint);
+    const btnRow = document.createElement('div');
+    btnRow.style.display = 'flex';
+    btnRow.style.gap = '10px';
+    btnRow.style.marginTop = '16px';
+    const mkBtn = (text, primary, onClick) => {
+        const b = document.createElement('button');
+        b.textContent = text;
+        b.style.flex = '1 1 auto';
+        b.style.padding = '8px 10px';
+        b.style.fontSize = '13px';
+        b.style.fontFamily = 'inherit';
+        b.style.borderRadius = '6px';
+        b.style.cursor = 'pointer';
+        b.style.background = primary ? BRAND_COLOR : 'transparent';
+        b.style.color = primary ? '#fff' : COLORS.dialog_text;
+        b.style.border = primary ? `1px solid ${BRAND_COLOR}` : `1px solid ${COLORS.dialog_border}`;
+        b.addEventListener('click', onClick);
+        return b;
+    };
+    btnRow.appendChild(mkBtn('下載完整版', true, () => {
+        window.open(FULL_VERSION_URL, '_blank', 'noopener');
+        overlay.remove();
+    }));
+    btnRow.appendChild(mkBtn('看功能對比', false, () => {
+        window.open(`${HOME_URL}#compare`, '_blank', 'noopener');
+        overlay.remove();
+    }));
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+}
 function showToast(text) {
     toast.textContent = text;
     window.clearTimeout(toastTimer);
@@ -886,6 +977,10 @@ function setGameMode(mode) {
     showToast(mode === 'timed' ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時');
     schedulePaint();
 }
+/** 標成完整版專屬：體驗版保留選單位階，但明確告知做不到，引導去下載。 */
+const pro = (text) => ({ text, pro: true });
+/** 開外部連結（官網各頁、源碼庫）。 */
+const link = (text, href) => ({ text, href });
 const menus = [
     { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...', '---', '存檔列表...'], handler: (item) => {
             if (item.includes('另存')) {
@@ -902,7 +997,7 @@ const menus = [
                 openSaveList();
         }
     },
-    { label: '编辑', items: ['撤销 Ctrl+Z', '重做 Ctrl+X', '打乱 Alt+S', '重置 Ctrl+R'], handler: (item) => {
+    { label: '编辑', items: ['撤销 Ctrl+Z', '重做 Ctrl+X', '打乱 Alt+S', '重置 Ctrl+R', '---', pro('自动求解 Ctrl+Alt+S')], handler: (item) => {
             if (item.startsWith('撤销'))
                 handleUndo();
             else if (item.startsWith('重做'))
@@ -913,7 +1008,7 @@ const menus = [
                 handleReset();
         }
     },
-    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '3~6*6', '3~7*7', '3~8*8', '3~9*9', '3~10*10', '---', '自定义...', '模式:练习', '模式:竞速'], handler: (item) => {
+    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '3~6*6', '3~7*7', '3~8*8', '3~9*9', '3~10*10', '---', '自定义...', '模式:练习', '模式:竞速', '---', pro('三角形態...'), pro('米字形態...'), pro('數字形態...')], handler: (item) => {
             if (item === '自定义...')
                 handleCustomPuzzle();
             else if (item === '模式:练习')
@@ -924,8 +1019,9 @@ const menus = [
                 handlePresetPuzzle(item);
         }
     },
-    { label: '宏定义', items: ['请下载完整版体验'], handler: () => showToast('體驗版不含宏定義') },
-    { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...'], handler: (item) => {
+    { label: '宏定义', items: [pro('开始录制 Ctrl+M'), pro('停止录制 Ctrl+M'), '---', pro('宏列表...'), pro('播放宏...'), pro('逆序播放...')] },
+    { label: '教程', items: [pro('新手教程'), pro('教程关卡...'), '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)] },
+    { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...', '---', pro('求解器...'), pro('快捷键设置...')], handler: (item) => {
             if (item.includes('虚拟键盘'))
                 toggleVK();
             else if (item.includes('成绩'))
@@ -934,7 +1030,12 @@ const menus = [
                 openSettingsModal();
         }
     },
-    { label: '帮助', items: ['关于'], handler: () => showToast('貓九的滑塊遊戲 網頁體驗版 v0.1') },
+    { label: '帮助', items: ['关于', '---', link('玩法詳解', `${HOME_URL}guide.html`), link('更新日誌', `${HOME_URL}update_info.html`)], handler: (item) => {
+            if (item.includes('关于'))
+                showToast('貓九的滑塊遊戲 網頁體驗版 v0.1');
+        }
+    },
+    { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 let activeMenu = null;
 function closeAllMenus() {
@@ -965,7 +1066,7 @@ function buildMenu() {
             dd.style.left = `${idx * 60 + 4}px`;
             dd.style.background = COLORS.menu_bg;
             dd.style.border = `1px solid ${COLORS.dialog_border}`;
-            dd.style.minWidth = '170px';
+            dd.style.minWidth = '220px';
             dd.style.zIndex = '1000';
             dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
             menu.items.forEach((mi) => {
@@ -978,13 +1079,40 @@ function buildMenu() {
                     return;
                 }
                 const row = document.createElement('div');
-                row.textContent = mi;
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.gap = '10px';
                 row.style.padding = '6px 12px';
                 row.style.cursor = 'pointer';
                 row.style.fontSize = '13px';
+                const text = typeof mi === 'string' ? mi : mi.text;
+                const opt = typeof mi === 'string' ? null : mi;
+                const label = document.createElement('span');
+                label.textContent = text;
+                label.style.flex = '1 1 auto';
+                row.appendChild(label);
+                if (opt?.pro) {
+                    // 完整版專屬：置灰 + 藍色角標，點下開引導下載的說明框
+                    label.style.color = '#989898';
+                    const tag = document.createElement('span');
+                    tag.textContent = '完整版';
+                    tag.style.fontSize = '10px';
+                    tag.style.color = '#fff';
+                    tag.style.background = BRAND_COLOR;
+                    tag.style.borderRadius = '3px';
+                    tag.style.padding = '1px 5px';
+                    row.appendChild(tag);
+                    row.addEventListener('click', () => { closeAllMenus(); showFullVersionDialog(text); });
+                }
+                else if (opt?.href) {
+                    const href = opt.href;
+                    row.addEventListener('click', () => { closeAllMenus(); window.open(href, '_blank', 'noopener'); });
+                }
+                else {
+                    row.addEventListener('click', () => { closeAllMenus(); menu.handler?.(text); });
+                }
                 row.addEventListener('mouseenter', () => { row.style.background = COLORS.menu_hover; });
                 row.addEventListener('mouseleave', () => { row.style.background = ''; });
-                row.addEventListener('click', () => { closeAllMenus(); menu.handler(mi); });
                 dd.appendChild(row);
             });
             menuBar.appendChild(dd);
@@ -1333,6 +1461,27 @@ document.addEventListener('click', (e) => {
 });
 // ---------- 初始化 ----------
 buildMenu();
+// ---------- 選單列右側：完整版入口 ----------
+// 體驗版的定位是「試玩的入口」，所以在介面上給一個不會被忽略、但也按得掉的出口。
+// demo 模式下整條選單列會被隱藏（見文末 demoFile 分支），這裡不用額外處理。
+(() => {
+    const cta = document.createElement('a');
+    cta.textContent = '免費下載完整版';
+    cta.href = FULL_VERSION_URL;
+    cta.target = '_blank';
+    cta.rel = 'noopener';
+    cta.style.marginLeft = 'auto';
+    cta.style.marginRight = '10px';
+    cta.style.padding = '3px 12px';
+    cta.style.fontSize = '12px';
+    cta.style.borderRadius = '12px';
+    cta.style.background = BRAND_COLOR;
+    cta.style.color = '#fff';
+    cta.style.textDecoration = 'none';
+    cta.style.whiteSpace = 'nowrap';
+    cta.title = '三角／米字／數字形態、求解器、新手教程、宏定義都在完整版裡，一樣免費開源';
+    menuBar.appendChild(cta);
+})();
 buildVK();
 layoutCanvas();
 window.addEventListener('resize', () => { layoutCanvas(); schedulePaint(); });
@@ -3333,19 +3482,19 @@ return { SliderMatrix };
     var require = function (spec) { return __load(__resolvedId(id, spec)); };
     return __cache[id] = fn(require);
   }
-  var __resolve = { "E:/program_project/py/貓九的滑塊遊戲/web/dist/main.js": "m0",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/render/BoardRenderer.js": "m1",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/io/SaveManager.js": "m10",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/feature/Timer.js": "m11",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/feature/Records.js": "m12",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/render/theme.js": "m2",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/interaction/BoardController.js": "m3",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/CommandBus.js": "m4",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/GameHistory.js": "m5",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/Block.js": "m6",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/rules.js": "m7",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/store/GameStore.js": "m8",
-    "E:/program_project/py/貓九的滑塊遊戲/web/dist/core/SliderMatrix.js": "m9" };
+  var __resolve = { "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/main.js": "m0",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/BoardRenderer.js": "m1",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/io/SaveManager.js": "m10",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Timer.js": "m11",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Records.js": "m12",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/theme.js": "m2",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/interaction/BoardController.js": "m3",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/CommandBus.js": "m4",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/GameHistory.js": "m5",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/Block.js": "m6",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/rules.js": "m7",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/store/GameStore.js": "m8",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/SliderMatrix.js": "m9" };
   function __resolvedId(fromId, spec) {
     var fromAbs = null;
     for (var k in __resolve) { if (__resolve[k] === fromId) { fromAbs = k; break; } }
