@@ -215,6 +215,27 @@
       th, td { border: 1px solid #464646; padding: 7px 8px; text-align: left; }
       th { background: rgba(255,255,255,0.07); color: #fff; }
 
+      /* ---------- 动图 ---------- */
+      .anim-fig { margin: 14px 0 0; }
+      .anim-fig img {
+        width: 100%; max-width: 720px;
+        display: block; margin: 0 auto;
+        border-radius: 8px; border: 1px solid #5a5a5a;
+      }
+      .anim-fig figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 5px; }
+      .anim-duo {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+        margin-top: 12px;
+      }
+      .anim-duo figure { margin: 0; }
+      .anim-duo img {
+        width: 100%; display: block;
+        border-radius: 8px; border: 1px solid #5a5a5a;
+      }
+      .anim-duo figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 5px; }
+
       /* ---------- 截图画廊（缺图自动占位） ---------- */
       .gallery {
         display: grid;
@@ -359,6 +380,10 @@
             <li><span class="n">3</span><b>完成滑動</b>：選中的部分一起滑動特定距離（由「等級」決定），如果任何時候斷開或重疊，就不能往這個方向滑動。</li>
           </ol>
         </div>
+        <figure class="anim-fig">
+          <img src="images/anim/how.webp" alt="三步玩法動圖：選縫、點一側、沿縫推" />
+          <figcaption>實際操作動圖：選縫 → 點一側（整片被選中）→ 沿縫推</figcaption>
+        </figure>
         <p><strong>還原條件</strong>：讓所有方塊構成一整塊完整的<strong>實心長方形</strong> —— 沒有缺口、沒有空洞。位置在哪裡不重要、轉 90 度也算（不是要你回到初始版面）。<strong>預設尺寸都是正方形</strong>，所以最常碰到的目標就是拼回一個正方形；自訂 7×9 這類不等邊的盤時，目標就是 7×9 的實心長方形。</p>
         <p>網站背景正在自動播放示範。想看詳細規則、術語、各種模式和快捷鍵，到<a href="guide.html">玩法詳解</a>。</p>
       </section>
@@ -447,6 +472,20 @@
             <span>只拼成矩形可不行喔，數字還得按正確順序排好。</span>
           </div>
         </div>
+        <div class="anim-duo">
+          <figure>
+            <img src="images/anim/triangle.webp" alt="三角形態滑動動圖" />
+            <figcaption>三角：整片沿斜向晶格滑動（動圖）</figcaption>
+          </figure>
+          <figure>
+            <img src="images/anim/mi.webp" alt="米字形態滑動動圖" />
+            <figcaption>米字：一格四塊小三角一起走（動圖）</figcaption>
+          </figure>
+          <figure>
+            <img src="images/anim/numbered.webp" alt="數字形態滑動動圖" />
+            <figcaption>數字：編號跟著整片一起走（動圖）</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section class="card" id="step">
@@ -460,6 +499,10 @@
             <span>顏色數 = 等級²：1 色 → 4 色 → 9 色，能互換的範圍一層層縮小</span>
           </div>
         </div>
+        <figure class="anim-fig">
+          <img src="images/anim/step.webp" alt="等級1與等級2滑動距離對比動圖" />
+          <figcaption>左：等級 1 一次走 1 格；右：等級 2 一次走 2 格（動圖）</figcaption>
+        </figure>
         <p class="note">等級越高，走法越受限制：看起來能走、實際上走不過去的地方越來越多，步步為營。</p>
       </section>
 
@@ -601,7 +644,7 @@
           <figure class="pic" data-file="images/10.連鎖器.png"><div class="pic-frame"></div><figcaption>連鎖器（高亮連帶方塊）</figcaption></figure>
           <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>選縫隙・箭頭按鍵</figcaption></figure>
           <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成績面板（Ao5 / Ao12）</figcaption></figure>
-          <figure class="pic" data-file="images/13.手機觸控.png"><div class="pic-frame"></div><figcaption>手機・觸控操作</figcaption></figure>
+          <figure class="pic" data-file="images/anim/restore_169.webp"><div class="pic-frame"></div><figcaption>從打亂走回實心長方形（動圖）</figcaption></figure>
           <figure class="pic" data-file="images/14.等級step.png"><div class="pic-frame"></div><figcaption>等級 step 對照（著色器開：顏色數 = step²）</figcaption></figure>
         </div>
         <p class="note">以上截圖來自 Python 版 / 網頁版，實際介面可能隨版本略有不同。</p>
@@ -655,6 +698,10 @@
             <li><span class="n">3</span><b>完成滑动</b>：选中的部分一起滑动特定距离（由“等级”决定），如果任何时候断开或重叠就不能向这个方向滑动。</li>
           </ol>
         </div>
+        <figure class="anim-fig">
+          <img src="images/anim/how.webp" alt="三步玩法动图：选缝、点一侧、沿缝推" />
+          <figcaption>实际操作动图：选缝 → 点一侧（整片被选中）→ 沿缝推</figcaption>
+        </figure>
         <p><strong>还原条件</strong>：让所有方块构成一个完整的<strong>实心正方形</strong></p>
         <p>网站背景正在自动播放演示。想看详细规则、术语、各种模式和快捷键，到<a href="guide.html">玩法详解</a>。</p>
       </section>
@@ -743,6 +790,20 @@
             <span>只拼成矩形可不行哦，还需要数字按正确顺序排列。</span>
           </div>
         </div>
+        <div class="anim-duo">
+          <figure>
+            <img src="images/anim/triangle.webp" alt="三角形态滑动动图" />
+            <figcaption>三角：整片沿斜向晶格滑动（动图）</figcaption>
+          </figure>
+          <figure>
+            <img src="images/anim/mi.webp" alt="米字形态滑动动图" />
+            <figcaption>米字：一格四块小三角一起走（动图）</figcaption>
+          </figure>
+          <figure>
+            <img src="images/anim/numbered.webp" alt="数字形态滑动动图" />
+            <figcaption>数字：编号跟着整片一起走（动图）</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section class="card" id="step">
@@ -756,6 +817,10 @@
             <span>颜色数 = 等级²：1 色 → 4 色 → 9 色，能互换的范围一层层缩小</span>
           </div>
         </div>
+        <figure class="anim-fig">
+          <img src="images/anim/step.webp" alt="等级1与等级2滑动距离对比动图" />
+          <figcaption>左：等级 1 一次走 1 格；右：等级 2 一次走 2 格（动图）</figcaption>
+        </figure>
         <p class="note">等级越高，走法越受限制，看起来能走，实际上走不过去的地方越来越多，步步为营。</p>
       </section>
 
@@ -897,7 +962,7 @@
           <figure class="pic" data-file="images/10.連鎖器.png"><div class="pic-frame"></div><figcaption>连锁器（高亮连带方块）</figcaption></figure>
           <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>选缝隙・箭头按键</figcaption></figure>
           <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成绩面板（Ao5 / Ao12）</figcaption></figure>
-          <figure class="pic" data-file="images/13.手機觸控.png"><div class="pic-frame"></div><figcaption>手机・触控操作</figcaption></figure>
+          <figure class="pic" data-file="images/anim/restore_169.webp"><div class="pic-frame"></div><figcaption>从打乱走回实心长方形（动图）</figcaption></figure>
           <figure class="pic" data-file="images/14.等級step.png"><div class="pic-frame"></div><figcaption>等级 step 对照（着色器开：颜色数 = step²）</figcaption></figure>
         </div>
         <p class="note">以上截图来自 Python 版 / 网页版，实际界面可能随版本略有不同。</p>
