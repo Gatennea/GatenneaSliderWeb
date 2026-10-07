@@ -236,13 +236,7 @@
       }
       .anim-duo figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 5px; }
 
-      /* ---------- 截图画廊（缺图自动占位） ---------- */
-      .gallery {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-        gap: 14px;
-        margin-top: 12px;
-      }
+      /* ---------- 截图（分散在各章节；缺图自动占位） ---------- */
       .pic { margin: 0; }
       .pic-frame {
         position: relative;
@@ -277,6 +271,16 @@
       }
       .pic figcaption { text-align: center; font-size: 13px; color: #aaa; margin-top: 5px; }
       .pic.missing figcaption { color: #7e7e7e; }
+      /* 散落在各章节里的单张截图：不裁切，完整显示 */
+      .pic.fit .pic-frame { background: rgba(0,0,0,0.25); }
+      .pic.fit .pic-img { object-fit: contain; }
+      .pic-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 14px;
+        margin-top: 12px;
+      }
+      .pic-wide { margin: 14px 0 0; }
 
       /* ---------- 捐赠 / 页尾 ---------- */
       .donate .btn { margin-top: 12px; padding: 10px 26px; font-size: 16px; }
@@ -385,6 +389,10 @@
           <figcaption>實際操作動圖：選縫 → 點一側（整片被選中）→ 沿縫推</figcaption>
         </figure>
         <p><strong>還原條件</strong>：讓所有方塊構成一整塊完整的<strong>實心長方形</strong> —— 沒有缺口、沒有空洞。位置在哪裡不重要、轉 90 度也算（不是要你回到初始版面）。<strong>預設尺寸都是正方形</strong>，所以最常碰到的目標就是拼回一個正方形；自訂 7×9 這類不等邊的盤時，目標就是 7×9 的實心長方形。</p>
+        <figure class="pic fit pic-wide" data-file="images/anim/restore_169.webp">
+          <div class="pic-frame"></div>
+          <figcaption>從打亂一路走回實心長方形（動圖）</figcaption>
+        </figure>
         <p>網站背景正在自動播放示範。想看詳細規則、術語、各種模式和快捷鍵，到<a href="guide.html">玩法詳解</a>。</p>
       </section>
 
@@ -423,7 +431,7 @@
           </div>
           <div class="feature">
             <h3>視覺增強</h3>
-            <p><b>著色器</b>按移動不變量替方塊描邊上色 —— 同色就代表「這幾塊永遠可以互換」；<b>連鎖器</b>在你指到某個空位時，把全場補得進那裡的位置一起提亮。哪些事辦得到、哪些辦不到，看一眼就知道。</p>
+            <p><b>著色器</b>與<b>連鎖器</b>：哪些事辦得到、哪些辦不到，看一眼就知道。<b>兩個版本都有</b>，詳細說明與截圖在下面「兩個視覺輔助」那一節。</p>
           </div>
           <div class="feature">
             <h3>宏功能</h3>
@@ -506,6 +514,26 @@
         <p class="note">等級越高，走法越受限制：看起來能走、實際上走不過去的地方越來越多，步步為營。</p>
       </section>
 
+      <section class="card" id="visual">
+        <h2>兩個視覺輔助：哪些辦得到，看一眼就知道</h2>
+        <p>這遊戲卡人的地方往往不是「想不到怎麼走」，而是「以為能走、其實一步都挪不動」。兩個開關專門治這個：</p>
+        <div class="pic-grid">
+          <figure class="pic fit" data-file="images/9.著色器.png">
+            <div class="pic-frame"></div>
+            <figcaption>著色器：同色 = 這幾塊永遠可以互換</figcaption>
+          </figure>
+          <figure class="pic fit" data-file="images/10.連鎖器.png">
+            <div class="pic-frame"></div>
+            <figcaption>連鎖器：把能補進這個空位的位置一起提亮</figcaption>
+          </figure>
+        </div>
+        <ul>
+          <li><b>著色器</b>：按方塊所屬的分組描邊上色。<b>同色的方塊永遠可以互換</b>，不同色的不管怎麼挪都換不過去。顏色數剛好是等級² —— 等級越高，分得越細。</li>
+          <li><b>連鎖器</b>：把游標停在某個空位上，全場所有能補進這個空位的位置會一起提亮。想填某個洞卻怎麼都塞不進去時，開它就清楚了。</li>
+        </ul>
+        <p class="note">兩個開關在完整版和網頁版裡都有，隨時可開可關；不喜歡花花綠綠就關掉。</p>
+      </section>
+
       <section class="card" id="cube">
         <h2>如果你玩過魔術方塊，這樣理解最快</h2>
         <p>作者是速擰玩家，整套設計都在向魔術方塊看齊：<b>一次滑動就相當於一次轉動</b>，<b>打亂、還原、DNF、Ao5、Ao12</b>這些說法也是直接沿用速擰的習慣。</p>
@@ -555,6 +583,10 @@
             <p>F1 叫出的浮動小鍵盤，適合習慣鍵鼠控制、手邊沒有鍵盤時臨時用。</p>
           </div>
         </div>
+        <figure class="pic fit pic-wide optional" data-file="images/13.手機觸控.png">
+          <div class="pic-frame"></div>
+          <figcaption>手機・平板上直接拖動來玩</figcaption>
+        </figure>
         <p class="note">五種方式都有獨立開關，可以隨意組合，也可以只留一種。</p>
       </section>
 
@@ -596,6 +628,14 @@
             <h3>線上試玩（網頁版）</h3>
             <p>不用下載、不用安裝、不用註冊，點開就能玩。<strong>先用這個確定你想不想玩。</strong></p>
             <p class="note">功能較精簡：以矩形形態和基礎計時、存檔為主。</p>
+            <figure class="pic fit" data-file="images/4.网页版.png" style="margin:12px 0 0">
+              <div class="pic-frame"></div>
+              <figcaption>網頁版實際畫面（點開就能玩）</figcaption>
+            </figure>
+            <figure class="pic fit" data-file="images/4.网页版.png" style="margin:12px 0 0">
+              <div class="pic-frame"></div>
+              <figcaption>网页版实际画面（点开就能玩）</figcaption>
+            </figure>
             <a class="btn btn-primary btn-sm" href="game.html">▶ 現在就開始</a>
           </div>
           <div class="dl-box dl-main">
@@ -606,6 +646,22 @@
             <a class="btn btn-primary btn-sm" href="https://github.com/Gatennea/GatenneaSlider/releases/latest/download/GatenneaSlider-Windows.zip" target="_blank" rel="noopener">⬇ 下載 ZIP（約 31 MB）</a>
           </div>
         </div>
+        <h3 style="margin-top:20px">完整版長這樣</h3>
+        <div class="pic-grid">
+          <figure class="pic fit" data-file="images/1.新手教程.png">
+            <div class="pic-frame"></div>
+            <figcaption>新手教程：從最簡單的局面開始帶你上手</figcaption>
+          </figure>
+          <figure class="pic fit" data-file="images/2.py版竞速中.png">
+            <div class="pic-frame"></div>
+            <figcaption>競速中：計時與計步即時更新</figcaption>
+          </figure>
+          <figure class="pic fit" data-file="images/3.求解器正在运行.png">
+            <div class="pic-frame"></div>
+            <figcaption>求解器運行中：看程式怎麼解</figcaption>
+          </figure>
+        </div>
+        <p class="note">以上截圖來自完整版（Windows / Python），實際介面可能隨版本略有不同。</p>
         <p class="note" style="margin-top:14px">其他選擇：<a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">Python 原始碼</a>（裝好 pygame 直接跑）・<a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">離線網頁版</a>（整站打包，斷網也能玩）・<a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">查表求解器資料庫</a>（可選；沒裝只會讓「查表求解器」不可用，其它功能不受影響）。</p>
         <p class="note">版本號長得像 <code>v197-20261006</code>：<code>197</code> 是 Git 提交數，<code>20261006</code> 是打包日期，一眼就能比出新舊。上面的下載連結固定指向最新版，不用到處找。</p>
         <p class="note">程式沒有數位簽章，某些防毒軟體可能跳出攔截提示，選「仍要執行」即可。Release 頁面附了 SHA256 校驗值，下載後可用 <code>certutil -hashfile 檔名.zip SHA256</code> 核對。</p>
@@ -615,39 +671,21 @@
         <h2>成績排行榜<span class="pill">開發中</span></h2>
         <p>目前成績只保存在你自己的電腦或瀏覽器裡。貓九正在架設後端，做完之後你可以在網站上提交成績，跟其他人比誰解得更快、誰的 Ao5 更低。</p>
         <p class="note">在那之前，先在完整版裡自己刷記錄吧 —— 計時口徑跟魔方速擰是一套（DNF / Ao5 / Ao12）。有想法或建議也歡迎告訴貓九。</p>
+        <figure class="pic fit pic-wide" data-file="images/12.成績面板.png">
+          <div class="pic-frame"></div>
+          <figcaption>完整版的成績面板：單次成績・Ao5・Ao12・DNF</figcaption>
+        </figure>
       </section>
 
       <section class="card" id="news">
         <h2>動態與計畫</h2>
+        <p><strong>緣起</strong>：2025 年，貓九用正方體磁鐵（巴克球）在實體桌面上演示了這個構思 —— <a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁鐵設計了一種高難度謎題：貓九滑塊</a>。後來它被寫成了程式，就是你現在看到的這個遊戲。</p>
         <ul>
           <li><strong>已完成</strong>：四種形態（矩形 / 三角 / 米字 / 數字）、新手教程、內建求解器、著色與連鎖視覺增強、宏系統與懸浮面板、Windows 單檔發行、網站捐赠入口。</li>
           <li><strong>正在做</strong>：成績排行榜後端（成績上傳與排名）、介面動效與視覺回饋優化、更多形態的求解器強度。</li>
           <li><strong>在想</strong>：行動版體驗強化、自動更新機制、更多教程關卡。</li>
         </ul>
         <p>完整的版本歷史在<a href="update_info.html">動態・更新日誌</a>，裡面同時記錄網路版與 Python 版的改動。</p>
-      </section>
-
-      <section class="card" id="showcase">
-        <h2>遊戲展示</h2>
-        <p>2025 年，貓九發布了遊戲構思，用正方體磁鐵（巴克球）在實體桌面上演示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁鐵設計了一種高難度謎題：貓九滑塊</a>。</p>
-        <p class="note">下方的空格是<b>自動補位</b>的：只要把截圖放進網站的 <code>images/</code> 資料夾、檔名改成方框裡顯示的那個名字，重新整理頁面就會自動出現，不用改網頁。<br />建議挑：三種進階形態各一張、著色器與連鎖器各一張、成績面板一張、手機操作一張。</p>
-        <div class="gallery">
-          <figure class="pic" data-file="images/1.新手教程.png"><div class="pic-frame"></div><figcaption>新手教程</figcaption></figure>
-          <figure class="pic" data-file="images/2.py版竞速中.png"><div class="pic-frame"></div><figcaption>Python 版競速中</figcaption></figure>
-          <figure class="pic" data-file="images/3.求解器正在运行.png"><div class="pic-frame"></div><figcaption>求解器運行中</figcaption></figure>
-          <figure class="pic" data-file="images/4.网页版.png"><div class="pic-frame"></div><figcaption>網頁版</figcaption></figure>
-          <figure class="pic" data-file="images/5.矩形形態.png"><div class="pic-frame"></div><figcaption>矩形形態（3×3・6×6・8×8，右側兩張是還原態）</figcaption></figure>
-          <figure class="pic" data-file="images/6.三角形態.png"><div class="pic-frame"></div><figcaption>三角形態（邊長 3・6・9，右側兩張是還原態）</figcaption></figure>
-          <figure class="pic" data-file="images/7.米字形態.png"><div class="pic-frame"></div><figcaption>米字形態（2×2・4×4・5×5，右側兩張是還原態）</figcaption></figure>
-          <figure class="pic" data-file="images/8.數字形態.png"><div class="pic-frame"></div><figcaption>數字形態（3×3・4×4・6×6，右側兩張是還原態）</figcaption></figure>
-          <figure class="pic" data-file="images/9.著色器.png"><div class="pic-frame"></div><figcaption>著色器（按移動不變量上色）</figcaption></figure>
-          <figure class="pic" data-file="images/10.連鎖器.png"><div class="pic-frame"></div><figcaption>連鎖器（高亮連帶方塊）</figcaption></figure>
-          <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>選縫隙・箭頭按鍵</figcaption></figure>
-          <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成績面板（Ao5 / Ao12）</figcaption></figure>
-          <figure class="pic" data-file="images/anim/restore_169.webp"><div class="pic-frame"></div><figcaption>從打亂走回實心長方形（動圖）</figcaption></figure>
-          <figure class="pic" data-file="images/14.等級step.png"><div class="pic-frame"></div><figcaption>等級 step 對照（著色器開：顏色數 = step²）</figcaption></figure>
-        </div>
-        <p class="note">以上截圖來自 Python 版 / 網頁版，實際介面可能隨版本略有不同。</p>
       </section>
 
       <section class="card donate">
@@ -702,7 +740,11 @@
           <img src="images/anim/how.webp" alt="三步玩法动图：选缝、点一侧、沿缝推" />
           <figcaption>实际操作动图：选缝 → 点一侧（整片被选中）→ 沿缝推</figcaption>
         </figure>
-        <p><strong>还原条件</strong>：让所有方块构成一个完整的<strong>实心正方形</strong></p>
+        <p><strong>还原条件</strong>：让所有方块构成一整块完整的<strong>实心长方形</strong> —— 没有缺口、没有空洞。位置在哪里不重要、转 90 度也算（不是要你回到初始版面）。<strong>预设尺寸都是正方形</strong>，所以最常碰到的目标就是拼回一个正方形；自定义 7×9 这类不等边的盘时，目标就是 7×9 的实心长方形。</p>
+        <figure class="pic fit pic-wide" data-file="images/anim/restore_169.webp">
+          <div class="pic-frame"></div>
+          <figcaption>从打乱一路走回实心长方形（动图）</figcaption>
+        </figure>
         <p>网站背景正在自动播放演示。想看详细规则、术语、各种模式和快捷键，到<a href="guide.html">玩法详解</a>。</p>
       </section>
 
@@ -741,7 +783,7 @@
           </div>
           <div class="feature">
             <h3>视觉增强</h3>
-            <p><b>着色器</b>按移动不变量给方块描边上色 —— 同色就代表「这几块永远可以互换」；<b>连锁器</b>在你指到某个空位时，把全场补得进那里的位置一起提亮。哪些事办得到、哪些办不到，看一眼就知道。</p>
+            <p><b>着色器</b>与<b>连锁器</b>：哪些事办得到、哪些办不到，看一眼就知道。<b>两个版本都有</b>，详细说明与截图在下面「两个视觉辅助」那一节。</p>
           </div>
           <div class="feature">
             <h3>宏功能</h3>
@@ -825,6 +867,26 @@
       </section>
 
       
+      <section class="card" id="visual">
+        <h2>两个视觉辅助：哪些办得到，看一眼就知道</h2>
+        <p>这游戏卡人的地方往往不是「想不到怎么走」，而是「以为能走、其实一步都挪不动」。两个开关专门治这个：</p>
+        <div class="pic-grid">
+          <figure class="pic fit" data-file="images/9.著色器.png">
+            <div class="pic-frame"></div>
+            <figcaption>着色器：同色 = 这几块永远可以互换</figcaption>
+          </figure>
+          <figure class="pic fit" data-file="images/10.連鎖器.png">
+            <div class="pic-frame"></div>
+            <figcaption>连锁器：把能补进这个空位的位置一起提亮</figcaption>
+          </figure>
+        </div>
+        <ul>
+          <li><b>着色器</b>：按方块所属的分组描边上色。<b>同色的方块永远可以互换</b>，不同色的不管怎么挪都换不过去。颜色数刚好是等级² —— 等级越高，分得越细。</li>
+          <li><b>连锁器</b>：把光标停在某个空位上，全场所有能补进这个空位的位置会一起提亮。想填某个洞却怎么都塞不进去时，开它就清楚了。</li>
+        </ul>
+        <p class="note">两个开关在完整版和网页版里都有，随时可开可关；不喜欢花花绿绿就关掉。</p>
+      </section>
+
       <section class="card" id="cube">
         <h2>如果你玩过魔方，这样理解最快</h2>
         <p>作者是速拧玩家，整套设计都在向魔方看齐：<b>一次滑动就相当于一次转动</b>，<b>打乱、还原、DNF、Ao5、Ao12</b>这些说法也是直接沿用速拧的习惯。</p>
@@ -873,6 +935,10 @@
             <p>F1 叫出的浮动小键盘，适合习惯键鼠控制的人临时使用。</p>
           </div>
         </div>
+        <figure class="pic fit pic-wide optional" data-file="images/13.手機觸控.png">
+          <div class="pic-frame"></div>
+          <figcaption>手机・平板上直接拖动来玩</figcaption>
+        </figure>
         <p class="note">五种方式都有独立开关，可以随意组合，也可以只留一种。</p>
       </section>
 
@@ -924,6 +990,22 @@
             <a class="btn btn-primary btn-sm" href="https://github.com/Gatennea/GatenneaSlider/releases/latest/download/GatenneaSlider-Windows.zip" target="_blank" rel="noopener">⬇ 下载 ZIP（约 31 MB）</a>
           </div>
         </div>
+        <h3 style="margin-top:20px">完整版长这样</h3>
+        <div class="pic-grid">
+          <figure class="pic fit" data-file="images/1.新手教程.png">
+            <div class="pic-frame"></div>
+            <figcaption>新手教程：从最简单的局面开始带你上手</figcaption>
+          </figure>
+          <figure class="pic fit" data-file="images/2.py版竞速中.png">
+            <div class="pic-frame"></div>
+            <figcaption>竞速中：计时与计步即时更新</figcaption>
+          </figure>
+          <figure class="pic fit" data-file="images/3.求解器正在运行.png">
+            <div class="pic-frame"></div>
+            <figcaption>求解器运行中：看程序怎么解</figcaption>
+          </figure>
+        </div>
+        <p class="note">以上截图来自完整版（Windows / Python），实际界面可能随版本略有不同。</p>
         <p class="note" style="margin-top:14px">其他选择：<a href="https://github.com/Gatennea/GatenneaSlider/" target="_blank" rel="noopener">Python 源码</a>（装好 pygame 直接跑）・<a href="https://github.com/Gatennea/GatenneaSliderWeb" target="_blank" rel="noopener">离线网页版</a>（整站打包，断网也能玩）・<a href="https://share.weiyun.com/FKq3c3SP" target="_blank" rel="noopener">查表求解器数据库</a>（可选；没装只会让「查表求解器」不可用，其它功能不受影响）。</p>
         <p class="note">版本号长得像 <code>v197-20261006</code>：<code>197</code> 是 Git 提交数，<code>20261006</code> 是打包日期，一眼就能比出新旧。上面的下载链接固定指向最新版，不用到处找。</p>
         <p class="note">程序没有数字签名，某些杀毒软件可能弹出拦截提示，选「仍要运行」即可。Release 页面附了 SHA256 校验值，下载后可用 <code>certutil -hashfile 文件名.zip SHA256</code> 核对。</p>
@@ -933,39 +1015,21 @@
         <h2>成绩排行榜<span class="pill">开发中</span></h2>
         <p>目前成绩只保存在你自己的电脑或浏览器里。貓九正在架设后端，做完之后你可以在网站上提交成绩，跟其他人比谁解得更快、谁的 Ao5 更低。</p>
         <p class="note">在那之前，先在完整版里自己刷记录吧 —— 计时口径跟魔方速拧是一套（DNF / Ao5 / Ao12）。有想法或建议也欢迎告诉貓九。</p>
+        <figure class="pic fit pic-wide" data-file="images/12.成績面板.png">
+          <div class="pic-frame"></div>
+          <figcaption>完整版的成绩面板：单次成绩・Ao5・Ao12・DNF</figcaption>
+        </figure>
       </section>
 
       <section class="card" id="news">
         <h2>动态与计划</h2>
+        <p><strong>缘起</strong>：2025 年，貓九用正方体磁铁（巴克球）在实体桌面上演示了这个构思 —— <a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁铁设计了一种高难度谜题：貓九滑块</a>。后来它被写成了程序，就是你现在看到的这个游戏。</p>
         <ul>
           <li><strong>已完成</strong>：四种形态（矩形 / 三角 / 米字 / 数字）、新手教程、内置求解器、着色与连锁视觉增强、宏系统与悬浮面板、Windows 单档发行、网站捐赠入口。</li>
           <li><strong>正在做</strong>：成绩排行榜后端（成绩上传与排名）、界面动效与视觉反馈优化、更多形态的求解器强度。</li>
           <li><strong>在想</strong>：手机版体验强化、自动更新机制、更多教程关卡。</li>
         </ul>
         <p>完整的版本历史在<a href="update_info.html">动态・更新日志</a>，里面同时记录网页版与 Python 版的改动。</p>
-      </section>
-
-      <section class="card" id="showcase">
-        <h2>游戏展示</h2>
-        <p>2025 年，貓九发布了游戏构思，用正方体磁铁（巴克球）在实体桌面上演示：<a href="https://www.bilibili.com/video/BV14Qt7zUEC2" target="_blank" rel="noopener">[貓九]我用磁铁设计了一种高难度谜题：貓九滑块</a>。</p>
-        <p class="note">下方的空格是<b>自动补位</b>的：只要把截图放进网站的 <code>images/</code> 文件夹、文件名改成方框里显示的那个名字，刷新页面就会自动出现，不用改网页。<br />建议挑：三种进阶形态各一张、着色器与连锁器各一张、成绩面板一张、手机操作一张。</p>
-        <div class="gallery">
-          <figure class="pic" data-file="images/1.新手教程.png"><div class="pic-frame"></div><figcaption>新手教程</figcaption></figure>
-          <figure class="pic" data-file="images/2.py版竞速中.png"><div class="pic-frame"></div><figcaption>Python 版竞速中</figcaption></figure>
-          <figure class="pic" data-file="images/3.求解器正在运行.png"><div class="pic-frame"></div><figcaption>求解器运行中</figcaption></figure>
-          <figure class="pic" data-file="images/4.网页版.png"><div class="pic-frame"></div><figcaption>网页版</figcaption></figure>
-          <figure class="pic" data-file="images/5.矩形形態.png"><div class="pic-frame"></div><figcaption>矩形形态（3×3・6×6・8×8，右侧两张是还原态）</figcaption></figure>
-          <figure class="pic" data-file="images/6.三角形態.png"><div class="pic-frame"></div><figcaption>三角形态（边长 3・6・9，右侧两张是还原态）</figcaption></figure>
-          <figure class="pic" data-file="images/7.米字形態.png"><div class="pic-frame"></div><figcaption>米字形态（2×2・4×4・5×5，右侧两张是还原态）</figcaption></figure>
-          <figure class="pic" data-file="images/8.數字形態.png"><div class="pic-frame"></div><figcaption>数字形态（3×3・4×4・6×6，右侧两张是还原态）</figcaption></figure>
-          <figure class="pic" data-file="images/9.著色器.png"><div class="pic-frame"></div><figcaption>着色器（按移动不变量上色）</figcaption></figure>
-          <figure class="pic" data-file="images/10.連鎖器.png"><div class="pic-frame"></div><figcaption>连锁器（高亮连带方块）</figcaption></figure>
-          <figure class="pic" data-file="images/11.縫隙與箭頭按鍵.png"><div class="pic-frame"></div><figcaption>选缝隙・箭头按键</figcaption></figure>
-          <figure class="pic" data-file="images/12.成績面板.png"><div class="pic-frame"></div><figcaption>成绩面板（Ao5 / Ao12）</figcaption></figure>
-          <figure class="pic" data-file="images/anim/restore_169.webp"><div class="pic-frame"></div><figcaption>从打乱走回实心长方形（动图）</figcaption></figure>
-          <figure class="pic" data-file="images/14.等級step.png"><div class="pic-frame"></div><figcaption>等级 step 对照（着色器开：颜色数 = step²）</figcaption></figure>
-        </div>
-        <p class="note">以上截图来自 Python 版 / 网页版，实际界面可能随版本略有不同。</p>
       </section>
 
       <section class="card donate">
@@ -1010,6 +1074,8 @@
               };
               img.onerror = function () {
                 pic.setAttribute('data-state', 'missing');
+                // optional 图：缺图时整块隐藏，不留 TODO 空位（補了圖才會出現）
+                if (pic.classList.contains('optional')) { pic.style.display = 'none'; return; }
                 pic.classList.add('missing');
                 frame.innerHTML =
                   '<span class="pic-badge">TODO</span>' +
