@@ -14,17 +14,24 @@
         font-family: system-ui, "Microsoft JhengHei", sans-serif;
         line-height: 1.75;
       }
+      /* 背景 = 一张循环动图（原为 iframe 内跑整个游戏引擎，太耗电）。
+         动图首尾都是「居中对齐的还原态矩形」，循环接缝看不出来。 */
       .demo-bg {
         position: fixed;
         inset: 0;
         width: 100%;
         height: 100%;
+        object-fit: cover;
         border: 0;
         z-index: 0;
         pointer-events: none;
         opacity: 0.5;
         filter: blur(1.5px) saturate(0.85);
         transform: scale(1.02);
+      }
+      /* 系统开启「减少动态效果」时直接不显示背景动图 */
+      @media (prefers-reduced-motion: reduce) {
+        .demo-bg { display: none; }
       }
       .demo-overlay {
         position: fixed;
@@ -345,7 +352,7 @@
     </style>
   </head>
   <body data-lang="zh-Hant">
-    <iframe class="demo-bg" src="game.html?demo=demo/animation.json" title="玩法演示背景" aria-hidden="true"></iframe>
+    <img class="demo-bg" src="images/anim/bg_loop.webp" alt="" aria-hidden="true" />
     <div class="demo-overlay" aria-hidden="true"></div>
     <button class="lang-switch" id="langSwitch" type="button">切换为简体中文</button>
 
@@ -393,7 +400,7 @@
           <div class="pic-frame"></div>
           <figcaption>從打亂一路走回實心長方形（動圖）</figcaption>
         </figure>
-        <p>網站背景正在自動播放示範。想看詳細規則、術語、各種模式和快捷鍵，到<a href="guide.html">玩法詳解</a>。</p>
+        <p>網站背景那張動圖就是一次完整還原：7×7、等級 2、70 步，從打亂一路走回實心正方形。想看詳細規則、術語、各種模式和快捷鍵，到<a href="guide.html">玩法詳解</a>。</p>
       </section>
 
       <section class="card" id="features">
@@ -745,7 +752,7 @@
           <div class="pic-frame"></div>
           <figcaption>从打乱一路走回实心长方形（动图）</figcaption>
         </figure>
-        <p>网站背景正在自动播放演示。想看详细规则、术语、各种模式和快捷键，到<a href="guide.html">玩法详解</a>。</p>
+        <p>网站背景那张动图就是一次完整还原：7×7、等级 2、70 步，从打乱一路走回实心正方形。想看详细规则、术语、各种模式和快捷键，到<a href="guide.html">玩法详解</a>。</p>
       </section>
 
       <section class="card" id="features">
