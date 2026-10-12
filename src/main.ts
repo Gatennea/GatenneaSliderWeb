@@ -5,7 +5,7 @@
 import { BoardRenderer } from './render/BoardRenderer.js';
 import { BoardController } from './interaction/BoardController.js';
 import { GameStore } from './store/GameStore.js';
-import { COLORS, GEOMETRY, easeOut } from './render/theme.js';
+import { COLORS, GEOMETRY, easeOut, FONT_FAMILY } from './render/theme.js';
 import { shuffle, reset, undo, redo } from './core/CommandBus.js';
 import { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } from './io/SaveManager.js';
 import { Timer, formatTime } from './feature/Timer.js';
@@ -18,7 +18,8 @@ app.style.height = '100vh';
 app.style.overflow = 'hidden';
 app.style.display = 'flex';
 app.style.flexDirection = 'column';
-app.style.fontFamily = 'system-ui, sans-serif';
+// 字型對照原版：整套介面都是 SimHei（黑體），不是瀏覽器預設字型
+app.style.fontFamily = FONT_FAMILY;
 // 下拉選單改用 app 當定位基準：若掛在選單欄底下，窄屏時會被選單欄裁掉
 app.style.position = 'relative';
 
@@ -83,8 +84,12 @@ status.style.display = 'flex';
 status.style.alignItems = 'center';
 status.style.gap = '24px';
 status.style.paddingLeft = '10px';
-status.style.fontSize = '13px';
+// 右緣留出右側面板寬 + 10，讓「縮放」停的位置與原版一致
+// （原版 zoom_x = screen_width - 文字寬 - right_panel_width - 10）
+status.style.paddingRight = `${GEOMETRY.right_panel_width + 10}px`;
+status.style.fontSize = '14px'; // 原版 status_font = SimHei 14
 status.style.flexShrink = '0';
+status.style.position = 'relative';
 app.appendChild(status);
 
 // 狀態列欄位（對照原版左→中→右）
@@ -99,6 +104,11 @@ status.append(stSolved, stSteps, stTimer, stPuzzle, stZoom);
   el.style.whiteSpace = 'nowrap';
   el.style.flexShrink = '0';
 });
+// 對照原版：謎題整條畫面居中、縮放靠右（原版正是把謎題畫在 screen_width/2）
+stPuzzle.style.position = 'absolute';
+stPuzzle.style.left = '50%';
+stPuzzle.style.transform = 'translateX(-50%)';
+stZoom.style.marginLeft = 'auto';
 
 // ---------- 浮動面板 ----------
 // ---------- 浮動面板（可拖動） ----------
@@ -612,6 +622,7 @@ function recordDnf(): void {
 
 // 右側開關狀態
 let selectionAnimationEnabled = true;
+let recordsVisible = false;
 // 控制模式
 let singleTouch = true;
 let twoTouch = true;
@@ -625,7 +636,9 @@ const switchStates: SwitchState[] = [
   { key: 'coloring_enabled', label: '着色', get: () => renderer.coloringEnabled, set: (v) => { renderer.coloringEnabled = v; schedulePaint(); } },
   { key: 'chain_hint_enabled', label: '连锁', get: () => renderer.chainHintEnabled, set: (v) => { renderer.chainHintEnabled = v; schedulePaint(); } },
   { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('計時中無法切換模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
-  { key: 'macro_reverse_mode', label: '逆序宏', get: () => false, set: () => {} },
+  // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
+  // 網頁版沒有「標記」（原版的作者內部工具），所以是 6 個；「成績」對應成績面板開關。
+  { key: 'records_visible', label: '成绩', get: () => recordsVisible, set: (v) => { recordsVisible = v; recordsPanel.style.display = v ? '' : 'none'; if (v) renderRecordsPanel(); syncSwitches(); } },
 ];
 
 function renderSwitch(s: SwitchState): void {
@@ -635,6 +648,11 @@ function renderSwitch(s: SwitchState): void {
   s.el.style.color = on ? '#fff' : '#969696';
   const text = s.key === 'game_mode' ? `模式:${on ? '竞速' : '练习'}` : `${s.label}:${on ? '开' : '关'}`;
   s.el.textContent = text;
+}
+
+/** 開關被外部（選單等）改動後，統一刷新右欄顯示 */
+function syncSwitches(): void {
+  switchStates.forEach(renderSwitch);
 }
 
 switchStates.forEach((s) => {
@@ -860,9 +878,11 @@ function renderRecordsPanel(): void {
 }
 
 function toggleRecords(): void {
-  const vis = recordsPanel.style.display === 'none';
+  const vis = !recordsVisible;
+  recordsVisible = vis;
   recordsPanel.style.display = vis ? '' : 'none';
   if (vis) renderRecordsPanel();
+  syncSwitches();
   showToast(vis ? '已開啟成績面板' : '已關閉成績面板');
 }
 
@@ -1200,7 +1220,6 @@ const menus: MenuDef[] = [
     }
   },
   { label: '宏定义', items: [pro('开始录制 Ctrl+M'), pro('停止录制 Ctrl+M'), '---', pro('宏列表...'), pro('播放宏...'), pro('逆序播放...')] },
-  { label: '教程', items: [pro('新手教程'), pro('教程关卡...'), '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)] },
   { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...', '---', pro('求解器...'), pro('快捷键设置...')], handler: (item) => {
       if (item.includes('虚拟键盘')) toggleVK();
       else if (item.includes('成绩')) toggleRecords();
@@ -1212,6 +1231,7 @@ const menus: MenuDef[] = [
       else if (item.includes('新手引导')) startTutorial();
     }
   },
+  { label: '教程', items: [pro('新手教程'), pro('教程关卡...'), '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)] },
   { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 

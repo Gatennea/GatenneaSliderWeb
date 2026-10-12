@@ -11,7 +11,7 @@
 import type { GameStore } from '../store/GameStore.js';
 import type { Block } from '../core/Block.js';
 import type { GapType } from '../core/rules.js';
-import { COLORS, GEOMETRY, easeOut } from './theme.js';
+import { COLORS, GEOMETRY, easeOut, FONT_FAMILY } from './theme.js';
 
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
@@ -282,7 +282,7 @@ export class BoardRenderer {
       // 太小就不畫，免得數字糊成一團
       if (block.number !== null && this.scaledCell >= 16) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.font = `600 ${Math.max(9, Math.round(this.scaledCell * 0.4))}px system-ui, sans-serif`;
+        ctx.font = `600 ${Math.max(9, Math.round(this.scaledCell * 0.4))}px ${FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(String(block.number), x + this.scaledCell / 2, y + this.scaledCell / 2);

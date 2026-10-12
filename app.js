@@ -8,7 +8,7 @@
 const { BoardRenderer } = require("./render/BoardRenderer.js");
 const { BoardController } = require("./interaction/BoardController.js");
 const { GameStore } = require("./store/GameStore.js");
-const { COLORS, GEOMETRY, easeOut } = require("./render/theme.js");
+const { COLORS, GEOMETRY, easeOut, FONT_FAMILY } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
 const { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } = require("./io/SaveManager.js");
 const { Timer, formatTime } = require("./feature/Timer.js");
@@ -19,7 +19,8 @@ app.style.height = '100vh';
 app.style.overflow = 'hidden';
 app.style.display = 'flex';
 app.style.flexDirection = 'column';
-app.style.fontFamily = 'system-ui, sans-serif';
+// 字型對照原版：整套介面都是 SimHei（黑體），不是瀏覽器預設字型
+app.style.fontFamily = FONT_FAMILY;
 // 下拉選單改用 app 當定位基準：若掛在選單欄底下，窄屏時會被選單欄裁掉
 app.style.position = 'relative';
 // ---------- 頂部選單欄 ----------
@@ -79,8 +80,12 @@ status.style.display = 'flex';
 status.style.alignItems = 'center';
 status.style.gap = '24px';
 status.style.paddingLeft = '10px';
-status.style.fontSize = '13px';
+// 右緣留出右側面板寬 + 10，讓「縮放」停的位置與原版一致
+// （原版 zoom_x = screen_width - 文字寬 - right_panel_width - 10）
+status.style.paddingRight = `${GEOMETRY.right_panel_width + 10}px`;
+status.style.fontSize = '14px'; // 原版 status_font = SimHei 14
 status.style.flexShrink = '0';
+status.style.position = 'relative';
 app.appendChild(status);
 // 狀態列欄位（對照原版左→中→右）
 const stSolved = document.createElement('span');
@@ -94,6 +99,11 @@ status.append(stSolved, stSteps, stTimer, stPuzzle, stZoom);
     el.style.whiteSpace = 'nowrap';
     el.style.flexShrink = '0';
 });
+// 對照原版：謎題整條畫面居中、縮放靠右（原版正是把謎題畫在 screen_width/2）
+stPuzzle.style.position = 'absolute';
+stPuzzle.style.left = '50%';
+stPuzzle.style.transform = 'translateX(-50%)';
+stZoom.style.marginLeft = 'auto';
 // ---------- 浮動面板 ----------
 // ---------- 浮動面板（可拖動） ----------
 const vkPanel = document.createElement('div');
@@ -578,6 +588,7 @@ function recordDnf() {
 }
 // 右側開關狀態
 let selectionAnimationEnabled = true;
+let recordsVisible = false;
 // 控制模式
 let singleTouch = true;
 let twoTouch = true;
@@ -591,7 +602,10 @@ const switchStates = [
             showToast('計時中無法切換模式');
             return;
         } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
-    { key: 'macro_reverse_mode', label: '逆序宏', get: () => false, set: () => { } },
+    // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
+    // 網頁版沒有「標記」（原版的作者內部工具），所以是 6 個；「成績」對應成績面板開關。
+    { key: 'records_visible', label: '成绩', get: () => recordsVisible, set: (v) => { recordsVisible = v; recordsPanel.style.display = v ? '' : 'none'; if (v)
+            renderRecordsPanel(); syncSwitches(); } },
 ];
 function renderSwitch(s) {
     if (!s.el)
@@ -601,6 +615,10 @@ function renderSwitch(s) {
     s.el.style.color = on ? '#fff' : '#969696';
     const text = s.key === 'game_mode' ? `模式:${on ? '竞速' : '练习'}` : `${s.label}:${on ? '开' : '关'}`;
     s.el.textContent = text;
+}
+/** 開關被外部（選單等）改動後，統一刷新右欄顯示 */
+function syncSwitches() {
+    switchStates.forEach(renderSwitch);
 }
 switchStates.forEach((s) => {
     const el = document.createElement('div');
@@ -828,10 +846,12 @@ function renderRecordsPanel() {
     });
 }
 function toggleRecords() {
-    const vis = recordsPanel.style.display === 'none';
+    const vis = !recordsVisible;
+    recordsVisible = vis;
     recordsPanel.style.display = vis ? '' : 'none';
     if (vis)
         renderRecordsPanel();
+    syncSwitches();
     showToast(vis ? '已開啟成績面板' : '已關閉成績面板');
 }
 // ---------- 共用動作 ----------
@@ -1200,7 +1220,6 @@ const menus = [
         }
     },
     { label: '宏定义', items: [pro('开始录制 Ctrl+M'), pro('停止录制 Ctrl+M'), '---', pro('宏列表...'), pro('播放宏...'), pro('逆序播放...')] },
-    { label: '教程', items: [pro('新手教程'), pro('教程关卡...'), '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)] },
     { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...', '---', pro('求解器...'), pro('快捷键设置...')], handler: (item) => {
             if (item.includes('虚拟键盘'))
                 toggleVK();
@@ -1217,6 +1236,7 @@ const menus = [
                 startTutorial();
         }
     },
+    { label: '教程', items: [pro('新手教程'), pro('教程关卡...'), '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)] },
     { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 let activeMenu = null;
@@ -1850,7 +1870,7 @@ return {};
  *   - 世界 → 螢幕：screen = world * zoom + camera（不重複乘 zoom）
  *   - 縫隙 h line：y = (line+1)*(CELL+GAP) - GAP/2；v 同理
  */
-const { COLORS, GEOMETRY, easeOut } = require("./theme.js");
+const { COLORS, GEOMETRY, easeOut, FONT_FAMILY } = require("./theme.js");
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
 function hsvToRgb(h, s, v) {
@@ -2107,7 +2127,7 @@ class BoardRenderer {
             // 太小就不畫，免得數字糊成一團
             if (block.number !== null && this.scaledCell >= 16) {
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-                ctx.font = `600 ${Math.max(9, Math.round(this.scaledCell * 0.4))}px system-ui, sans-serif`;
+                ctx.font = `600 ${Math.max(9, Math.round(this.scaledCell * 0.4))}px ${FONT_FAMILY}`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(String(block.number), x + this.scaledCell / 2, y + this.scaledCell / 2);
@@ -2601,15 +2621,21 @@ const GEOMETRY = {
 function easeOut(t) {
     return 1 - (1 - t) * (1 - t);
 }
+/**
+ * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
+ * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
+ */
+const FONT_FAMILY = "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif";
 const TEXT = {
     solved: '狀態：復原',
     unsolved: '狀態：未復原',
     stepPrefix: '步數：',
     puzzlePrefix: '謎題：',
-    menuItems: ['文件', '編輯', '謎題', '宏', '設置'],
+    // 原版選單列順序（GUI.py::self.menu_items）
+    menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
 };
 
-return { COLORS, GEOMETRY, easeOut, TEXT };
+return { COLORS, GEOMETRY, easeOut, FONT_FAMILY, TEXT };
 },
     "m3": function (require) {
 /**

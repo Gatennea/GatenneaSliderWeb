@@ -57,10 +57,18 @@ export function easeOut(t: number): number {
   return 1 - (1 - t) * (1 - t);
 }
 
+/**
+ * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
+ * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
+ */
+export const FONT_FAMILY =
+  "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif";
+
 export const TEXT = {
   solved: '狀態：復原',
   unsolved: '狀態：未復原',
   stepPrefix: '步數：',
   puzzlePrefix: '謎題：',
-  menuItems: ['文件', '編輯', '謎題', '宏', '設置'],
+  // 原版選單列順序（GUI.py::self.menu_items）
+  menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
 } as const;
