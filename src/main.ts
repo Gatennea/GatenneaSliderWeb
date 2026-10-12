@@ -208,7 +208,8 @@ makeDraggable(recordsPanel, recordsHeader);
 // ---------- Toast ----------
 const toast = document.createElement('div');
 toast.style.position = 'fixed';
-toast.style.right = '16px';
+// 對照原版：通知落在「狀態列上方、右側面板左側」的右下角，而非蓋在右側面板下緣
+toast.style.right = `${GEOMETRY.right_panel_width + 12}px`;
 toast.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
 toast.style.color = COLORS.timer_running;
 toast.style.fontSize = '13px';
@@ -1216,6 +1217,33 @@ const menus: MenuDef[] = [
 
 let activeMenu: number | null = null;
 
+/** 選單列最右側的「下載完整版」入口；buildMenu 每次重建後會把它重新釘到最右。 */
+let ctaEl: HTMLAnchorElement | null = null;
+function ensureCta(): HTMLAnchorElement {
+  if (!ctaEl) {
+    const cta = document.createElement('a');
+    cta.textContent = '免費下載完整版';
+    cta.href = FULL_VERSION_URL;
+    cta.target = '_blank';
+    cta.rel = 'noopener';
+    cta.style.marginLeft = 'auto';
+    cta.style.marginRight = '10px';
+    cta.style.padding = '3px 12px';
+    cta.style.fontSize = '12px';
+    cta.style.borderRadius = '12px';
+    cta.style.background = BRAND_COLOR;
+    cta.style.color = '#fff';
+    cta.style.textDecoration = 'none';
+    cta.style.whiteSpace = 'nowrap';
+    cta.title = '三角／米字形態、求解器、新手教程、宏定義都在完整版裡，一樣免費開源';
+    ctaEl = cta;
+  }
+  // 每次都重掛一次：appendChild 會把既有節點移到最後，
+  // 這樣選單項重建後 cta 仍是最後一個，margin-left:auto 才能正確把它推到右端。
+  menuBar.appendChild(ctaEl);
+  return ctaEl;
+}
+
 /** 讓選單文字跟著目前狀態走（切換後要重畫選單才看得到）。 */
 function refreshNumberedMenuItem(): void {
   const items = menus[2].items;
@@ -1262,6 +1290,9 @@ function buildMenu(): void {
       dd.style.top = `${GEOMETRY.menu_bar_height}px`;
       dd.style.background = COLORS.menu_bg;
       dd.style.border = `1px solid ${COLORS.dialog_border}`;
+      // 下拉選單掛在 #app 下，#app 沒設 color → 文字會繼承瀏覽器預設黑色；
+      // 顯式鎖成 menu_text（淡灰），與選單列一致，避免「一會黑一會白」。
+      dd.style.color = COLORS.menu_text;
       dd.style.minWidth = '220px';
       dd.style.zIndex = '1000';
       dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
@@ -1324,6 +1355,10 @@ function buildMenu(): void {
     });
     menuBar.appendChild(item);
   });
+  // 關鍵：重建選單項後要把「下載完整版」入口重新釘在最右側。
+  // 選單項是用 appendChild 重新加回的，會被移到 cta 之後，
+  // 若不再把它挪到最後，cta 的 margin-left:auto 就會把整列選單推到右對齊。
+  ensureCta();
   applyChromeDensity();
 }
 
@@ -1637,28 +1672,6 @@ document.addEventListener('click', (e) => {
 
 // ---------- 初始化 ----------
 buildMenu();
-
-// ---------- 選單列右側：完整版入口 ----------
-// 體驗版的定位是「試玩的入口」，所以在介面上給一個不會被忽略、但也按得掉的出口。
-// demo 模式下整條選單列會被隱藏（見文末 demoFile 分支），這裡不用額外處理。
-(() => {
-  const cta = document.createElement('a');
-  cta.textContent = '免費下載完整版';
-  cta.href = FULL_VERSION_URL;
-  cta.target = '_blank';
-  cta.rel = 'noopener';
-  cta.style.marginLeft = 'auto';
-  cta.style.marginRight = '10px';
-  cta.style.padding = '3px 12px';
-  cta.style.fontSize = '12px';
-  cta.style.borderRadius = '12px';
-  cta.style.background = BRAND_COLOR;
-  cta.style.color = '#fff';
-  cta.style.textDecoration = 'none';
-  cta.style.whiteSpace = 'nowrap';
-  cta.title = '三角／米字形態、求解器、新手教程、宏定義都在完整版裡，一樣免費開源';
-  menuBar.appendChild(cta);
-})();
 
 buildVK();
 layoutCanvas();
