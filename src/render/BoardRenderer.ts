@@ -278,6 +278,16 @@ export class BoardRenderer {
         ctx.stroke();
       }
 
+      // 數字形態：編號畫在滑塊正中（對照原版 renderer 的數字繪製）
+      // 太小就不畫，免得數字糊成一團
+      if (block.number !== null && this.scaledCell >= 16) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.font = `600 ${Math.max(9, Math.round(this.scaledCell * 0.4))}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(block.number), x + this.scaledCell / 2, y + this.scaledCell / 2);
+      }
+
       if (this.highlightCells && this.highlightCells.has(key)) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.lineWidth = 2;

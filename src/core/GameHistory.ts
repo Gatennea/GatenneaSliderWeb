@@ -19,6 +19,8 @@ export interface MoveInfo {
 
 export interface HistoryEntry {
   blocks: [number, number][];
+  /** 與 blocks 一一對應的編號（僅數字形態有值）。撤銷/重做要靠它把數字帶回來。 */
+  numbers?: (number | null)[];
   move_info?: MoveInfo;
 }
 
@@ -31,6 +33,10 @@ export class GameHistory {
     const snapshot: HistoryEntry = {
       blocks: game.blocks.map((b) => [b.row, b.col] as [number, number]),
     };
+    // 只有數字形態才存編號，方形存檔維持與原版完全一致的格式
+    if (game.blocks.some((b) => b.number !== null)) {
+      snapshot.numbers = game.blocks.map((b) => b.number);
+    }
     if (move_info) snapshot.move_info = move_info;
     if (this.index < this.entries.length - 1) {
       this.entries = this.entries.slice(0, this.index + 1);
@@ -108,6 +114,7 @@ export class GameHistory {
   snapshotAll(): HistoryEntry[] {
     return this.entries.map((e) => ({
       blocks: e.blocks.map(([r, c]) => [r, c] as [number, number]),
+      ...(e.numbers ? { numbers: [...e.numbers] } : {}),
       ...(e.move_info ? { move_info: e.move_info } : {}),
     }));
   }
@@ -116,13 +123,18 @@ export class GameHistory {
   restoreAll(list: HistoryEntry[]): void {
     this.entries = list.map((e) => ({
       blocks: e.blocks.map(([r, c]) => [r, c] as [number, number]),
+      ...(e.numbers ? { numbers: [...e.numbers] } : {}),
       ...(e.move_info ? { move_info: e.move_info } : {}),
     }));
     this.index = this.entries.length - 1;
   }
 
   private apply(game: SliderMatrix, entry: HistoryEntry): void {
-    game.blocks = entry.blocks.map(([r, c]) => new Block([r, c]));
+    game.blocks = entry.blocks.map(([r, c], i) => {
+      const b = new Block([r, c]);
+      b.number = entry.numbers?.[i] ?? null;
+      return b;
+    });
     game.selected.clear();
   }
 }

@@ -17,6 +17,8 @@ export interface Bounds {
 
 export interface Snapshot {
   blocks: [number, number][];
+  /** 與 blocks 一一對應的編號（僅數字形態有值）；缺了就當成沒有編號。 */
+  numbers?: (number | null)[];
 }
 
 export class SliderMatrix {
@@ -324,14 +326,32 @@ export class SliderMatrix {
     }
   }
 
-  /** 快照當前版面（供 GameHistory 使用）。 */
+  /** 快照當前版面（供 GameHistory 使用）。編號要一起帶走，否則撤銷會把數字弄丟。 */
   snapshot(): Snapshot {
-    return { blocks: this.blocks.map((b) => [b.row, b.col] as [number, number]) };
+    const snap: Snapshot = { blocks: this.blocks.map((b) => [b.row, b.col] as [number, number]) };
+    if (this.blocks.some((b) => b.number !== null)) {
+      snap.numbers = this.blocks.map((b) => b.number);
+    }
+    return snap;
   }
 
   /** 由快照還原版面。 */
   restore(snapshot: Snapshot) {
-    this.blocks = snapshot.blocks.map(([r, c]) => new Block([r, c]));
+    this.blocks = snapshot.blocks.map(([r, c], i) => {
+      const b = new Block([r, c]);
+      b.number = snapshot.numbers?.[i] ?? null;
+      return b;
+    });
     this.selected.clear();
+  }
+
+  /**
+   * 數字形態：按行主序把編號 1..m*n 寫進滑塊（對照 GUI.new_puzzle 的編號步驟）。
+   * 版面被打亂後編號仍跟著各自滑塊，玩家靠它判斷「這塊原本該在哪」。
+   */
+  assignNumbers(enabled: boolean): void {
+    this.blocks.forEach((b, i) => {
+      b.number = enabled ? i + 1 : null;
+    });
   }
 }

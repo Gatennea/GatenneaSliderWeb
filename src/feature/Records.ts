@@ -78,7 +78,16 @@ export class Records {
     }
   }
 
-  add(m: number, n: number, step: number, timeMs: number, moves: number, dnf: boolean): RecordItem {
+  /** numbered：數字形態另算一組（對照原版 puzzle_key 的 #num 後綴）。 */
+  add(
+    m: number,
+    n: number,
+    step: number,
+    timeMs: number,
+    moves: number,
+    dnf: boolean,
+    numbered = false,
+  ): RecordItem {
     const item: RecordItem = {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       ts: Date.now(),
@@ -89,7 +98,7 @@ export class Records {
       moves,
       dnf,
     };
-    const key = puzzleKey(m, n, step);
+    const key = numbered ? `${puzzleKey(m, n, step)}#num` : puzzleKey(m, n, step);
     (this.data[key] ??= []).push(item);
     this.save();
     return item;

@@ -12,7 +12,7 @@ const { COLORS, GEOMETRY, easeOut } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
 const { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } = require("./io/SaveManager.js");
 const { Timer, formatTime } = require("./feature/Timer.js");
-const { Records, stats, puzzleKey } = require("./feature/Records.js");
+const { Records, stats } = require("./feature/Records.js");
 const app = document.querySelector('#app');
 app.style.background = COLORS.background;
 app.style.height = '100vh';
@@ -20,6 +20,8 @@ app.style.overflow = 'hidden';
 app.style.display = 'flex';
 app.style.flexDirection = 'column';
 app.style.fontFamily = 'system-ui, sans-serif';
+// 下拉選單改用 app 當定位基準：若掛在選單欄底下，窄屏時會被選單欄裁掉
+app.style.position = 'relative';
 // ---------- 頂部選單欄 ----------
 const menuBar = document.createElement('div');
 menuBar.style.height = `${GEOMETRY.menu_bar_height}px`;
@@ -30,8 +32,19 @@ menuBar.style.alignItems = 'center';
 menuBar.style.paddingLeft = '10px';
 menuBar.style.color = COLORS.menu_text;
 menuBar.style.userSelect = 'none';
+menuBar.style.flexShrink = '0';
+// 選單項目不允許被壓扁：窄屏靠 applyChromeDensity 縮字距，真的還放不下就橫向捲動
+// （下拉選單已改掛在 app 上，所以這裡可以安全地把超出部分裁掉）
+menuBar.style.whiteSpace = 'nowrap';
+menuBar.style.overflowX = 'auto';
+menuBar.style.overflowY = 'hidden';
+menuBar.style.setProperty('scrollbar-width', 'none');
 menuBar.id = 'menuBar';
 app.appendChild(menuBar);
+// 捲軸只在真的放不下時才會出現，藏起來免得佔掉選單列那 32px
+const chromeStyle = document.createElement('style');
+chromeStyle.textContent = '#menuBar::-webkit-scrollbar { display: none; }';
+document.head.appendChild(chromeStyle);
 // ---------- 中央區域（棋盤 + 右側面板） ----------
 const content = document.createElement('div');
 content.style.display = 'flex';
@@ -67,6 +80,7 @@ status.style.alignItems = 'center';
 status.style.gap = '24px';
 status.style.paddingLeft = '10px';
 status.style.fontSize = '13px';
+status.style.flexShrink = '0';
 app.appendChild(status);
 // 狀態列欄位（對照原版左→中→右）
 const stSolved = document.createElement('span');
@@ -75,6 +89,11 @@ const stTimer = document.createElement('span');
 const stPuzzle = document.createElement('span');
 const stZoom = document.createElement('span');
 status.append(stSolved, stSteps, stTimer, stPuzzle, stZoom);
+// 五個欄位都不換行、不被壓扁；窄屏由 applyChromeDensity 縮間距，實在不夠就橫向捲動
+[stSolved, stSteps, stTimer, stPuzzle, stZoom].forEach((el) => {
+    el.style.whiteSpace = 'nowrap';
+    el.style.flexShrink = '0';
+});
 // ---------- 浮動面板 ----------
 // ---------- 浮動面板（可拖動） ----------
 const vkPanel = document.createElement('div');
@@ -311,7 +330,7 @@ function updateStatus() {
     stSolved.textContent = store.solved ? '状态：复原' : '状态：未复原';
     stSolved.style.color = store.solved ? COLORS.solved : COLORS.unsolved;
     stSteps.textContent = `步数：${store.cmd.stepCount}`;
-    stPuzzle.textContent = `谜题：${store.currentStep}~${store.currentM}*${store.currentN}`;
+    stPuzzle.textContent = `谜题：${store.puzzleKey}`;
     stZoom.textContent = `缩放：${Math.round(renderer.zoom * 100)}%`;
     const timerText = gameMode === 'practice'
         ? '练习模式'
@@ -345,6 +364,7 @@ function schedulePaint() {
                 followDemoCamera();
             renderer.draw(store);
             updateStatus();
+            tickTutorial();
         }
     }, rafDelay);
 }
@@ -365,18 +385,170 @@ const controller = new BoardController({
         return null;
     },
     onChanged: () => {
-        autosave(store);
+        // 引導期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
+        if (!tutorialActive())
+            autosave(store);
+        tutorialOnMoved();
         if (gameMode === 'timed') {
             if (store.solved && timer.state === 'running') {
                 timer.solve();
                 const ms = timer.elapsedMs;
-                records.add(store.currentM, store.currentN, store.currentStep, Math.round(ms), store.cmd.stepCount, false);
+                records.add(store.currentM, store.currentN, store.currentStep, Math.round(ms), store.cmd.stepCount, false, store.numbered);
                 showToast(`完成 ${formatTime(ms)}`);
             }
         }
         schedulePaint();
     },
 });
+// ---------- 新手引導 ----------
+/**
+ * 體驗版是唯一的零門檻試玩入口，但一進來是一盤已經拼好的方塊，沒人告訴你該做什麼。
+ * 這段引導用「一步就能推回去」的小局面，帶著走完一次完整的「點縫 → 點塊 → 推」。
+ * 座標講法與遊戲內其它說明一致：一律「從 1 數第幾行第幾列」。
+ */
+const TUTORIAL_DONE_KEY = 'gatennea-slider-web:tutorial-done';
+const TUTORIAL_STEPS = [
+    { text: '① 點第 3 行與第 4 行之間那條橫縫 —— 縫是一把刀，它決定切開哪一側', wait: 'gap' },
+    { text: '② 再點第 4 行（最下面一排）的任意一塊 —— 跟它連成一片的會整片一起走', cells: [[3, 1], [3, 2], [3, 3], [3, 4]], wait: 'block' },
+    { text: '③ 按 ← 鍵，或直接在方塊上往左拖 —— 把這一排推回原位', wait: 'move' },
+];
+let tutorialStep = -1;
+/** 進入引導前的局面與模式，結束時原樣還原，避免引導過程覆蓋玩家原本的對局。 */
+let tutorialReturn = null;
+function tutorialActive() {
+    return tutorialStep >= 0;
+}
+/** 是否已經看過引導（隱私模式讀不到 localStorage 時當作沒看過）。 */
+function tutorialSeen() {
+    try {
+        return localStorage.getItem(TUTORIAL_DONE_KEY) === '1';
+    }
+    catch {
+        return false;
+    }
+}
+function startTutorial() {
+    if (gameMode === 'timed' && timer.state === 'running') {
+        showToast('計時中無法開始引導');
+        return;
+    }
+    // 記住進入引導前的局面（含模式），結束時原樣還原，不動用自動存檔
+    tutorialReturn = { save: store.serialize(), mode: gameMode };
+    store.loadTutorialPosition();
+    // 引導走練習模式（順便把計時器歸位）；本來就是練習模式時不額外彈提示
+    if (gameMode !== 'practice')
+        setGameMode('practice');
+    else
+        timer.cancel();
+    tutorialStep = 0;
+    tutorialBar.style.display = 'flex';
+    renderTutorialBar();
+    applyTutorialHighlight();
+    centerCamera();
+    updateStatus();
+    schedulePaint();
+}
+function endTutorial() {
+    tutorialStep = -1;
+    renderer.highlightCells = null;
+    tutorialBar.style.display = 'none';
+    try {
+        localStorage.setItem(TUTORIAL_DONE_KEY, '1');
+    }
+    catch {
+        // 隱私模式寫不進 localStorage：只影響「下次自動引導」，不影響遊戲
+    }
+    // 原樣還原進入引導前的局面（玩家原本的對局不會被引導覆蓋）
+    if (tutorialReturn) {
+        store.deserialize(tutorialReturn.save);
+        const prevMode = tutorialReturn.mode;
+        tutorialReturn = null;
+        if (prevMode === 'timed')
+            setGameMode('timed');
+        else if (gameMode !== 'practice')
+            setGameMode('practice');
+        centerCamera();
+        updateStatus();
+    }
+    schedulePaint();
+}
+function applyTutorialHighlight() {
+    const step = TUTORIAL_STEPS[tutorialStep];
+    renderer.highlightCells = step?.cells ? new Set(step.cells.map(([r, c]) => `${r}:${c}`)) : null;
+}
+function renderTutorialBar() {
+    tutorialText.textContent = TUTORIAL_STEPS[tutorialStep]?.text ?? '';
+}
+/** 每次重繪順便檢查進度：互動後一定會重繪，所以在這裡檢查就夠即時。 */
+function tickTutorial() {
+    if (!tutorialActive())
+        return;
+    const step = TUTORIAL_STEPS[tutorialStep];
+    if (!step)
+        return;
+    if (step.wait === 'gap') {
+        const g = store.cmd.selectedGap;
+        if (g && g.type === 'h' && g.line === 2)
+            advanceTutorial();
+    }
+    else if (step.wait === 'block') {
+        if (store.game.selected.size > 0)
+            advanceTutorial();
+    }
+}
+function advanceTutorial() {
+    tutorialStep += 1;
+    if (tutorialStep >= TUTORIAL_STEPS.length) {
+        // 最後一步等的是「移動」，交給 tutorialOnMoved 收尾
+        tutorialStep = TUTORIAL_STEPS.length - 1;
+        return;
+    }
+    applyTutorialHighlight();
+    renderTutorialBar();
+    schedulePaint();
+}
+/** 移動完成（BoardController.onChanged）：引導的最後一步靠它收尾。 */
+function tutorialOnMoved() {
+    if (!tutorialActive())
+        return;
+    if (tutorialStep !== TUTORIAL_STEPS.length - 1)
+        return;
+    if (store.solved) {
+        showToast('就是這樣！剩下的交給你了');
+        endTutorial();
+    }
+    else {
+        // 推錯方向或不完整：留在這一步，讓玩家再試一次
+        renderTutorialBar();
+    }
+}
+const tutorialBar = document.createElement('div');
+tutorialBar.style.position = 'fixed';
+tutorialBar.style.left = '50%';
+tutorialBar.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
+tutorialBar.style.transform = 'translateX(-50%)';
+tutorialBar.style.display = 'none';
+tutorialBar.style.alignItems = 'center';
+tutorialBar.style.gap = '12px';
+tutorialBar.style.maxWidth = 'calc(100vw - 24px)';
+tutorialBar.style.background = COLORS.dialog_bg;
+tutorialBar.style.border = `1px solid ${COLORS.dialog_border}`;
+tutorialBar.style.borderRadius = '8px';
+tutorialBar.style.padding = '8px 12px';
+tutorialBar.style.color = COLORS.dialog_text;
+tutorialBar.style.fontSize = '13px';
+tutorialBar.style.lineHeight = '1.5';
+tutorialBar.style.zIndex = '800';
+tutorialBar.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
+const tutorialText = document.createElement('span');
+const tutorialSkip = document.createElement('span');
+tutorialSkip.textContent = '跳过引导';
+tutorialSkip.style.cursor = 'pointer';
+tutorialSkip.style.color = BRAND_COLOR;
+tutorialSkip.style.whiteSpace = 'nowrap';
+tutorialSkip.addEventListener('click', () => endTutorial());
+tutorialBar.append(tutorialText, tutorialSkip);
+app.appendChild(tutorialBar);
 let syncZoomSlider = () => { };
 // 鼠標滾輪縮放：向上滾放大、向下滾縮小
 canvas.addEventListener('wheel', (e) => {
@@ -399,7 +571,7 @@ function recordDnf() {
     if (gameMode !== 'timed' || timer.state !== 'running')
         return;
     timer.dnf();
-    records.add(store.currentM, store.currentN, store.currentStep, Math.round(timer.elapsedMs), store.cmd.stepCount, true);
+    records.add(store.currentM, store.currentN, store.currentStep, Math.round(timer.elapsedMs), store.cmd.stepCount, true, store.numbered);
     showToast('DNF');
     schedulePaint();
 }
@@ -623,7 +795,7 @@ function toggleVK() {
 }
 // ---------- 成績面板 ----------
 function renderRecordsPanel() {
-    const key = puzzleKey(store.currentM, store.currentN, store.currentStep);
+    const key = store.puzzleKey;
     const list = records.get(key);
     const s = stats(list);
     recordsBody.innerHTML = '';
@@ -981,6 +1153,9 @@ function setGameMode(mode) {
 const pro = (text) => ({ text, pro: true });
 /** 開外部連結（官網各頁、源碼庫）。 */
 const link = (text, href) => ({ text, href });
+/** 數字形態選單項的兩種文字（開關式，寫法對照「模式:练习 / 模式:竞速」）。 */
+const NUMBERED_ITEM_OFF = '數字形態:关';
+const NUMBERED_ITEM_ON = '數字形態:开';
 const menus = [
     { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...', '---', '存檔列表...'], handler: (item) => {
             if (item.includes('另存')) {
@@ -1008,13 +1183,17 @@ const menus = [
                 handleReset();
         }
     },
-    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '3~6*6', '3~7*7', '3~8*8', '3~9*9', '3~10*10', '---', '自定义...', '模式:练习', '模式:竞速', '---', pro('三角形態...'), pro('米字形態...'), pro('數字形態...')], handler: (item) => {
+    // 數字形態是方形底板加編號，規則與方形完全相同，體驗版也能做；
+    // 三角 / 米字要另一套座標與畫法，仍留在完整版。
+    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '3~6*6', '3~7*7', '3~8*8', '3~9*9', '3~10*10', '---', '自定义...', '模式:练习', '模式:竞速', '---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...')], handler: (item) => {
             if (item === '自定义...')
                 handleCustomPuzzle();
             else if (item === '模式:练习')
                 setGameMode('practice');
             else if (item === '模式:竞速')
                 setGameMode('timed');
+            else if (item.startsWith('數字形態'))
+                toggleNumbered();
             else if (item !== '---')
                 handlePresetPuzzle(item);
         }
@@ -1030,28 +1209,50 @@ const menus = [
                 openSettingsModal();
         }
     },
-    { label: '帮助', items: ['关于', '---', link('玩法詳解', `${HOME_URL}guide.html`), link('更新日誌', `${HOME_URL}update_info.html`)], handler: (item) => {
+    { label: '帮助', items: ['关于', '新手引导', '---', link('玩法詳解', `${HOME_URL}guide.html`), link('更新日誌', `${HOME_URL}update_info.html`)], handler: (item) => {
             if (item.includes('关于'))
                 showToast('貓九的滑塊遊戲 網頁體驗版 v0.1');
+            else if (item.includes('新手引导'))
+                startTutorial();
         }
     },
     { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 let activeMenu = null;
+/** 讓選單文字跟著目前狀態走（切換後要重畫選單才看得到）。 */
+function refreshNumberedMenuItem() {
+    const items = menus[2].items;
+    const at = items.findIndex((it) => typeof it === 'string' && it.startsWith('數字形態'));
+    if (at >= 0)
+        items[at] = store.numbered ? NUMBERED_ITEM_ON : NUMBERED_ITEM_OFF;
+}
+function toggleNumbered() {
+    if (gameMode === 'timed' && timer.state === 'running') {
+        showToast('計時中無法切換形態');
+        return;
+    }
+    store.setNumbered(!store.numbered);
+    showToast(store.numbered ? '數字形態：開（滑塊帶編號，照數字排回去）' : '數字形態：關');
+    refreshNumberedMenuItem();
+    buildMenu();
+    updateStatus();
+    schedulePaint();
+}
 function closeAllMenus() {
-    menuBar.querySelectorAll('[data-dropdown]').forEach((el) => el.remove());
+    app.querySelectorAll('[data-dropdown]').forEach((el) => el.remove());
     activeMenu = null;
 }
 function buildMenu() {
-    menuBar.querySelectorAll('[data-dropdown]').forEach((el) => el.remove());
+    refreshNumberedMenuItem();
+    app.querySelectorAll('[data-dropdown]').forEach((el) => el.remove());
     menuBar.querySelectorAll('[data-menu-item]').forEach((el) => el.remove());
     menus.forEach((menu, idx) => {
         const item = document.createElement('div');
         item.dataset['menuItem'] = '1';
         item.textContent = menu.label;
-        item.style.padding = '0 14px';
         item.style.cursor = 'pointer';
-        item.style.fontSize = '13px';
+        item.style.flex = '0 0 auto';
+        item.style.whiteSpace = 'nowrap';
         item.addEventListener('click', (e) => {
             e.stopPropagation();
             if (activeMenu === idx) {
@@ -1063,12 +1264,15 @@ function buildMenu() {
             dd.dataset['dropdown'] = '1';
             dd.style.position = 'absolute';
             dd.style.top = `${GEOMETRY.menu_bar_height}px`;
-            dd.style.left = `${idx * 60 + 4}px`;
             dd.style.background = COLORS.menu_bg;
             dd.style.border = `1px solid ${COLORS.dialog_border}`;
             dd.style.minWidth = '220px';
             dd.style.zIndex = '1000';
             dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+            // 窄屏保護：寬度不超過畫面，高度不超過棋盤區，超出就自己捲
+            dd.style.maxWidth = 'calc(100vw - 8px)';
+            dd.style.maxHeight = `calc(100vh - ${GEOMETRY.menu_bar_height + GEOMETRY.status_bar_height + 8}px)`;
+            dd.style.overflowY = 'auto';
             menu.items.forEach((mi) => {
                 if (mi === '---') {
                     const sep = document.createElement('div');
@@ -1115,11 +1319,32 @@ function buildMenu() {
                 row.addEventListener('mouseleave', () => { row.style.background = ''; });
                 dd.appendChild(row);
             });
-            menuBar.appendChild(dd);
+            app.appendChild(dd);
+            // 對齊被點的選單項目，再夾住右邊界：否則窄屏點最右幾個選單，下拉會開在畫面外
+            const anchorLeft = item.getBoundingClientRect().left - app.getBoundingClientRect().left;
+            const maxLeft = Math.max(4, window.innerWidth - dd.offsetWidth - 4);
+            dd.style.left = `${Math.min(anchorLeft, maxLeft)}px`;
             activeMenu = idx;
         });
         menuBar.appendChild(item);
     });
+    applyChromeDensity();
+}
+/**
+ * 窄屏時把選單與狀態列擠緊一點，讓八個選單跟五個狀態欄位都還看得見。
+ * 判據只用視窗寬度：手機直向約 360~430，平板與桌機都遠大於此。
+ */
+function applyChromeDensity() {
+    const narrow = window.innerWidth < 520;
+    const fontSize = narrow ? '12px' : '13px';
+    const menuPad = narrow ? '0 6px' : '0 14px';
+    menuBar.querySelectorAll('[data-menu-item]').forEach((el) => {
+        el.style.fontSize = fontSize;
+        el.style.padding = menuPad;
+    });
+    status.style.fontSize = fontSize;
+    status.style.gap = narrow ? '10px' : '24px';
+    status.style.overflowX = 'auto';
 }
 // ---------- 控制模式設定 ----------
 function openSettingsModal() {
@@ -1456,7 +1681,7 @@ window.addEventListener('keydown', (e) => {
     }
 });
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('#menuBar'))
+    if (!e.target.closest('#menuBar, [data-dropdown]'))
         closeAllMenus();
 });
 // ---------- 初始化 ----------
@@ -1479,12 +1704,12 @@ buildMenu();
     cta.style.color = '#fff';
     cta.style.textDecoration = 'none';
     cta.style.whiteSpace = 'nowrap';
-    cta.title = '三角／米字／數字形態、求解器、新手教程、宏定義都在完整版裡，一樣免費開源';
+    cta.title = '三角／米字形態、求解器、新手教程、宏定義都在完整版裡，一樣免費開源';
     menuBar.appendChild(cta);
 })();
 buildVK();
 layoutCanvas();
-window.addEventListener('resize', () => { layoutCanvas(); schedulePaint(); });
+window.addEventListener('resize', () => { closeAllMenus(); applyChromeDensity(); layoutCanvas(); schedulePaint(); });
 // ---------- 首頁玩法演示模式（?demo=存檔路徑） ----------
 const demoFile = new URLSearchParams(window.location.search).get('demo');
 function followDemoCamera() {
@@ -1585,8 +1810,10 @@ if (demoFile) {
 else if (autoload(store)) {
     centerCamera();
     showToast('已恢復上次進度');
-    centerCamera();
-    showToast('已恢復上次進度');
+}
+else if (!tutorialSeen()) {
+    // 第一次來、又沒有舊進度：直接帶著走一遍，免得對著一盤拼好的方塊發呆
+    startTutorial();
 }
 schedulePaint();
 setInterval(() => {
@@ -1862,6 +2089,15 @@ class BoardRenderer {
                 ctx.lineWidth = Math.max(1, GEOMETRY.block_border_width * this.zoom);
                 this.roundRect(x, y, this.scaledCell, this.scaledCell, radius);
                 ctx.stroke();
+            }
+            // 數字形態：編號畫在滑塊正中（對照原版 renderer 的數字繪製）
+            // 太小就不畫，免得數字糊成一團
+            if (block.number !== null && this.scaledCell >= 16) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.font = `600 ${Math.max(9, Math.round(this.scaledCell * 0.4))}px system-ui, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(block.number), x + this.scaledCell / 2, y + this.scaledCell / 2);
             }
             if (this.highlightCells && this.highlightCells.has(key)) {
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
@@ -2256,7 +2492,8 @@ class Records {
             /* ignore */
         }
     }
-    add(m, n, step, timeMs, moves, dnf) {
+    /** numbered：數字形態另算一組（對照原版 puzzle_key 的 #num 後綴）。 */
+    add(m, n, step, timeMs, moves, dnf, numbered = false) {
         var _a;
         const item = {
             id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2268,7 +2505,7 @@ class Records {
             moves,
             dnf,
         };
-        const key = puzzleKey(m, n, step);
+        const key = numbered ? `${puzzleKey(m, n, step)}#num` : puzzleKey(m, n, step);
         ((_a = this.data)[key] ?? (_a[key] = [])).push(item);
         this.save();
         return item;
@@ -2903,6 +3140,10 @@ class GameHistory {
         const snapshot = {
             blocks: game.blocks.map((b) => [b.row, b.col]),
         };
+        // 只有數字形態才存編號，方形存檔維持與原版完全一致的格式
+        if (game.blocks.some((b) => b.number !== null)) {
+            snapshot.numbers = game.blocks.map((b) => b.number);
+        }
         if (move_info)
             snapshot.move_info = move_info;
         if (this.index < this.entries.length - 1) {
@@ -2972,6 +3213,7 @@ class GameHistory {
     snapshotAll() {
         return this.entries.map((e) => ({
             blocks: e.blocks.map(([r, c]) => [r, c]),
+            ...(e.numbers ? { numbers: [...e.numbers] } : {}),
             ...(e.move_info ? { move_info: e.move_info } : {}),
         }));
     }
@@ -2979,12 +3221,17 @@ class GameHistory {
     restoreAll(list) {
         this.entries = list.map((e) => ({
             blocks: e.blocks.map(([r, c]) => [r, c]),
+            ...(e.numbers ? { numbers: [...e.numbers] } : {}),
             ...(e.move_info ? { move_info: e.move_info } : {}),
         }));
         this.index = this.entries.length - 1;
     }
     apply(game, entry) {
-        game.blocks = entry.blocks.map(([r, c]) => new Block([r, c]));
+        game.blocks = entry.blocks.map(([r, c], i) => {
+            const b = new Block([r, c]);
+            b.number = entry.numbers?.[i] ?? null;
+            return b;
+        });
         game.selected.clear();
     }
 }
@@ -3000,6 +3247,12 @@ return { GameHistory };
  */
 class Block {
     constructor(location) {
+        /**
+         * 數字形態的編號（1..m*n），跟著滑塊走；非數字形態為 null。
+         * 對照 game.py::Block.number —— 過關條件與方形完全相同（拼成實心矩形），
+         * 編號只是給玩家看的視覺線索，不參與勝負判定。
+         */
+        this.number = null;
         this.location = location;
     }
     get row() {
@@ -3009,7 +3262,9 @@ class Block {
         return this.location[1];
     }
     clone() {
-        return new Block([this.location[0], this.location[1]]);
+        const b = new Block([this.location[0], this.location[1]]);
+        b.number = this.number;
+        return b;
     }
 }
 
@@ -3069,6 +3324,18 @@ function matrixToBlocks(matrix, bounds) {
     }
     return out;
 }
+/**
+ * 把「依滑塊順序」排列的編號改成「依位置行主序」排列。
+ * 存檔裡的 matrix 是按位置掃出來的，編號必須用同一個順序才不會錯位。
+ */
+function numbersInMatrixOrder(blocks, numbers) {
+    if (!numbers)
+        return null;
+    const order = blocks
+        .map((_, i) => i)
+        .sort((a, b) => blocks[a][0] - blocks[b][0] || blocks[a][1] - blocks[b][1]);
+    return order.map((i) => numbers[i] ?? null);
+}
 function blocksToMatrix(blocks) {
     if (blocks.length === 0) {
         return { matrix: [], bounds: { min_row: 0, max_row: 0, min_col: 0, max_col: 0 } };
@@ -3091,15 +3358,22 @@ function blocksToMatrix(blocks) {
     return { matrix, bounds: { min_row, max_row, min_col, max_col } };
 }
 class GameStore {
-    constructor(m = 4, n = 4, step = 2) {
+    constructor(m = 4, n = 4, step = 2, numbered = false) {
         this.currentM = m;
         this.currentN = n;
         this.currentStep = step;
+        this.numbered = numbered;
         this.game = new SliderMatrix(m, n);
+        this.game.assignNumbers(numbered);
         this.cmd = createContext(this.game, step);
     }
     get solved() {
         return this.game.is_solved();
+    }
+    /** 謎題分組鍵（對照 puzzle_key）：數字形態後綴 #num，成績與狀態顯示都用它。 */
+    get puzzleKey() {
+        const base = `${this.currentStep}~${this.currentM}*${this.currentN}`;
+        return this.numbered ? `${base}#num` : base;
     }
     get selectedGap() {
         return this.cmd.selectedGap;
@@ -3107,15 +3381,39 @@ class GameStore {
     get selectedCells() {
         return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
     }
-    newPuzzle(m, n, step) {
+    newPuzzle(m, n, step, numbered = this.numbered) {
         if (step >= Math.max(m, n))
             return false;
         this.currentM = m;
         this.currentN = n;
         this.currentStep = step;
+        this.numbered = numbered;
         this.game = new SliderMatrix(m, n);
+        this.game.assignNumbers(numbered);
         this.cmd = createContext(this.game, step);
         return true;
+    }
+    /**
+     * 新手引導用的固定局面：4×4 等級 1，最下面一整排向右錯開一格。
+     * 只要「選第 3、4 行之間的橫縫 → 點最下面一排 → 往左推」一步就回到原位，
+     * 一次走完整套「點縫 → 點塊 → 推」的流程。
+     */
+    loadTutorialPosition() {
+        this.newPuzzle(4, 4, 1, false);
+        for (const b of this.game.blocks) {
+            if (b.row === 3)
+                b.location = [3, b.col + 1];
+        }
+        // 重建歷史，讓這個局面成為「原點」（撤銷不會退回還原態）
+        this.cmd = createContext(this.game, 1);
+        this.cmd.history.save_snapshot(this.game);
+    }
+    /** 在當前謎題上切換數字形態（重新編號，不重開一局）。 */
+    setNumbered(on) {
+        if (this.numbered === on)
+            return;
+        this.numbered = on;
+        this.game.assignNumbers(on);
     }
     /** 序列化為與原版完全一致的結構。 */
     serialize() {
@@ -3125,11 +3423,20 @@ class GameStore {
             const snap = { matrix, bounds };
             if (e.move_info)
                 snap.move_info = e.move_info;
+            // 編號另外存，不塞進 matrix：原版存檔格式維持 0/1，原版開啟時退化為方形
+            const nums = numbersInMatrixOrder(e.blocks, e.numbers);
+            if (nums)
+                snap.numbers = nums;
             return snap;
         });
         return {
             version: 1,
-            puzzle: { m: this.currentM, n: this.currentN, step: this.currentStep },
+            puzzle: {
+                m: this.currentM,
+                n: this.currentN,
+                step: this.currentStep,
+                ...(this.numbered ? { kind: 'numbered' } : {}),
+            },
             step_count: this.cmd.stepCount,
             history: {
                 history_index: this.cmd.history.currentIndex,
@@ -3149,8 +3456,9 @@ class GameStore {
         this.currentM = m;
         this.currentN = n;
         this.currentStep = step;
+        this.numbered = p.puzzle?.kind === 'numbered';
         this.game = new SliderMatrix(m, n);
-        // 將各格式歷史轉為 HistoryEntry（blocks + move_info?）
+        // 將各格式歷史轉為 HistoryEntry（blocks + numbers? + move_info?）
         const entries = [];
         if (Array.isArray(p.history)) {
             // 舊版網頁格式：history 是 blocks 陣列
@@ -3161,14 +3469,21 @@ class GameStore {
         }
         else if (p.history && Array.isArray(p.history.snapshots)) {
             // 原版格式：matrix + bounds + move_info?
+            // numbers 是網頁版數字形態的附加欄位，順序與 matrix 掃描順序一致
             for (const snap of p.history.snapshots) {
                 const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
-                if (blocks)
-                    entries.push({ blocks, ...(snap?.move_info ? { move_info: snap.move_info } : {}) });
+                if (blocks) {
+                    entries.push({
+                        blocks,
+                        ...(Array.isArray(snap?.numbers) ? { numbers: snap.numbers } : {}),
+                        ...(snap?.move_info ? { move_info: snap.move_info } : {}),
+                    });
+                }
             }
         }
         if (entries.length > 0) {
-            this.game.restore({ blocks: entries[entries.length - 1].blocks });
+            const last = entries[entries.length - 1];
+            this.game.restore({ blocks: last.blocks, ...(last.numbers ? { numbers: last.numbers } : {}) });
         }
         this.cmd = createContext(this.game, step);
         this.cmd.stepCount = p.step_count ?? 0;
@@ -3461,14 +3776,31 @@ class SliderMatrix {
             }
         }
     }
-    /** 快照當前版面（供 GameHistory 使用）。 */
+    /** 快照當前版面（供 GameHistory 使用）。編號要一起帶走，否則撤銷會把數字弄丟。 */
     snapshot() {
-        return { blocks: this.blocks.map((b) => [b.row, b.col]) };
+        const snap = { blocks: this.blocks.map((b) => [b.row, b.col]) };
+        if (this.blocks.some((b) => b.number !== null)) {
+            snap.numbers = this.blocks.map((b) => b.number);
+        }
+        return snap;
     }
     /** 由快照還原版面。 */
     restore(snapshot) {
-        this.blocks = snapshot.blocks.map(([r, c]) => new Block([r, c]));
+        this.blocks = snapshot.blocks.map(([r, c], i) => {
+            const b = new Block([r, c]);
+            b.number = snapshot.numbers?.[i] ?? null;
+            return b;
+        });
         this.selected.clear();
+    }
+    /**
+     * 數字形態：按行主序把編號 1..m*n 寫進滑塊（對照 GUI.new_puzzle 的編號步驟）。
+     * 版面被打亂後編號仍跟著各自滑塊，玩家靠它判斷「這塊原本該在哪」。
+     */
+    assignNumbers(enabled) {
+        this.blocks.forEach((b, i) => {
+            b.number = enabled ? i + 1 : null;
+        });
     }
 }
 

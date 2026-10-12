@@ -7,6 +7,13 @@
 export class Block {
   location: [number, number];
 
+  /**
+   * 數字形態的編號（1..m*n），跟著滑塊走；非數字形態為 null。
+   * 對照 game.py::Block.number —— 過關條件與方形完全相同（拼成實心矩形），
+   * 編號只是給玩家看的視覺線索，不參與勝負判定。
+   */
+  number: number | null = null;
+
   constructor(location: [number, number]) {
     this.location = location;
   }
@@ -20,6 +27,8 @@ export class Block {
   }
 
   clone(): Block {
-    return new Block([this.location[0], this.location[1]]);
+    const b = new Block([this.location[0], this.location[1]]);
+    b.number = this.number;
+    return b;
   }
 }
