@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>状态图图解 — 貓九的滑块游戏</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #0d0d0f;
+        color: #e6e6e6;
+        font-family: system-ui, "Microsoft JhengHei", "Microsoft YaHei", sans-serif;
+        line-height: 1.85;
+      }
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        padding: 16px;
+        background: rgba(25, 25, 30, 0.55);
+        border-bottom: 1px solid #646464;
+      }
+      .nav a {
+        display: inline-block;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        text-decoration: none;
+        color: #e6e6e6;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        transition: all 0.2s;
+      }
+      .nav a:hover { background: #4696c8; color: #fff; border-color: #4696c8; }
+      .nav a.cur { background: #4696c8; color: #fff; border-color: #4696c8; }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 28px 16px 64px; }
+      h1 { text-align: center; font-size: 26px; color: #fff; margin: 8px 0 6px; }
+      .sub { text-align: center; color: #b5b5b5; font-size: 15px; margin: 0 0 26px; }
+      .card {
+        background: rgba(25, 25, 30, 0.55);
+        backdrop-filter: blur(5px);
+        border: 1px solid #646464;
+        border-radius: 12px;
+        padding: 20px 22px;
+        margin-bottom: 22px;
+      }
+      .card h2 {
+        margin: 0 0 6px;
+        font-size: 18px;
+        color: #fff;
+        border-left: 4px solid #4696c8;
+        padding-left: 10px;
+      }
+      .card p { margin: 8px 0; color: #dcdcdc; font-size: 14.5px; }
+      .card strong { color: #fff; }
+      .card a { color: #5aa6d8; }
+      .note { font-size: 13px; color: #a3a3a3; margin: 10px 0 0; }
+      .cap { color: #a3a3a3; font-size: 13px; margin: 6px 2px 0; text-align: center; }
+      .shots { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin: 14px 0 4px; }
+      .shots figure { flex: 1 1 250px; margin: 0; max-width: 300px; }
+      .shots img { width: 100%; border-radius: 10px; border: 1px solid #2c2c33; display: block; background:#16161b; }
+      .shots figcaption { font-size: 12.5px; color: #a3a3a3; margin-top: 7px; text-align: center; }
+      .shot { width: 100%; max-width: 560px; display: block; margin: 14px auto 4px; border-radius: 12px; border: 1px solid #2c2c33; background:#16161b; }
+      .diag { background: #16161b; border: 1px solid #2c2c33; border-radius: 12px; padding: 16px; margin: 14px 0 6px; }
+      .diag svg { display: block; width: 100%; height: auto; }
+      table.cmp { width: 100%; border-collapse: collapse; margin: 14px 0 4px; font-size: 14px; }
+      table.cmp th, table.cmp td { border: 1px solid #3a3a42; padding: 9px 10px; text-align: center; }
+      table.cmp th { background: rgba(255,255,255,0.06); color: #fff; font-weight: 600; }
+      table.cmp td.lbl { text-align: left; color: #dcdcdc; }
+      .stat-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0 4px; }
+      .stat {
+        flex: 1 1 150px;
+        background: rgba(70,150,200,0.10);
+        border: 1px solid rgba(70,150,200,0.35);
+        border-radius: 10px;
+        padding: 14px 16px;
+        text-align: center;
+      }
+      .stat .n { font-size: 28px; color: #fff; font-weight: 700; line-height: 1.15; }
+      .stat .t { font-size: 13px; color: #b5b5b5; margin-top: 5px; }
+      hr { border: none; border-top: 1px solid #646464; margin: 18px 0; }
+      footer { text-align: center; color: #8a8a8a; font-size: 13px; margin-top: 30px; }
+    </style>
+  </head>
+  <body>
+    <nav class="nav">
+      <a href="index.html">主页</a>
+      <a href="guide.html">玩法详解</a>
+      <a href="update_info.html">动态・更新日志</a>
+      <a href="math_question.html">相关数学问题</a>
+      <a href="math_graph.html" class="cur">状态图图解</a>
+      <a href="https://ifdian.net/a/Gatennea" target="_blank" rel="noopener">支持貓九</a>
+    </nav>
+
+    <div class="wrap">
+      <h1>状态图图解</h1>
+      <p class="sub">不聊玩法、不聊问答，只把「点和箭头」这张地图画给你看</p>
+
+      <div class="card">
+        <h2>这篇图解是干什么的</h2>
+        <p>
+          貓九滑块背后藏着一张巨大的<strong>状态图</strong>：每一个局面是图里的一个点，每一次合法滑动是图里一支带方向的箭头。
+          这篇页子不重复《玩法详解》的游戏机制，也不重复《相关数学问题》里那些具体的数学问答——
+          它只做一件事：把这张图本身的<strong>长相</strong>，以及顺着这张图会自然撞见的一个问题，用图讲清楚。
+        </p>
+        <p class="note">游戏怎么玩 → <a href="guide.html">玩法详解</a>　·　数学问答与证明 → <a href="math_question.html">相关数学问题</a></p>
+      </div>
+
+      <!-- 1. 局面 = 点 -->
+      <div class="card">
+        <h2>① 一个局面 = 图里的一个点</h2>
+        <p>
+          把当前所有滑块看作<strong>一团连在一起的方块</strong>（方块总数固定不变）。每一种合法的方块长相，就是状态图里的一个<strong>点</strong>（节点）。
+          还原态（摆满的矩形）是其中一个点；歪扭的一团是另一些点。下面三张都是真实游戏画面——同一款游戏有三种不同的板型，每一个不同长相都是图里的一个点：
+        </p>
+        <div class="shots">
+          <figure>
+            <img src="images/square_board.png" alt="正方形板型的真实游戏画面" />
+            <figcaption>正方形板：图里的某一类「点」</figcaption>
+          </figure>
+          <figure>
+            <img src="images/tri_board.png" alt="三角形板型的真实游戏画面" />
+            <figcaption>三角形板：另一类「点」</figcaption>
+          </figure>
+          <figure>
+            <img src="images/mi_board.png" alt="米字形板型的真实游戏画面" />
+            <figcaption>米字形板：又一类「点」</figcaption>
+          </figure>
+        </div>
+        <p class="cap">图里有多少个点，就有多少种合法局面。光是 4×4 的正方形二级谜题，就有近 56 万个点。</p>
+      </div>
+
+      <!-- 2. 一步 = 箭头，多数双向少数单向 -->
+      <div class="card">
+        <h2>② 一次滑动 = 一支箭头，多数能原路退回，少数回不来</h2>
+        <p>
+          当你做了一次合法滑动，旧局面就「指向」新局面，画一支<strong>带方向的箭头</strong>。
+          有意思的地方在箭头能不能反过来走——下面这张就是游戏里真实显示的滑动箭头：
+        </p>
+        <img class="shot" src="images/slide_arrow.png" alt="游戏里真实显示的滑动方向箭头" />
+        <p class="cap">真实游戏画面：选好一整片后，游戏给出的滑动方向箭头。</p>
+        <p>
+          <strong>绝大多数箭头是双向的。</strong>因为一次滑动是「沿缝把一整片推开」，只要推过去之后那一片还能沿同一条缝推回来，这支箭头就能反着走——绝大多数时候都如此，推过去、推回来都合法。
+        </p>
+        <p>
+          <strong>少数是单向的。</strong>有那么一种情况：推过去之后，那一片「粘上」了（和别的块连死、再也分不回来），这支箭头就<strong>再也反不回来</strong>——只能往前，不能原路退。这一步不可逆，正是游戏里「一步错就可能回不来」的根源。
+        </p>
+        <p class="note">为什么大多数能退、少数会粘住？那是《玩法详解》里讲的机制、《相关数学问题》里证的定理。本页只说结论：箭头绝大多数是双向的，单向的很少。</p>
+      </div>
+
+      <!-- 3. 整张状态图 + 双向/单向 -->
+      <div class="card">
+        <h2>③ 整张状态图：节点和箭头都能全部算出来</h2>
+        <p>
+          点和箭头都不是猜的——它们是<strong>一个一个数出来、一条一条连出来</strong>的。
+          我们把所有合法局面枚举完，再把每一次合法滑动连成箭头，就能得到整张完整的有向图。
+          以 4×4 的二级谜题为例，这张图大约有 <strong>56 万个点</strong>、<strong>427 万支箭头</strong>；4×4 及以内一共 22 个谜题，我们都这样完整算过，每个点属于哪个圈子也逐个记了下来。
+        </p>
+        <p>放大这张图的一角，长这样——绿箭头是多数能原路退回的双向箭头，红箭头是少数粘住回不来的单向箭头：</p>
+        <div class="diag">
+                    <svg viewBox="0 0 680 350" role="img" aria-label="状态图一角：绝大多数双向箭头（绿，双头），极少单向箭头（红，单头）">
+            <line x1="82.4" y1="140.1" x2="127.6" y2="99.9" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="83.4" y1="178.7" x2="136.6" y2="221.3" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="174.6" y1="97.2" x2="225.4" y2="132.8" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="181.2" y1="218.8" x2="228.8" y2="171.2" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="188.2" y1="250.4" x2="226.8" y2="264.6" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="279.5" y1="155.6" x2="325.5" y2="164.4" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="274.2" y1="132.2" x2="320.8" y2="97.8" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="348.3" y1="109.8" x2="351.7" y2="140.2" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="373.3" y1="89.9" x2="416.7" y2="105.1" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="380.6" y1="154.4" x2="419.4" y2="130.6" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="357.8" y1="199.9" x2="362.2" y2="245.1" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="381.3" y1="184.5" x2="428.7" y2="210.5" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="391.2" y1="260.4" x2="428.8" y2="239.6" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="472.4" y1="102.8" x2="507.6" y2="87.2" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="470.7" y1="130.4" x2="519.3" y2="159.6" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="481.2" y1="210.4" x2="518.8" y2="189.6" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="538.0" y1="104.9" x2="542.0" y2="145.1" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="560.2" y1="91.3" x2="594.8" y2="113.7" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="570.7" y1="159.6" x2="594.3" y2="145.4" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="549.7" y1="204.6" x2="555.3" y2="240.4" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="482.6" y1="236.8" x2="532.4" y2="258.2" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="586.8" y1="256.6" x2="603.2" y2="248.4" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="622.8" y1="159.9" x2="627.2" y2="205.1" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="177.8" y1="68.7" x2="240.2" y2="43.3" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="319.5" y1="64.1" x2="293.5" y2="47.9" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="285.0" y1="275.0" x2="335.0" y2="275.0" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="278.2" y1="160.3" x2="426.8" y2="214.7" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="474.9" y1="117.6" x2="590.1" y2="127.4" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="438.0" y1="249.7" x2="417.0" y2="280.3" stroke="#87cf92" stroke-width="3.6" opacity="0.95"/>
+            <line x1="342.6" y1="176.6" x2="136.5" y2="285.9" stroke="#ff7a6e" stroke-width="3.6"/>
+            <line x1="359.4" y1="183.3" x2="390.5" y2="276.5" stroke="#ff7a6e" stroke-width="3.6"/>
+            <polygon points="70.5,150.7 86.7,144.9 78.1,135.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="139.5,89.3 131.9,104.8 123.3,95.1" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="70.9,168.7 79.4,183.8 87.5,173.7" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="149.1,231.3 132.5,226.3 140.6,216.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="161.5,88.0 170.8,102.5 178.3,91.9" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="238.5,142.0 221.7,138.1 229.2,127.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="169.9,230.1 185.8,223.4 176.6,214.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="240.1,159.9 233.4,175.8 224.2,166.6" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="173.1,244.8 185.9,256.5 190.4,244.3" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="241.9,270.2 224.6,270.7 229.1,258.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="263.8,152.6 278.3,162.0 280.7,149.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="341.2,167.4 324.3,170.8 326.7,158.0" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="261.3,141.7 278.0,137.4 270.3,127.0" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="333.7,88.3 324.7,103.0 317.0,92.6" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="346.5,93.9 341.9,110.5 354.8,109.1" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="353.5,156.1 345.2,140.9 358.1,139.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="358.2,84.6 371.2,96.0 375.5,83.8" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="431.8,110.4 414.5,111.2 418.8,99.0" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="366.9,162.7 384.0,159.9 377.2,148.8" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="433.1,122.3 422.8,136.2 416.0,125.1" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="356.3,183.9 351.4,200.5 364.3,199.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="363.7,261.1 355.7,245.8 368.6,244.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="367.3,176.7 378.2,190.2 384.4,178.8" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="442.7,218.3 425.6,216.2 431.8,204.8" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="377.2,268.2 394.4,266.1 388.1,254.7" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="442.8,231.8 431.9,245.3 425.6,233.9" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="457.8,109.3 475.1,108.8 469.8,96.9" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="522.2,80.7 510.2,93.1 504.9,81.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="457.0,122.2 467.4,136.0 474.1,124.9" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="533.0,167.8 515.9,165.1 522.6,154.0" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="467.2,218.2 484.4,216.1 478.1,204.7" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="532.8,181.8 521.9,195.3 515.6,183.9" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="536.4,88.9 531.5,105.5 544.5,104.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="543.6,161.1 535.5,145.8 548.5,144.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="546.8,82.6 556.7,96.8 563.7,85.8" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="608.2,122.4 591.3,119.2 598.3,108.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="557.0,167.8 574.1,165.1 567.4,154.0" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="608.0,137.2 597.6,151.0 590.9,139.9" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="547.2,188.8 543.3,205.6 556.1,203.6" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="557.8,256.2 548.9,241.4 561.7,239.4" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="467.9,230.5 480.0,242.8 485.1,230.8" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="547.1,264.5 529.9,264.2 535.0,252.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="572.5,263.7 589.7,262.4 583.9,250.8" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="617.5,241.3 606.1,254.2 600.3,242.6" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="621.3,143.9 616.4,160.5 629.3,159.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="628.7,221.1 620.7,205.8 633.6,204.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="163.0,74.7 180.2,74.7 175.3,62.7" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="255.0,37.3 242.7,49.3 237.8,37.3" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="333.1,72.6 323.0,58.6 316.1,69.6" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="279.9,39.4 296.9,42.4 290.0,53.4" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="269.0,275.0 285.0,281.5 285.0,268.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="351.0,275.0 335.0,281.5 335.0,268.5" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="263.1,154.8 275.9,166.4 280.4,154.2" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="441.9,220.2 424.6,220.8 429.1,208.6" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="458.9,116.2 474.3,124.0 475.4,111.1" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="606.1,128.8 589.6,133.9 590.7,121.0" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="447.1,236.5 432.6,246.0 443.4,253.4" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="407.9,293.5 411.6,276.6 422.4,284.0" fill="#87cf92" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="122.4,293.4 133.5,280.2 139.5,291.7" fill="#ff7a6e" stroke="#0d0d0f" stroke-width="0.8"/>
+            <polygon points="395.6,291.7 384.3,278.6 396.7,274.5" fill="#ff7a6e" stroke="#0d0d0f" stroke-width="0.8"/>
+            <circle cx="60" cy="160" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="150" cy="80" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="160" cy="240" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="250" cy="150" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="255" cy="275" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="345" cy="80" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="355" cy="170" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="365" cy="275" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="445" cy="115" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="455" cy="225" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="535" cy="75" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="545" cy="175" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="560" cy="270" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="620" cy="130" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="630" cy="235" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="268" cy="32" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="400" cy="305" r="13" fill="#3c96c8" stroke="#cfe0ee" stroke-width="1.4"/>
+            <circle cx="110" cy="300" r="13" fill="#ff7a6e" stroke="#cfe0ee" stroke-width="1.4"/>
+            <text x="96" y="328" font-size="12" fill="#ff9a90">死局</text>
+            <text x="418" y="300" font-size="12" fill="#ff9a90">可绕回</text>
+            <text x="20" y="344" font-size="13" fill="#b5b5b5">绿＝绝大多数能原路退回的双向箭头（两端都有箭头，⇄）　·　红＝极少数粘住回不来的单向箭头（只有一端有箭头，→）</text>
+          </svg>
+        </div>
+        <p class="cap">真实图有几十万个点。正是因为箭头有方向，且少数是单向的，「从哪能到哪」才不对称——下面用集合把它切分。</p>
+      </div>
+
+      <!-- 4. 自然引出的问题：回不去 vs 绕远回来 -->
+      <div class="card">
+        <h2>④ 顺理成章的问题：哪些回不去，哪些绕远还能回来</h2>
+        <p>
+          既然有些箭头是单向的（推过去就粘住、原路回不来），自然要问：
+          <strong>从某个局面出发，顺着这些箭头走，是彻底回不到还原态了，还是绕一大圈还能绕回来？</strong>
+        </p>
+        <p>
+          先说清楚最外面那个大框：它装的是<strong>所有合法状态</strong>——方块总数对、连成一团、
+          并且不违反游戏里那条「守恒」约束的<strong>每一种长相</strong>，都算一个合法局面。
+          这个全集有个名字，叫<strong>着色集合</strong>（那条守恒约束等价于：把格子按坐标染成若干种颜色，
+          滑动时每种颜色的块数始终不变，所以只有颜色配得上的长相才合法）。
+          它是一切数字的分母：下面每一个「有多少个局面」，都是在它里面数出来的。
+        </p>
+        <p>拿还原态当目标，把全部点按「顺着箭头能不能回到还原态」分成几块：</p>
+        <div class="diag">
+          <svg viewBox="0 0 620 325" role="img" aria-label="全部局面中，从还原态走得到与能走回还原态两圈大幅重叠，交集（可还原）占绝大多数">
+            <rect x="28" y="50" width="564" height="248" rx="18" fill="rgba(70,150,200,0.04)" stroke="#4696c8" stroke-width="1.6" stroke-dasharray="9 6"/>
+            <text x="44" y="42" font-size="14" fill="#5aa6d8">全部局面（着色集合）559,832</text>
+            <!-- 两圈中心几乎重合：交集（重叠区）才是主体 -->
+            <circle cx="282" cy="178" r="112" fill="rgba(90,166,216,0.20)" stroke="#5aa6d8" stroke-width="2"/>
+            <circle cx="338" cy="178" r="112" fill="rgba(135,207,146,0.18)" stroke="#87cf92" stroke-width="2"/>
+            <!-- 左月牙：整圈「从还原态走得到」的标识（独占仅 9，几乎全在交集里） -->
+            <text x="198" y="171" text-anchor="middle" font-size="12.5" fill="#cfe6f5">从还原态</text>
+            <text x="198" y="189" text-anchor="middle" font-size="12.5" fill="#cfe6f5">走得到</text>
+            <text x="198" y="209" text-anchor="middle" font-size="12" fill="#cfcfcf">558,286</text>
+            <!-- 右月牙：整圈「能走回还原态」的标识（独占 1,227） -->
+            <text x="422" y="171" text-anchor="middle" font-size="12.5" fill="#d2efd9">能走回</text>
+            <text x="422" y="189" text-anchor="middle" font-size="12.5" fill="#d2efd9">还原态</text>
+            <text x="422" y="209" text-anchor="middle" font-size="12" fill="#cfcfcf">559,504</text>
+            <!-- 交集（中央主体） -->
+            <text x="310" y="172" text-anchor="middle" font-size="15" fill="#ffffff">可还原（交集）</text>
+            <text x="310" y="194" text-anchor="middle" font-size="13" fill="#ffffff">558,277　占 99.7%</text>
+            <!-- 两头都不沾（圈外） -->
+            <text x="92" y="268" font-size="12.5" fill="#dcdcdc">两头都不沾（走不到也回不来）263</text>
+            <text x="310" y="305" text-anchor="middle" font-size="11" fill="#8a8a8a">注：左右两道月牙与圈外区域为方便看清，画得比真实比例大得多；真实里它们只占极少数。</text>
+          </svg>
+        </div>
+        <p>
+          那「单向箭头」制造出来的麻烦，就落在两个圆<strong>交集外面</strong>的地方：有的点虽然从还原态走得到，却再也走不回来；有的干脆两头都不沾。
+          而「绕远还能回来」的，正是交集里那一大片——即便中途踩过单向箭头，换个方向绕一绕，照样能回还原态。
+        </p>
+        <table class="cmp">
+          <tr><th>圈子</th><th>4×4 二级</th><th>4×4 三级</th></tr>
+          <tr><td class="lbl">全部局面</td><td>559,832</td><td>24,605</td></tr>
+          <tr><td class="lbl">从还原态走得到</td><td>558,286</td><td>21,761</td></tr>
+          <tr><td class="lbl">能走回还原态</td><td>559,504</td><td>23,163</td></tr>
+          <tr><td class="lbl">可还原（交集）</td><td>558,277</td><td>21,755</td></tr>
+        </table>
+        <p class="note">注：「能走回还原态」这个数，你可能在《相关数学问题》里见过，那里把它叫做「状态数」。同一个数，这里放在「能不能回来」的视角下看。</p>
+      </div>
+
+      <!-- 5. 死局：真正卡死的点 -->
+      <div class="card">
+        <h2>⑤ 死局：真正一步都动不了的点</h2>
+        <p>
+          回不去的极端，是图里那些<strong>一步都走不动</strong>的点——无论怎么选缝、选哪一片，推就撞、推就断，没有任何箭头从它出去。
+          下面这些是游戏里几个走投无路的死局局面的真实画面——拼在一起，每一个都满盘卡死、没有任何合法一步。
+        </p>
+        <img class="shot" src="images/dead_collage.png" alt="拼接在一起的若干真实死局局面，每一个都一步都走不动" />
+        <p class="cap">真实游戏画面：若干个一步都走不动的死局局面拼在一起。</p>
+        <p>
+          纠正记录：我们早先的笔记曾把「走得去却回不来」的几个局面称作「死局」，那是不对的——那种局面<strong>还能动</strong>，只是回不去。
+          真正一步都走不动的死局，4×4 二级有 <strong style="color:#ff8a7e;">52</strong> 个、三级有 <strong style="color:#ff8a7e;">327</strong> 个。本页一律用这个真口径。
+        </p>
+      </div>
+
+      <!-- 6. 结论：回不去的极少 -->
+      <div class="card">
+        <h2>⑥ 结论：确实有回不去的，但非常少，几乎遇不到</h2>
+        <p>把整张图算完，答案很清楚：<strong>确实有彻底回不去的点</strong>，而且分两种——</p>
+        <ul style="margin:8px 0;color:#dcdcdc;font-size:14.5px;line-height:1.95;">
+          <li><strong>死局</strong>：一步都动不了（上面说的 52 / 327 个）。</li>
+          <li><strong>孤岛</strong>：既不是死局，也走不回还原态，只能在几步之间原地打转。4×4 二级有 <strong>263</strong> 个、三级有 <strong>1,094</strong> 个。</li>
+        </ul>
+        <p>
+          但是——把这两个数加进总盘子一看就明白，它们<strong>少得可怜</strong>。
+          4×4 二级近 56 万个局面里，能还原的有 <strong>558,277</strong> 个，占比 <strong style="color:#87cf92;">99.7%</strong> 以上。
+          换句话说，你随手玩一局，几乎一定落在「来回都通」的那一大片里；踩进彻底回不去的陷阱，是极小概率事件。
+        </p>
+        <div class="stat-row">
+          <div class="stat"><div class="n" style="color:#ff8a7e;">52</div><div class="t">4×4 二级的真死局</div></div>
+          <div class="stat"><div class="n" style="color:#ff8a7e;">263</div><div class="t">4×4 二级的孤岛</div></div>
+          <div class="stat"><div class="n" style="color:#87cf92;">99.7%</div><div class="t">4×4 二级可还原占比</div></div>
+        </div>
+        <p class="note">这些孤岛到底长什么样、有没有简单的几何特征能认出它们，目前还是个没被啃下来的开放问题——欢迎来碰。</p>
+      </div>
+
+      <!-- 7. 真实数据：多数局面要走几步 -->
+      <div class="card">
+        <h2>⑦ 真实数据：多数局面要走几步才回得来</h2>
+        <p>
+          最后看一批算出来的真实数据。对每个能回到还原态的局面，记下它<strong>最少要几步</strong>才能还原，
+          再按步数点一遍人头，就得到下面这两张图——横轴是「离还原态还要几步」，纵轴是「有多少个局面正好要这么多步」。
+        </p>
+        <div class="diag">
+          <svg viewBox="0 0 680 500" role="img" aria-label="4×4 二级与三级谜题的距离分布柱状图，呈钟形">
+            <text x="12" y="46" font-size="13.5" fill="#e6e6e6">4×4 二级（559,832 个局面）：还要几步才能还原，各有多少个局面</text>
+            <line x1="58" y1="224" x2="660" y2="224" stroke="#3a3a42" stroke-width="1.2"/>
+            <text x="52" y="60" text-anchor="end" font-size="11" fill="#8a8a8a">140,771</text>
+            <text x="52" y="228" text-anchor="end" font-size="11" fill="#8a8a8a">0</text>
+            <rect x="62.7" y="222.8" width="24.1" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="96.1" y="222.8" width="24.1" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="129.6" y="222.8" width="24.1" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="163.0" y="222.7" width="24.1" height="1.3" rx="2" fill="#4696c8"/>
+            <rect x="196.5" y="219.0" width="24.1" height="5.0" rx="2" fill="#4696c8"/>
+            <rect x="229.9" y="209.2" width="24.1" height="14.8" rx="2" fill="#4696c8"/>
+            <rect x="263.3" y="185.7" width="24.1" height="38.3" rx="2" fill="#4696c8"/>
+            <rect x="296.8" y="140.9" width="24.1" height="83.1" rx="2" fill="#4696c8"/>
+            <rect x="330.2" y="81.5" width="24.1" height="142.5" rx="2" fill="#4696c8"/>
+            <rect x="363.7" y="56.0" width="24.1" height="168.0" rx="2" fill="#87cf92"/>
+            <rect x="397.1" y="98.2" width="24.1" height="125.8" rx="2" fill="#4696c8"/>
+            <rect x="430.6" y="162.7" width="24.1" height="61.3" rx="2" fill="#4696c8"/>
+            <rect x="464.0" y="203.5" width="24.1" height="20.5" rx="2" fill="#4696c8"/>
+            <rect x="497.5" y="218.6" width="24.1" height="5.4" rx="2" fill="#4696c8"/>
+            <rect x="530.9" y="222.8" width="24.1" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="564.3" y="222.8" width="24.1" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="597.8" y="222.8" width="24.1" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="631.2" y="222.8" width="24.1" height="1.2" rx="2" fill="#4696c8"/>
+            <text x="74.7" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">0</text>
+            <text x="141.6" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">2</text>
+            <text x="208.5" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">4</text>
+            <text x="275.4" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">6</text>
+            <text x="342.3" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">8</text>
+            <text x="409.2" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">10</text>
+            <text x="476.1" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">12</text>
+            <text x="542.9" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">14</text>
+            <text x="609.8" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">16</text>
+            <text x="643.3" y="240" text-anchor="middle" font-size="10.5" fill="#8a8a8a">17</text>
+            <text x="375.7" y="48.0" text-anchor="middle" font-size="11.5" fill="#87cf92">峰值 9 步 · 140,771 个</text>
+            <text x="12" y="278" font-size="13.5" fill="#e6e6e6">4×4 三级（24,605 个局面）：更难，长尾拖得更远</text>
+            <line x1="58" y1="456" x2="660" y2="456" stroke="#3a3a42" stroke-width="1.2"/>
+            <text x="52" y="292" text-anchor="end" font-size="11" fill="#8a8a8a">2,866</text>
+            <text x="52" y="460" text-anchor="end" font-size="11" fill="#8a8a8a">0</text>
+            <rect x="60.8" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="80.9" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="100.9" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="121.0" y="453.4" width="14.4" height="2.6" rx="2" fill="#4696c8"/>
+            <rect x="141.1" y="448.7" width="14.4" height="7.3" rx="2" fill="#4696c8"/>
+            <rect x="161.1" y="445.6" width="14.4" height="10.4" rx="2" fill="#4696c8"/>
+            <rect x="181.2" y="438.4" width="14.4" height="17.6" rx="2" fill="#4696c8"/>
+            <rect x="201.3" y="427.0" width="14.4" height="29.0" rx="2" fill="#4696c8"/>
+            <rect x="221.3" y="395.8" width="14.4" height="60.2" rx="2" fill="#4696c8"/>
+            <rect x="241.4" y="344.7" width="14.4" height="111.3" rx="2" fill="#4696c8"/>
+            <rect x="261.5" y="317.0" width="14.4" height="139.0" rx="2" fill="#4696c8"/>
+            <rect x="281.5" y="295.6" width="14.4" height="160.4" rx="2" fill="#4696c8"/>
+            <rect x="301.6" y="290.2" width="14.4" height="165.8" rx="2" fill="#4696c8"/>
+            <rect x="321.7" y="288.0" width="14.4" height="168.0" rx="2" fill="#87cf92"/>
+            <rect x="341.7" y="297.6" width="14.4" height="158.4" rx="2" fill="#4696c8"/>
+            <rect x="361.8" y="329.7" width="14.4" height="126.3" rx="2" fill="#4696c8"/>
+            <rect x="381.9" y="368.8" width="14.4" height="87.2" rx="2" fill="#4696c8"/>
+            <rect x="401.9" y="407.8" width="14.4" height="48.2" rx="2" fill="#4696c8"/>
+            <rect x="422.0" y="426.9" width="14.4" height="29.1" rx="2" fill="#4696c8"/>
+            <rect x="442.1" y="438.2" width="14.4" height="17.8" rx="2" fill="#4696c8"/>
+            <rect x="462.1" y="445.2" width="14.4" height="10.8" rx="2" fill="#4696c8"/>
+            <rect x="482.2" y="451.8" width="14.4" height="4.2" rx="2" fill="#4696c8"/>
+            <rect x="502.3" y="454.7" width="14.4" height="1.3" rx="2" fill="#4696c8"/>
+            <rect x="522.3" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="542.4" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="562.5" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="582.5" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="602.6" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="622.7" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <rect x="642.7" y="454.8" width="14.4" height="1.2" rx="2" fill="#4696c8"/>
+            <text x="68.0" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">0</text>
+            <text x="128.2" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">3</text>
+            <text x="188.4" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">6</text>
+            <text x="248.6" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">9</text>
+            <text x="308.8" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">12</text>
+            <text x="369.0" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">15</text>
+            <text x="429.2" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">18</text>
+            <text x="489.4" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">21</text>
+            <text x="549.6" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">24</text>
+            <text x="609.8" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">27</text>
+            <text x="650.0" y="472" text-anchor="middle" font-size="10.5" fill="#8a8a8a">29</text>
+            <text x="328.9" y="280.0" text-anchor="middle" font-size="11.5" fill="#87cf92">峰值 13 步 · 2,866 个</text>
+            <text x="58" y="482" font-size="11.5" fill="#8a8a8a">横轴＝离还原态还要几步　·　纵轴＝该步数下的局面数　·　绿色柱＝人数最多的那一档</text>
+          </svg>
+        </div>
+        <p>
+          两张都是<strong>钟形</strong>：绝大多数局面挤在中间某个步数附近，两端都极少。
+          4×4 二级最难是 17 步，但 55 万多个局面里只有 <strong>1 个</strong>真要 17 步，绝大多数落在 8～10 步；
+          4×4 三级最难 29 步，同样只有 1 个，多数落在 11～14 步。
+          换句话说——<strong>「最难」只是极个别的倒霉蛋，随手碰到的局面离还原态都不算远。</strong>
+        </p>
+        <p class="note">
+          这批数据来自完整枚举（不是抽样），22 个谜题的距离分布与各集合大小已整理成可下载的数据集：
+          <a href="data/ALL_SUMMARY.csv">22 谜题总表</a>　·　<a href="data/distance_distribution.csv">距离分布</a>　·　<a href="data/README.md">字段说明</a>
+        </p>
+      </div>
+
+      <!-- 8. 一眼数字 -->
+      <div class="card">
+        <h2>⑧ 几个一眼记住的数字</h2>
+        <p>从同一张完整状态图里来的几个数字，方便对照：</p>
+        <table class="cmp">
+          <tr><th>指标</th><th>4×4 二级</th><th>4×4 三级</th></tr>
+          <tr><td class="lbl">全部局面</td><td>559,832</td><td>24,605</td></tr>
+          <tr><td class="lbl">从还原态走得到</td><td>558,286</td><td>21,761</td></tr>
+          <tr><td class="lbl">能走回还原态</td><td>559,504</td><td>23,163</td></tr>
+          <tr><td class="lbl">可还原</td><td>558,277</td><td>21,755</td></tr>
+          <tr><td class="lbl">真死局（一步都走不动）</td><td>52</td><td>327</td></tr>
+          <tr><td class="lbl">孤岛（困住打转）</td><td>263</td><td>1,094</td></tr>
+          <tr><td class="lbl">最难一局要几步才能还原</td><td>17</td><td>29</td></tr>
+        </table>
+        <p class="note">「最难一局要几步才能还原」的算法与含义留在《相关数学问题》。本页所有数字来自 4×4 及以内 22 个谜题的完整枚举，可复现。</p>
+      </div>
+
+      <hr />
+      <p class="note" style="text-align:center;">
+        游戏怎么玩 → <a href="guide.html">玩法详解</a>　·　数学问答与证明 → <a href="math_question.html">相关数学问题</a><br/>
+        本页只刻画「状态图」与「集合」两个概念，与上面两页互补，不重复。
+      </p>
+
+      <footer>貓九的滑块游戏 · 状态图图解</footer>
+    </div>
+  </body>
+</html>
