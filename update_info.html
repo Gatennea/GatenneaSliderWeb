@@ -415,6 +415,10 @@
             <div class="timeline-date">10月18日</div>
             <div class="timeline-desc"><span class="tag tag-web">web版</span>教程存档数据原本是带缩进的对象字面量，光它就占了整个 app.js 的九成；改成紧凑 JSON 字符串存放，并去掉两个没有任何代码读取的字段，app.js 从 1.8MB 瘦到 286KB（约六分之一），启动加载快了很多；所有关卡的解法数据已与完整版存档逐字段比对，确认一字未改</div>
           </div>
+          <div class="timeline-item" data-date="20261018" data-ver="web">
+            <div class="timeline-date">10月18日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>打乱不再可能把人丢进还不了的死局：这种局面是真存在的（4×4 里就有走得到却回不去的），原来的随机打乱每步约有 0.5% 的机会踩上去，一旦踩到就只能重开。现在打乱时每一步都会先验「能不能推得回去」，验不过就换一组重抖，所以开局一定有解。注意这说的是开局——自己上手之后走错，仍然是可能走到回不去的地方的，那是这个游戏本身的性质</div>
+          </div>
         </div>
       </div>
     </div>
