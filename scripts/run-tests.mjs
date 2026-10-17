@@ -11,6 +11,7 @@ import { cases as timerCases } from '../tests/timer.test.mjs';
 import { cases as recordCases } from '../tests/records.test.mjs';
 import { cases as numberedCases } from '../tests/numbered.test.mjs';
 import { cases as solverCases } from '../tests/solver.test.mjs';
+import { cases as tutorialCases } from '../tests/tutorial.test.mjs';
 
 const suites = [
   { name: 'SliderMatrix/GameHistory', cases: matrixCases },
@@ -22,6 +23,7 @@ const suites = [
   { name: '成績 (M6)', cases: recordCases },
   { name: '數字形態 / 引導局面 (M7)', cases: numberedCases },
   { name: '求解器（聚攏 + 填洞補缺）', cases: solverCases },
+  { name: '教程關卡資料完整性', cases: tutorialCases },
 ];
 
 let passed = 0;
