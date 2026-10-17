@@ -6,7 +6,9 @@ import { BoardRenderer } from './render/BoardRenderer.js';
 import { BoardController } from './interaction/BoardController.js';
 import { GameStore } from './store/GameStore.js';
 import { COLORS, GEOMETRY, easeOut, FONT_FAMILY } from './render/theme.js';
-import { shuffle, reset, undo, redo } from './core/CommandBus.js';
+import { shuffle, reset, undo, redo, selectGap, selectBlock } from './core/CommandBus.js';
+import { solve, describeAction, bestMove, stateFromBlocks } from './solver/index.js';
+import type { SolverAction } from './solver/index.js';
 import { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } from './io/SaveManager.js';
 import { Timer, formatTime } from './feature/Timer.js';
 import { Records, stats } from './feature/Records.js';
@@ -1273,6 +1275,77 @@ const link = (text: string, href: string): MenuEntry => ({ text, href });
 const NUMBERED_ITEM_OFF = '數字形態:关';
 const NUMBERED_ITEM_ON = '數字形態:开';
 
+// ---------- 求解器（聚攏 + 填洞補缺）----------
+/**
+ * 求解器是「盡力而為」：
+ *  - 小／中型謎題與輕度打亂大多能解（4×4 約七~八成、5×5 約五成）；
+ *  - 6×6 以上的重度打亂常常解不出來；
+ *  - 而且本遊戲**存在合法但永遠還原不了的死局**，解不出來不代表程式有錯。
+ * 因此失敗時一律如實告知，不假裝有解。
+ */
+function currentBlocks(): [number, number][] {
+  return store.game.blocks.map((b) => [b.row, b.col] as [number, number]);
+}
+
+/** 提示一步：只幫玩家選好縫與塊（箭頭會自己出現），不代勞移動。 */
+function hintOneStep(): void {
+  if (store.game.is_solved()) {
+    showToast('已经还原了，不用提示');
+    return;
+  }
+  const g = store.game;
+  const mv = bestMove(stateFromBlocks(currentBlocks()), g.m, g.n, store.cmd.step);
+  if (!mv) {
+    showToast('这个局面一步都动不了（完全冻结）');
+    return;
+  }
+  selectGap(store.cmd, mv.action.gapType, mv.action.line);
+  selectBlock(store.cmd, mv.action.seed[0], mv.action.seed[1]);
+  schedulePaint();
+  showToast(`提示：${describeAction(mv.action)}（点箭头即可推）`);
+}
+
+/** 自動求解：解出來就逐步演示；解不出來如實說。 */
+let solving = false;
+async function autoSolve(): Promise<void> {
+  if (solving) return;
+  if (store.game.is_solved()) {
+    showToast('已经还原了');
+    return;
+  }
+  const g = store.game;
+  solving = true;
+  showToast('正在求解…');
+  // 讓 toast 先畫出來再開始算（求解是同步的，會卡住主執行緒）
+  await new Promise((r) => setTimeout(r, 30));
+  let res;
+  try {
+    res = solve(currentBlocks(), g.m, g.n, store.cmd.step, { restarts: 3, timeBudgetMs: 3000 });
+  } finally {
+    solving = false;
+  }
+  if (!res.solved || res.actions.length === 0) {
+    showToast('没能解出来（求解器尽力而为；也可能是真踩到死局）');
+    return;
+  }
+  showToast(`找到 ${res.steps} 步解法，开始演示`);
+  await playSolverActions(res.actions);
+}
+
+/** 依序回放走法：每步都走選縫隙 → 點塊 → 推，與玩家手動操作完全一致。 */
+async function playSolverActions(actions: SolverAction[]): Promise<void> {
+  const gapMs = controller.moveDurationMs + 90;
+  for (const a of actions) {
+    selectGap(store.cmd, a.gapType, a.line);
+    selectBlock(store.cmd, a.seed[0], a.seed[1]);
+    controller.move(a.dir);
+    await new Promise((r) => setTimeout(r, gapMs));
+    if (store.game.is_solved()) break;
+  }
+  schedulePaint();
+  if (store.game.is_solved()) showToast('已还原');
+}
+
 const menus: MenuDef[] = [
   { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...', '---', '存檔列表...'], handler: (item) => {
       if (item.includes('另存')) { saveAs(store); showToast('另存為...'); }
@@ -1290,11 +1363,13 @@ const menus: MenuDef[] = [
   },
   // 數字形態是方形底板加編號，規則與方形完全相同，體驗版也能做；
   // 三角 / 米字要另一套座標與畫法，仍留在完整版。
-  { label: '谜题', items: ['2~4*4','2~5*5','2~6*6','2~7*7','2~8*8','2~9*9','2~10*10','---','3~6*6','3~7*7','3~8*8','3~9*9','3~10*10','---','自定义...','模式:练习','模式:竞速','模式:创造','---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...')], handler: (item) => {
+  { label: '谜题', items: ['2~4*4','2~5*5','2~6*6','2~7*7','2~8*8','2~9*9','2~10*10','---','3~6*6','3~7*7','3~8*8','3~9*9','3~10*10','---','自定义...','模式:练习','模式:竞速','模式:创造','---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...'),'---','提示一步','自动求解'], handler: (item) => {
       if (item === '自定义...') handleCustomPuzzle();
       else if (item === '模式:练习') setGameMode('practice');
       else if (item === '模式:竞速') setGameMode('timed');
       else if (item === '模式:创造') creative.enter();
+      else if (item === '提示一步') hintOneStep();
+      else if (item === '自动求解') void autoSolve();
       else if (item.startsWith('數字形態')) toggleNumbered();
       else if (item !== '---') handlePresetPuzzle(item);
     }
@@ -1337,7 +1412,8 @@ function ensureCta(): HTMLAnchorElement {
     cta.style.color = '#fff';
     cta.style.textDecoration = 'none';
     cta.style.whiteSpace = 'nowrap';
-    cta.title = '三角／米字形態、求解器、新手教程、宏定義都在完整版裡，一樣免費開源';
+    // 求解器與新手教程已移植到網頁版，不再列進「只有完整版有」
+    cta.title = '三角／米字形態、宏定義都在完整版裡，一樣免費開源';
     ctaEl = cta;
   }
   // 每次都重掛一次：appendChild 會把既有節點移到最後，
