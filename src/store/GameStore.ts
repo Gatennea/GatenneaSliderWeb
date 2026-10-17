@@ -65,6 +65,11 @@ export class GameStore {
   currentStep: number;
   /** 數字形態（滑塊帶編號）。過關條件與方形相同，編號只是視覺線索。 */
   numbered: boolean;
+  /**
+   * 自定義目標形狀（創造模式手造形狀用）。null 表示沿用「m×n 實心矩形」判定。
+   * 矩陣每次重建後都要重新掛回，所以集中在各 new SliderMatrix 之後賦值。
+   */
+  solutionMask: Set<string> | null = null;
 
   constructor(m = 4, n = 4, step = 2, numbered = false) {
     this.currentM = m;
@@ -72,6 +77,7 @@ export class GameStore {
     this.currentStep = step;
     this.numbered = numbered;
     this.game = new SliderMatrix(m, n);
+    this.game.solutionMask = this.solutionMask;
     this.game.assignNumbers(numbered);
     this.cmd = createContext(this.game, step);
   }
@@ -101,9 +107,28 @@ export class GameStore {
     this.currentStep = step;
     this.numbered = numbered;
     this.game = new SliderMatrix(m, n);
+    this.game.solutionMask = this.solutionMask;
     this.game.assignNumbers(numbered);
     this.cmd = createContext(this.game, step);
     return true;
+  }
+
+  /**
+   * 直接套用一段「以 [row,col] 列表描述的局面」作為新謎題起點（歷史清空為單一原點）。
+   * 教程載入某一關的起始亂局、創造模式套用手造形狀都走這裡。
+   * solutionMask 由呼叫方另行設定（教程為 null → 走矩形判定）。
+   */
+  applyPuzzle(m: number, n: number, step: number, blocks: [number, number][]): void {
+    this.currentM = m;
+    this.currentN = n;
+    this.currentStep = step;
+    this.numbered = false;
+    this.game = new SliderMatrix(m, n);
+    this.game.solutionMask = this.solutionMask;
+    this.game.restore({ blocks });
+    this.cmd = createContext(this.game, step);
+    this.cmd.history.save_snapshot(this.game);
+    this.cmd.stepCount = 0;
   }
 
   /**
@@ -149,6 +174,7 @@ export class GameStore {
         ...(this.numbered ? { kind: 'numbered' } : {}),
       },
       step_count: this.cmd.stepCount,
+      ...(this.solutionMask ? { solution: Array.from(this.solutionMask) } : {}),
       history: {
         history_index: this.cmd.history.currentIndex,
         snapshots,
@@ -168,7 +194,11 @@ export class GameStore {
     this.currentN = n;
     this.currentStep = step;
     this.numbered = (p.puzzle as any)?.kind === 'numbered';
+    this.solutionMask = Array.isArray((p as any).solution)
+      ? new Set((p as any).solution as string[])
+      : null;
     this.game = new SliderMatrix(m, n);
+    this.game.solutionMask = this.solutionMask;
 
     // 將各格式歷史轉為 HistoryEntry（blocks + numbers? + move_info?）
     const entries: HistoryEntry[] = [];
@@ -214,5 +244,7 @@ export interface SavePayload {
   version: number;
   puzzle: { m: number; n: number; step: number };
   step_count: number;
+  /** 創造模式手造形狀的目標（座標 "r:c" 列表）；缺省表示走 m×n 矩形判定。 */
+  solution?: string[];
   history?: { history_index: number; snapshots: any[] } | any[];
 }

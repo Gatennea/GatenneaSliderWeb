@@ -106,6 +106,8 @@ export class BoardController {
   /** 單次觸控完成後是否清空選中，確保下次拖拽是全新的單次操作 */
   clearSelectionAfterMove = false;
   private pinchDist = 0;
+  /** 按下時的鼠標鍵（0=左鍵）；非左鍵不觸發點擊/滑動（原版僅左鍵操作） */
+  private downButton = 0;
   private pinchZoom = 1;
   private pinchActive = false;
 
@@ -155,7 +157,7 @@ export class BoardController {
   private attach(): void {
     const c = this.canvas;
 
-    c.addEventListener('mousedown', (e) => this.onPointerDown(e.offsetX, e.offsetY));
+    c.addEventListener('mousedown', (e) => this.onPointerDown(e.offsetX, e.offsetY, e.button));
     c.addEventListener('mousemove', (e) => this.onPointerMove(e.offsetX, e.offsetY));
     window.addEventListener('mouseup', () => this.onPointerUp());
 
@@ -227,7 +229,11 @@ export class BoardController {
     if (changed) this.ui.requestPaint?.();
   }
 
-  private onPointerDown(x: number, y: number): void {
+  private onPointerDown(x: number, y: number, button = 0): void {
+    // 原版：事件分發最前面呼叫 spawn_click_feedback —— 左鍵按下都給漣漪
+    this.downButton = button;
+    if (button === 0) this.ui.renderer.spawnClickFeedback(x, y);
+
     // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移
     const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
     this.drag = {
@@ -260,6 +266,8 @@ export class BoardController {
   }
 
   private onPointerUp(): void {
+    const downButton = this.downButton;
+    this.downButton = 0;
     if (!this.drag.active) return;
     const { store } = this.ui;
     const r = this.ui.renderer;
@@ -269,6 +277,9 @@ export class BoardController {
     const [x, y] = [this.drag.startX, this.drag.startY];
 
     this.drag.active = false;
+
+    // 非左鍵鬆開：平移已在 move 期間跟手生效，這裡不再觸發點擊/滑動
+    if (downButton !== 0) return;
 
     if (!moved) {
       // 視為點擊
@@ -309,6 +320,14 @@ export class BoardController {
 
   private handleClick(x: number, y: number): void {
     const { store, renderer } = this.ui;
+
+    // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）
+    const arrowDir = renderer.hitArrowButton(x, y);
+    if (arrowDir) {
+      this.animateMove(arrowDir);
+      return;
+    }
+
     const gap = renderer.getGapAtPos(x, y, store);
     const block = renderer.getBlockAtPos(x, y, store);
 
@@ -319,16 +338,20 @@ export class BoardController {
         store.cmd.selectedGap = null;
         store.cmd.selectedBlock = null;
         store.game.selected.clear();
+        renderer.lastBlockClickWorld = null;
         this.notify('已取消縫隙');
       } else {
         const reply = selectGap(store.cmd, gap.type, gap.line);
+        renderer.lastBlockClickWorld = null;
         this.notify(reply.ok ? `選中${gap.type === 'v' ? '縱' : '橫'}向縫隙` : reply.message);
       }
     } else if (block !== null && store.cmd.selectedGap !== null) {
       const reply = selectBlock(store.cmd, block.row, block.col);
+      if (reply.ok) renderer.lastBlockClickWorld = renderer.screenToWorld(x, y);
       this.notify(reply.ok ? `選中滑塊組 共${store.game.selected.size}個` : reply.message);
     } else if (renderer.isBlankArea(x, y, store)) {
       this.deselect();
+      renderer.lastBlockClickWorld = null;
       this.notify('已取消選中');
     }
   }

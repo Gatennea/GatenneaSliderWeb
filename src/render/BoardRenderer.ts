@@ -10,8 +10,10 @@
 
 import type { GameStore } from '../store/GameStore.js';
 import type { Block } from '../core/Block.js';
-import type { GapType } from '../core/rules.js';
+import type { GapType, Direction } from '../core/rules.js';
 import { COLORS, GEOMETRY, easeOut, FONT_FAMILY } from './theme.js';
+import { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP } from '../core/rules.js';
+import { ARROW_IMAGE_DATA_URI } from './arrowImage.js';
 
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
@@ -56,6 +58,8 @@ export class BoardRenderer {
   animation: MoveAnimation | null = null;
   /** 選中動畫：短暫高亮的格子集合（undo/redo 時顯示移動過的組） */
   highlightCells: Set<string> | null = null;
+  /** 創造模式自定義目標形狀的「虛影」：把目標格（且當前未被佔用）畫成淡藍虛線框。 */
+  solutionMask: Set<string> | null = null;
   /** 著色器：按 (r%step,c%step) 給滑塊描邊同色 */
   coloringEnabled = false;
   /** 連鎖器：懸停時提亮同組位置（含空格） */
@@ -64,11 +68,39 @@ export class BoardRenderer {
   hoverCell: [number, number] | null = null;
   private lastBounds: { min_row: number; max_row: number; min_col: number; max_col: number } | null = null;
 
+  // ---- 箭頭按鍵（復刻原版 S1-4：選中縫隙 + 選中組後，切片兩端各一個可點箭頭）----
+  /** 箭頭按鍵總開關（原版 arrows_enabled，預設開）。 */
+  arrowEnabled = true;
+  private arrowImage: HTMLImageElement | null = null;
+  private arrowSpriteCache = new Map<string, HTMLCanvasElement>();
+  /** 每幀重算的命中矩形，供點擊檢測複用同一套幾何（原版 _arrow_buttons）。 */
+  arrowButtons: { dir: Direction; x: number; y: number; size: number; angle: number }[] = [];
+  /** 上次點中滑塊的「世界座標」，作為箭頭錨點（原版 _gap_anchor_world）。 */
+  lastBlockClickWorld: [number, number] | null = null;
+
+  // ---- 點擊漣漪反饋（原版 spawn_click_feedback / draw_click_feedback）----
+  private clickFeedback: { x: number; y: number; t0: number }[] = [];
+  private static readonly CLICK_FEEDBACK_MS = 380;
+  private static readonly CLICK_FEEDBACK_RADIUS = 34;
+  private static readonly CLICK_FEEDBACK_MAX = 12;
+  /** 漣漪存活期間持續重繪用的回調（main 注入 schedulePaint）。 */
+  repaint: (() => void) | null = null;
+
   constructor(ctx: CanvasRenderingContext2D, zoom = 1) {
     this.ctx = ctx;
     this.zoom = zoom;
     this.cameraX = 0;
     this.cameraY = 0;
+    this.loadArrowImage();
+  }
+
+  /** 懶加載原版 arrow_B.png（已內聯為 Data URI，無 file:// 污染問題）。 */
+  private loadArrowImage(): void {
+    // Node 測試環境沒有 Image 構造器；箭頭貼圖只在瀏覽器裡載入
+    if (typeof Image === 'undefined' || this.arrowImage) return;
+    const img = new Image();
+    img.onload = () => { this.arrowImage = img; this.repaint?.(); };
+    img.src = ARROW_IMAGE_DATA_URI;
   }
 
   /** 分組描邊色：由 (r%step, c%step) 唯一決定（對照原版 _group_color）。 */
@@ -231,6 +263,9 @@ export class BoardRenderer {
     // 2) 縫隙線（先畫，讓滑塊蓋在上面；選中紅線、其餘灰線）
     this.drawGapLines(bounds, selectedGap);
 
+    // 2.5) 創造模式目標虛影（畫在縫隙之上、滑塊之下；已被佔用的格子不畫）
+    this.drawSolutionGhosts(store);
+
     // 3) 滑塊（動畫中則用插值位置；著色器描邊；連鎖器提亮）
     const hint = this.chainHintCells(store.currentStep);
     for (let idx = 0; idx < store.game.blocks.length; idx++) {
@@ -309,6 +344,30 @@ export class BoardRenderer {
         ctx.fill();
       }
     }
+
+    // 5) 箭頭按鍵（選中縫隙 + 選中組後，切片兩端各一個可點箭頭；動畫中不畫）
+    this.drawGapDirectionArrows(store);
+
+    // 6) 點擊漣漪反饋（最上層，蓋住所有內容）
+    this.drawClickFeedback();
+  }
+
+  private drawSolutionGhosts(store: GameStore): void {
+    if (!this.solutionMask || this.solutionMask.size === 0) return;
+    const occupied = new Set(store.game.blocks.map((b) => `${b.row}:${b.col}`));
+    const { ctx } = this;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,180,255,0.6)';
+    ctx.lineWidth = Math.max(1, 2 * this.zoom);
+    ctx.setLineDash([6, 4]);
+    for (const key of this.solutionMask) {
+      if (occupied.has(key)) continue;
+      const [r, c] = key.split(':').map(Number);
+      const [x, y] = this.worldToScreen(c * this.step, r * this.step);
+      this.roundRect(x, y, this.scaledCell, this.scaledCell, GEOMETRY.block_radius * this.zoom);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawGapLines(
@@ -360,5 +419,199 @@ export class BoardRenderer {
     ctx.arcTo(x, y + h, x, y, radius);
     ctx.arcTo(x, y, x + w, y, radius);
     ctx.closePath();
+  }
+
+  // ---------------- S1-4 箭頭按鍵（復刻原版 gui/renderer.py） ----------------
+
+  /** 按鍵邊長：只跟隨全域縮放，與方向無關（原版 _arrow_button_size）。 */
+  private arrowButtonSize(): number {
+    return Math.max(18, Math.round(46 * this.zoom));
+  }
+
+  /** 旋轉後的箭頭貼圖快取（先縮放到 size、再旋轉，旋轉結果不二次縮放）。 */
+  private arrowSprite(angleRad: number): HTMLCanvasElement | null {
+    const img = this.arrowImage;
+    if (!img || !img.complete) return null;
+    const size = this.arrowButtonSize();
+    const key = `${size}_${Math.round((angleRad * 180) / Math.PI) % 360}`;
+    const cache = this.arrowSpriteCache;
+    if (cache.size > 96) cache.clear();
+    const cached = cache.get(key);
+    if (cached) return cached;
+    const cv = document.createElement('canvas');
+    cv.width = size;
+    cv.height = size;
+    const c = cv.getContext('2d')!;
+    c.translate(size / 2, size / 2);
+    c.rotate(angleRad);
+    c.drawImage(img, -size / 2, -size / 2, size, size);
+    cache.set(key, cv);
+    return cv;
+  }
+
+  /**
+   * 計算切片兩端的箭頭按鍵幾何（每幀重算，不快取幾何）。
+   * 命中矩形寫入 this.arrowButtons，供點擊檢測複用同一套幾何。
+   * 方向一律用 VALID_DIRECTIONS_FOR_GAP + DIRECTION_DELTA 推導，保證與
+   * animateMove 實際移動一致；禁用方向（try_move 會失敗）直接不畫。
+   */
+  private computeArrowButtons(store: GameStore): void {
+    this.arrowButtons = [];
+    if (!this.arrowEnabled) return;
+    const gap = store.cmd.selectedGap;
+    const sel = store.game.selected;
+    if (!gap || sel.size === 0 || this.animation) return;
+
+    const dirs = VALID_DIRECTIONS_FOR_GAP[gap.type];
+    if (dirs.length !== 2) return;
+
+    const size = this.arrowButtonSize();
+    // dirs[0] 單步的螢幕位移單位向量 u（row 向下、col 向右）
+    const d0 = DIRECTION_DELTA[dirs[0]];
+    const ux = d0[1] * this.stepPx;
+    const uy = d0[0] * this.stepPx;
+    const ulen = Math.hypot(ux, uy) || 1;
+    const uxN = ux / ulen;
+    const uyN = uy / ulen;
+    const px = -uyN; // 垂直於推行方向
+    const py = uxN;
+
+    // 選中滑塊的螢幕中心
+    const centers: [number, number][] = [];
+    for (const b of store.game.blocks) {
+      if (!sel.has(b)) continue;
+      const [sx, sy] = this.worldToScreen(b.col * this.step + CELL / 2, b.row * this.step + CELL / 2);
+      centers.push([sx, sy]);
+    }
+    if (centers.length === 0) return;
+
+    let hi: { x: number; y: number };
+    let lo: { x: number; y: number };
+    const anchor = this.lastBlockClickWorld;
+    if (anchor) {
+      // 鼠標點附近：兩個按鍵沿推行軸分居兩側（原版「不額外讓位」路徑）
+      const [awx, awy] = this.worldToScreen(anchor[0], anchor[1]);
+      const off = size * 0.8;
+      hi = { x: awx + uxN * off, y: awy + uyN * off };
+      lo = { x: awx - uxN * off, y: awy - uyN * off };
+    } else {
+      // 切片投影外沿中點 + 向外讓位（原版 use_pad 路徑）
+      let tLo = Infinity, tHi = -Infinity;
+      let sSum = 0;
+      for (const [sx, sy] of centers) {
+        const t = sx * uxN + sy * uyN;
+        const s = sx * px + sy * py;
+        if (t < tLo) tLo = t;
+        if (t > tHi) tHi = t;
+        sSum += s;
+      }
+      const sMid = sSum / centers.length;
+      const hiPt = { x: uxN * tHi + px * sMid, y: uyN * tHi + py * sMid };
+      const loPt = { x: uxN * tLo + px * sMid, y: uyN * tLo + py * sMid };
+      const blockR = this.scaledCell / 2;
+      const pad = Math.max(blockR + size / 2 + 4, blockR + size / 2 + blockR * 0.1);
+      // 出屏收縮，保證按鍵可見
+      let p = pad;
+      const m = size / 2 + 4;
+      const W = this.ctx.canvas.width;
+      const H = this.ctx.canvas.height;
+      const inside = (pt: { x: number; y: number }) =>
+        m <= pt.x && pt.x <= W - m && m <= pt.y && pt.y <= H - m;
+      for (let k = 0; k < 6; k++) {
+        const aHi = { x: hiPt.x + uxN * p, y: hiPt.y + uyN * p };
+        const aLo = { x: loPt.x - uxN * p, y: loPt.y - uyN * p };
+        if (inside(aHi) && inside(aLo)) break;
+        p *= 0.65;
+      }
+      hi = { x: hiPt.x + uxN * p, y: hiPt.y + uyN * p };
+      lo = { x: loPt.x - uxN * p, y: loPt.y - uyN * p };
+    }
+
+    // dirs[0] 指向 +u（hi 端），dirs[1] 指向 -u（lo 端）
+    this.pushArrowButton(dirs[0], hi, uxN, uyN, store, size);
+    this.pushArrowButton(dirs[1], lo, -uxN, -uyN, store, size);
+  }
+
+  private pushArrowButton(
+    dir: Direction,
+    pt: { x: number; y: number },
+    vx: number,
+    vy: number,
+    store: GameStore,
+    size: number,
+  ): void {
+    const W = this.ctx.canvas.width;
+    const H = this.ctx.canvas.height;
+    const x = Math.min(Math.max(pt.x, size / 2), W - size / 2);
+    const y = Math.min(Math.max(pt.y, size / 2), H - size / 2);
+    // 與點擊同判定路徑：該方向真走得動才畫（原版「禁用態不畫」）
+    if (store.game.try_move(dir, store.currentStep) === null) return;
+    const angle = Math.atan2(vy, vx);
+    this.arrowButtons.push({ dir, x, y, size, angle });
+  }
+
+  /** 繪製選中縫隙兩端的箭頭按鍵（在滑塊之後呼叫）。 */
+  private drawGapDirectionArrows(store: GameStore): void {
+    this.computeArrowButtons(store);
+    if (this.arrowButtons.length === 0) return;
+    const { ctx } = this;
+    for (const b of this.arrowButtons) {
+      const spr = this.arrowSprite(b.angle);
+      if (!spr) continue;
+      ctx.drawImage(spr, b.x - b.size / 2, b.y - b.size / 2);
+    }
+  }
+
+  /** 點擊座標是否命中某個箭頭按鍵，回傳該端方向，否則 null（原版 _arrow_button_hit）。 */
+  hitArrowButton(x: number, y: number): Direction | null {
+    for (const b of this.arrowButtons) {
+      if (Math.abs(x - b.x) <= b.size / 2 && Math.abs(y - b.y) <= b.size / 2) return b.dir;
+    }
+    return null;
+  }
+
+  // ---------------- 點擊漣漪反饋（復刻原版 spawn/draw_click_feedback） ----------------
+
+  /** 記錄一次點擊的漣漪（在事件分發最前面呼叫，與命中何種控制無關）。 */
+  spawnClickFeedback(x: number, y: number): void {
+    this.clickFeedback.push({ x, y, t0: performance.now() });
+    if (this.clickFeedback.length > BoardRenderer.CLICK_FEEDBACK_MAX) {
+      this.clickFeedback.splice(0, this.clickFeedback.length - BoardRenderer.CLICK_FEEDBACK_MAX);
+    }
+    this.repaint?.();
+  }
+
+  /** 繪製左鍵點擊漣漪：外擴圓環 + 中心亮點，隨時間淡出。在整幀最上層呼叫。 */
+  private drawClickFeedback(): void {
+    const fx = this.clickFeedback;
+    if (!fx.length) return;
+    const now = performance.now();
+    const ms = BoardRenderer.CLICK_FEEDBACK_MS;
+    const rMax = BoardRenderer.CLICK_FEEDBACK_RADIUS;
+    const { ctx } = this;
+    const alive: { x: number; y: number; t0: number }[] = [];
+    for (const item of fx) {
+      const p = (now - item.t0) / ms;
+      if (p >= 1) continue;
+      alive.push(item);
+      const alpha = Math.round(170 * (1 - p));
+      if (alpha <= 0) continue;
+      const radius = 6 + (rMax - 6) * (1 - (1 - p) ** 2); // 緩出：先快後慢
+      ctx.save();
+      ctx.globalAlpha = alpha / 255;
+      ctx.strokeStyle = 'rgb(150,220,255)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      const dotR = Math.max(1, Math.round(4 * (1 - p)));
+      ctx.fillStyle = 'rgb(225,245,255)';
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, dotR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    this.clickFeedback = alive;
+    if (alive.length > 0) this.repaint?.();
   }
 }

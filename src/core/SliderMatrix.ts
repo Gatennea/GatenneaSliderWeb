@@ -26,6 +26,13 @@ export class SliderMatrix {
   n: number;
   blocks: Block[];
 
+  /**
+   * 自定義「目標形狀」（座標集合 "r:c"）。
+   * - 為 null 時：is_solved 走原本的「m×n 實心矩形」判定（練習 / 競速 / 教程沿用）。
+   * - 非 null 時：is_solved 改為「當前所有滑塊位置恰好等於此集合」（創造模式手造形狀用）。
+   */
+  solutionMask: Set<string> | null = null;
+
   /** 被選中的滑塊（對照原版 block.be_opted === true） */
   selected: Set<Block>;
 
@@ -207,6 +214,16 @@ export class SliderMatrix {
 
   is_solved(): boolean {
     if (this.blocks.length === 0) return false;
+
+    // 創造模式：比對自定義目標形狀（不要求矩形）
+    if (this.solutionMask) {
+      if (this.blocks.length !== this.solutionMask.size) return false;
+      const pos = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
+      for (const p of this.solutionMask) {
+        if (!pos.has(p)) return false;
+      }
+      return true;
+    }
 
     const rows = this.blocks.map((b) => b.row);
     const cols = this.blocks.map((b) => b.col);

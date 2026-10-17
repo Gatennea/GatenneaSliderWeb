@@ -10,6 +10,8 @@ import { shuffle, reset, undo, redo } from './core/CommandBus.js';
 import { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } from './io/SaveManager.js';
 import { Timer, formatTime } from './feature/Timer.js';
 import { Records, stats } from './feature/Records.js';
+import { TutorialController } from './feature/tutorial.js';
+import { CreativeController } from './feature/create.js';
 import type { Block } from './core/Block.js';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -335,10 +337,13 @@ function showToast(text: string): void {
 }
 
 // ---------- 遊戲狀態 ----------
-const store = new GameStore(4, 4, 2);
+// 初始謎題：6×6 等級2（原 4×4 等級2）
+const store = new GameStore(6, 6, 2);
 const renderer = new BoardRenderer(canvas.getContext('2d')!, 1);
+// 點擊漣漪存活期間需要連續重繪；schedulePaint 是函式聲明（已提升），此處可直接引用
+renderer.repaint = schedulePaint;
 
-let gameMode: 'practice' | 'timed' = 'practice';
+let gameMode: 'practice' | 'timed' | 'creative' = 'practice';
 const timer = new Timer();
 const records = new Records();
 
@@ -372,7 +377,9 @@ function updateStatus(): void {
   stZoom.textContent = `缩放：${Math.round(renderer.zoom * 100)}%`;
   const timerText = gameMode === 'practice'
     ? '练习模式'
-    : timer.state === 'idle'
+    : gameMode === 'creative'
+      ? '创造模式'
+      : timer.state === 'idle'
       ? '竞速模式（待打乱）'
       : timer.state === 'ready'
         ? '竞速模式（就绪，空格开始）'
@@ -402,6 +409,7 @@ function schedulePaint(): void {
       renderer.draw(store);
       updateStatus();
       tickTutorial();
+      tutorial.tick();
     }
   }, rafDelay);
 }
@@ -421,9 +429,10 @@ const controller = new BoardController({
     return null;
   },
   onChanged: () => {
-    // 引導期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
-    if (!tutorialActive()) autosave(store);
+    // 引導/章節/解法回放期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
+    if (!tutorialActive() && !tutorial.chapterActive()) autosave(store);
     tutorialOnMoved();
+    tutorial.onMoved();
     if (gameMode === 'timed') {
       if (store.solved && timer.state === 'running') {
         timer.solve();
@@ -435,6 +444,52 @@ const controller = new BoardController({
     schedulePaint();
   },
 })
+
+// ---------- 章節教程 / 創造模式 控制器（在 controller 之後、任何 schedulePaint 呼叫之前實例化，避免 TDZ）----------
+const tutorial = new TutorialController({
+  store, renderer, controller, app,
+  schedulePaint, showToast, centerCamera,
+  frameBounds: (minRow, minCol, maxRow, maxCol) => {
+    const left = minCol * renderer.step;
+    const right = maxCol * renderer.step + renderer.cell;
+    const top = minRow * renderer.step;
+    const bottom = maxRow * renderer.step + renderer.cell;
+    const w = (right - left) * renderer.zoom;
+    const h = (bottom - top) * renderer.zoom;
+    renderer.cameraX = (canvas.width - w) / 2 - left * renderer.zoom;
+    renderer.cameraY = (canvas.height - h) / 2 - top * renderer.zoom;
+    schedulePaint();
+  },
+  ensurePractice: () => {
+    if (gameMode !== 'practice') setGameMode('practice');
+    else timer.cancel();
+  },
+});
+
+const creative = new CreativeController({
+  store, renderer, controller, app,
+  schedulePaint, showToast, centerCamera,
+  applyAsPuzzle: (m, n, step, blocks, solution) => {
+    store.solutionMask = solution;
+    store.applyPuzzle(m, n, step, blocks);
+    renderer.solutionMask = solution;
+    centerCamera();
+    schedulePaint();
+  },
+  enterCreative: () => {
+    if (timer.state === 'running') { showToast('計時中無法進入創造模式'); return; }
+    gameMode = 'creative';
+    timer.cancel();
+    store.cmd.selectedGap = null;
+    store.cmd.selectedBlock = null;
+    store.game.selected.clear();
+  },
+  exitCreative: () => {
+    gameMode = 'practice';
+    timer.cancel();
+  },
+});
+
 
 // ---------- 新手引導 ----------
 /**
@@ -460,7 +515,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
 
 let tutorialStep = -1;
 /** 進入引導前的局面與模式，結束時原樣還原，避免引導過程覆蓋玩家原本的對局。 */
-let tutorialReturn: { save: any; mode: 'practice' | 'timed' } | null = null;
+let tutorialReturn: { save: any; mode: 'practice' | 'timed' | 'creative' } | null = null;
 
 function tutorialActive(): boolean {
   return tutorialStep >= 0;
@@ -635,6 +690,7 @@ const switchStates: SwitchState[] = [
   { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
   { key: 'coloring_enabled', label: '着色', get: () => renderer.coloringEnabled, set: (v) => { renderer.coloringEnabled = v; schedulePaint(); } },
   { key: 'chain_hint_enabled', label: '连锁', get: () => renderer.chainHintEnabled, set: (v) => { renderer.chainHintEnabled = v; schedulePaint(); } },
+  { key: 'arrows_enabled', label: '箭头', get: () => renderer.arrowEnabled, set: (v) => { renderer.arrowEnabled = v; schedulePaint(); } },
   { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('計時中無法切換模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
   // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
   // 網頁版沒有「標記」（原版的作者內部工具），所以是 6 個；「成績」對應成績面板開關。
@@ -743,6 +799,23 @@ syncZoomSlider = () => {
     zoomSlider.knob.style.top = `${(1 - ratio) * rect.height - 6}px`;
   }
 };
+
+// 速度滑條旋鈕同步（與縮放條同一套機制；onChange 為 800 - ratio*740，反解得 ratio）
+let syncSpeedSlider: () => void = () => {};
+syncSpeedSlider = () => {
+  const ratio = Math.max(0, Math.min(1, (800 - controller.moveDurationMs) / 740));
+  const rect = speedSlider.track.getBoundingClientRect();
+  if (rect.height > 0) {
+    speedSlider.knob.style.top = `${(1 - ratio) * rect.height - 6}px`;
+  }
+};
+
+// 啟動時把旋鈕同步到當前值（修復 bug：初始縮放 100%，旋鈕卻停在頂端=400%）。
+// knob 建立時沒有初始 top（默認停在 track 頂端），此前僅在滾輪/拖動/捏合時同步。
+// 立即同步一次；若此刻面板尚未完成布局（height=0 被守衛跳過），下一幀再補一次。
+syncZoomSlider();
+syncSpeedSlider();
+requestAnimationFrame(() => { syncZoomSlider(); syncSpeedSlider(); });
 
 // ---------- 虛擬鍵盤浮動面板 ----------
 let stickyOn = false;
@@ -1027,10 +1100,12 @@ function runHistoryAnimation(kind: 'undo' | 'redo', onDone: () => void): void {
 
 function handleUndo(): void {
   requestHistoryStep('undo');
+  tutorial.onUndo();
 }
 
 function handleRedo(): void {
   requestHistoryStep('redo');
+  tutorial.onRedo();
 }
 
 function handleShuffle(): void {
@@ -1169,11 +1244,15 @@ function handlePresetPuzzle(label: string): void {
   showToast(`切換謎題 ${step}~${m}*${n}`);
 }
 
-function setGameMode(mode: 'practice' | 'timed'): void {
-  if (timer.state === 'running') { showToast('計時中無法切換模式'); return; }
+function setGameMode(mode: 'practice' | 'timed' | 'creative'): void {
+  if (mode !== 'practice' && timer.state === 'running') { showToast('計時中無法切換模式'); return; }
+  // 離開創造模式時收起其面板
+  if (mode !== 'creative') creative.exit();
   gameMode = mode;
   timer.cancel();
-  showToast(mode === 'timed' ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時');
+  if (mode === 'timed') showToast('計時模式：打亂後需按空格開始');
+  else if (mode === 'creative') showToast('創造模式：生成謎題後自由還原');
+  else showToast('練習模式：可自由滑動，不計時');
   schedulePaint();
 }
 
@@ -1211,10 +1290,11 @@ const menus: MenuDef[] = [
   },
   // 數字形態是方形底板加編號，規則與方形完全相同，體驗版也能做；
   // 三角 / 米字要另一套座標與畫法，仍留在完整版。
-  { label: '谜题', items: ['2~4*4','2~5*5','2~6*6','2~7*7','2~8*8','2~9*9','2~10*10','---','3~6*6','3~7*7','3~8*8','3~9*9','3~10*10','---','自定义...','模式:练习','模式:竞速','---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...')], handler: (item) => {
+  { label: '谜题', items: ['2~4*4','2~5*5','2~6*6','2~7*7','2~8*8','2~9*9','2~10*10','---','3~6*6','3~7*7','3~8*8','3~9*9','3~10*10','---','自定义...','模式:练习','模式:竞速','模式:创造','---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...')], handler: (item) => {
       if (item === '自定义...') handleCustomPuzzle();
       else if (item === '模式:练习') setGameMode('practice');
       else if (item === '模式:竞速') setGameMode('timed');
+      else if (item === '模式:创造') creative.enter();
       else if (item.startsWith('數字形態')) toggleNumbered();
       else if (item !== '---') handlePresetPuzzle(item);
     }
@@ -1231,7 +1311,9 @@ const menus: MenuDef[] = [
       else if (item.includes('新手引导')) startTutorial();
     }
   },
-  { label: '教程', items: [pro('新手教程'), pro('教程关卡...'), '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)] },
+  { label: '教程', items: ['新手教程', '教程关卡...', '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)], handler: (item) => {
+    if (item.includes('新手教程') || item.includes('教程关卡')) tutorial.openLevelSelect();
+  } },
   { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 
@@ -1695,7 +1777,7 @@ buildMenu();
 
 buildVK();
 layoutCanvas();
-window.addEventListener('resize', () => { closeAllMenus(); applyChromeDensity(); layoutCanvas(); schedulePaint(); });
+window.addEventListener('resize', () => { closeAllMenus(); applyChromeDensity(); layoutCanvas(); syncZoomSlider(); syncSpeedSlider(); schedulePaint(); });
 
 // ---------- 首頁玩法演示模式（?demo=存檔路徑） ----------
 const demoFile = new URLSearchParams(window.location.search).get('demo');
@@ -1789,8 +1871,8 @@ if (demoFile) {
   centerCamera();
   showToast('已恢復上次進度');
 } else if (!tutorialSeen()) {
-  // 第一次來、又沒有舊進度：直接帶著走一遍，免得對著一盤拼好的方塊發呆
-  startTutorial();
+  // 第一次來、又沒有舊進度：打開章節教程（新手教程）選關，帶著由淺入深地玩
+  tutorial.openLevelSelect();
 }
 schedulePaint();
 

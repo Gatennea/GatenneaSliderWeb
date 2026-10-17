@@ -44,6 +44,30 @@
         color: #fff;
         margin-bottom: 24px;
       }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 10px 22px;
+        margin: -6px 0 26px;
+      }
+      .ctrl-group { display: flex; align-items: center; gap: 6px; }
+      .ctrl-label { font-size: 13px; color: #9a9a9a; margin-right: 2px; }
+      .ctrl-btn {
+        padding: 4px 14px;
+        border-radius: 14px;
+        font-size: 13px;
+        cursor: pointer;
+        color: #e6e6e6;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        transition: all 0.2s;
+        font-family: inherit;
+        line-height: 1.6;
+      }
+      .ctrl-btn:hover { background: #4696c8; color: #fff; border-color: #4696c8; }
+      .ctrl-btn.active { background: #4696c8; color: #fff; border-color: #4696c8; }
       .timeline {
         position: relative;
         padding-left: 30px;
@@ -147,184 +171,309 @@
         <span class="tag tag-web">web版</span>指浏览器里直接玩的网页版，功能较精简。
       </p>
 
-      <h2 class="section-title">更早</h2>
-      <div class="timeline">
-        <div class="timeline-item">
-          <div class="timeline-desc">貓九初步构思了该游戏的规则和机制。</div>
+      <div class="controls">
+        <div class="ctrl-group">
+          <span class="ctrl-label">排序</span>
+          <button type="button" class="ctrl-btn active" data-sort="asc">时间正序</button>
+          <button type="button" class="ctrl-btn" data-sort="desc">时间倒序</button>
+        </div>
+        <div class="ctrl-group">
+          <span class="ctrl-label">筛选</span>
+          <button type="button" class="ctrl-btn active" data-filter="all">全部</button>
+          <button type="button" class="ctrl-btn" data-filter="py">py版</button>
+          <button type="button" class="ctrl-btn" data-filter="web">web版</button>
         </div>
       </div>
 
-      <h2 class="section-title">2025年</h2>
-      <div class="timeline">
-        <div class="timeline-item">
-          <div class="timeline-date">8月5日</div>
-          <div class="timeline-desc">貓九录制并上传了讲述该游戏构思的视频，发到B站</div>
+      <div class="year-block" data-year="0">
+        <h2 class="section-title">更早</h2>
+        <div class="timeline">
+          <div class="timeline-item" data-date="0">
+            <div class="timeline-desc">貓九初步构思了该游戏的规则和机制。</div>
+          </div>
         </div>
       </div>
 
-      <h2 class="section-title">2026年</h2>
-      <div class="timeline">
-        <div class="timeline-item">
-          <div class="timeline-date">5月</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>python版开始开发</div>
+      <div class="year-block" data-year="2025">
+        <h2 class="section-title">2025年</h2>
+        <div class="timeline">
+          <div class="timeline-item" data-date="20250805">
+            <div class="timeline-date">8月5日</div>
+            <div class="timeline-desc">貓九录制并上传了讲述该游戏构思的视频，发到B站</div>
+          </div>
         </div>
-        <div class="timeline-item">
-          <div class="timeline-date">8月</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>游戏进入内测阶段</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">8月21日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>项目正式入库：界面、计时与成绩、求解器、调试用接口一次就位</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">8月28日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>求解器增强、竞速模式安全修复、界面改进与文档完善</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>web版开始重构，两个版本都正式开源</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月2日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>调试面板与目标框上线：自动搜出聚拢度最高的还原位置并画出「该往哪儿拼」的预示框，框外标记统一改成菱形</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月5日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>缺口求解加入视图旋转归一化与更准的凸起选中，此前算不出的几档现在能解</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月6日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>多个空洞的局面支持自己指定配对，没解完的中间成果不再被丢掉</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月7日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>存档只读开关、复原成功悬浮窗、防止存档覆盖、虚拟键盘「跳到第 N 步」</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月8日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>web版正式上线</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月9日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>添加了主页</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月9日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>三种滑块控制模式（单次触控 / 两次触控 / 鼠标键盘）可分别开关，滑动失败会说明原因</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月10日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>菜单栏新增「官网」，一键打开网页版主页</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月10日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>web版复刻了原版的竞速防作弊、着色器、连锁器等功能</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月11日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>添加了更新日志</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月11日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>求解器算到一半可以用 ESC 中断；标注模式改尺寸后不再按旧尺寸计算</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月12日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>新手教程闯关模式：数据驱动关卡、选关列表、解法回放</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月15日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>教程新增 4.6 / 5.2~5.5 关；创造模式的构造范围与点击反馈修复；文档拆成「人读版」与「给 AI 看的版本」</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月20日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>拖拽跟随：按住滑块拖动时实时预览落点，并支持一次滑多格</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月21日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>新增两种谜题形态：<strong>带序号滑块</strong>（数字要按序排）与<strong>正三角形密铺滑块</strong>；谜题菜单改说人话（如「6×6 等级2」）并按形态分组</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月22日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>米字格的移动动画补齐，撤销 / 重做不再瞬移</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月23日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>米字格形态完整落地（引擎 + 视图 + 拖拽定向 + 八向虚拟键盘），斜向一次走一格；修好错位态下缝隙点不中的问题；新增可开关的操作日志</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月24日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>三种形态统一「同组着色 / 悬停连锁」提示；创造模式的手动构造扩展到三角与米字</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月25日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>谜题菜单改二级结构（矩形正阶主位、异形收进子菜单）；三角 / 米字的 1 级连锁与高亮越界修复</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月26日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>拖拽松手不再「跳回起点重滑一遍」；三角 / 米字的构造合法性把朝向算进去；帮助重写成速查手册</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月29日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>存档写入校验和（损坏能被发现）、成绩写入不再写坏文件、命令行参数缺参不再闪退、大棋盘导出提速</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">9月30日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>补缺宏（封壳 + 内部共轭 + 拆壳）与全对称群轨道求解上线；混合求解器改「聚拢 + 填洞」多段交替，实测快约 4.5 倍</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月1日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>一批新解法宏（带移盖洞 / 粘上接走 / 移形换位 / 刚体挤入）；求解可随时停止、边算边播，并加时间预算（算不出来尽早停）</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月2日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>混合求解器改自动规划（按空位数选路线）；「带移让位 + 粘上接走」让原本 215 秒解不出的 07 局 0.6 秒解出；数字谜题接入求解器</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月3日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>三角形聚拢求解器上线并接入界面（自动求解 → 回放全链路）；米字格若干崩溃修复</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月4日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>米字格聚拢求解器 + F2 调试面板；米字格每步耗时 72.8ms 降到 26.9ms；修掉三个界面 bug（复原弹窗从没显示过、浮动面板跑到屏幕外、缩放窗口后面板错位）</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月5日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>缝两端的方向按键改成可点击的贴图按钮；「能不能走」改为引擎实际干跑判定，看到的箭头和点下去的结果严格一致；求解演示给「当前在动的那一组」加白框光边；三种形态统一用同一个求解入口</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月6日</div>
-          <div class="timeline-desc"><span class="tag tag-py">py版</span>修打包版白屏无响应；打包改成一文件夹模式，启动约 3.8 秒降到约 2 秒；求解宏加总时间预算，长时间算不出不再卡住界面；新增发版脚本，Windows 版开始随 GitHub Release 发布</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月6日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>官网首页重做：改成五大功能区，新增独立的「玩法详解」页；导航加入支持作者的入口；下载改成直链</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月7日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>官网配图全部换成真实游戏截图（手绘图退场）；四种形态改成「还原态 + 多尺寸」三联拼图；首页新增 6 段真实玩法动图</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月7日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>首页补齐等级说明、五种操作方式、宏与悬浮面板的介绍；移除重复的截图画廊，改成各章节就近配图</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月7日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>首页背景改用循环动图，不再在背景里跑一整套游戏引擎，加载更轻</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月12日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>新增数字形态：滑块上写着它原本该排在第几位，规则跟矩形一样，但看得见该怎么归位</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月12日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>新增新手引导：第一次进来会带着走一遍「点缝 → 点块 → 推」，一步就能推回去，随时可跳过</div>
-        </div>
-        <div class="timeline-item">
-          <div class="timeline-date">10月12日</div>
-          <div class="timeline-desc"><span class="tag tag-web">web版</span>手机上的菜单栏不再被挤成一团：菜单与状态栏会自动收紧，下拉菜单也不会开到屏幕外面</div>
+      </div>
+
+      <div class="year-block" data-year="2026">
+        <h2 class="section-title">2026年</h2>
+        <div class="timeline">
+          <div class="timeline-item" data-date="20260500" data-ver="py">
+            <div class="timeline-date">5月</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>python版开始开发</div>
+          </div>
+          <div class="timeline-item" data-date="20260800" data-ver="py">
+            <div class="timeline-date">8月</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>游戏进入内测阶段</div>
+          </div>
+          <div class="timeline-item" data-date="20260821" data-ver="py">
+            <div class="timeline-date">8月21日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>项目正式入库：界面、计时与成绩、求解器、调试用接口一次就位</div>
+          </div>
+          <div class="timeline-item" data-date="20260828" data-ver="py">
+            <div class="timeline-date">8月28日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>求解器增强、竞速模式安全修复、界面改进与文档完善</div>
+          </div>
+          <div class="timeline-item" data-date="20260900" data-ver="web">
+            <div class="timeline-date">9月</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>web版开始重构，两个版本都正式开源</div>
+          </div>
+          <div class="timeline-item" data-date="20260902" data-ver="py">
+            <div class="timeline-date">9月2日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>调试面板与目标框上线：自动搜出聚拢度最高的还原位置并画出「该往哪儿拼」的预示框，框外标记统一改成菱形</div>
+          </div>
+          <div class="timeline-item" data-date="20260905" data-ver="py">
+            <div class="timeline-date">9月5日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>缺口求解加入视图旋转归一化与更准的凸起选中，此前算不出的几档现在能解</div>
+          </div>
+          <div class="timeline-item" data-date="20260906" data-ver="py">
+            <div class="timeline-date">9月6日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>多个空洞的局面支持自己指定配对，没解完的中间成果不再被丢掉</div>
+          </div>
+          <div class="timeline-item" data-date="20260907" data-ver="py">
+            <div class="timeline-date">9月7日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>存档只读开关、复原成功悬浮窗、防止存档覆盖、虚拟键盘「跳到第 N 步」</div>
+          </div>
+          <div class="timeline-item" data-date="20260908" data-ver="web">
+            <div class="timeline-date">9月8日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>web版正式上线</div>
+          </div>
+          <div class="timeline-item" data-date="20260909" data-ver="web">
+            <div class="timeline-date">9月9日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>添加了主页</div>
+          </div>
+          <div class="timeline-item" data-date="20260909" data-ver="py">
+            <div class="timeline-date">9月9日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>三种滑块控制模式（单次触控 / 两次触控 / 鼠标键盘）可分别开关，滑动失败会说明原因</div>
+          </div>
+          <div class="timeline-item" data-date="20260910" data-ver="py">
+            <div class="timeline-date">9月10日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>菜单栏新增「官网」，一键打开网页版主页</div>
+          </div>
+          <div class="timeline-item" data-date="20260910" data-ver="web">
+            <div class="timeline-date">9月10日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>web版复刻了原版的竞速防作弊、着色器、连锁器等功能</div>
+          </div>
+          <div class="timeline-item" data-date="20260911" data-ver="web">
+            <div class="timeline-date">9月11日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>添加了更新日志</div>
+          </div>
+          <div class="timeline-item" data-date="20260911" data-ver="py">
+            <div class="timeline-date">9月11日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>求解器算到一半可以用 ESC 中断；标注模式改尺寸后不再按旧尺寸计算</div>
+          </div>
+          <div class="timeline-item" data-date="20260912" data-ver="py">
+            <div class="timeline-date">9月12日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>新手教程闯关模式：数据驱动关卡、选关列表、解法回放</div>
+          </div>
+          <div class="timeline-item" data-date="20260915" data-ver="py">
+            <div class="timeline-date">9月15日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>教程新增 4.6 / 5.2~5.5 关；创造模式的构造范围与点击反馈修复；文档拆成「人读版」与「给 AI 看的版本」</div>
+          </div>
+          <div class="timeline-item" data-date="20260920" data-ver="py">
+            <div class="timeline-date">9月20日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>拖拽跟随：按住滑块拖动时实时预览落点，并支持一次滑多格</div>
+          </div>
+          <div class="timeline-item" data-date="20260921" data-ver="py">
+            <div class="timeline-date">9月21日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>新增两种谜题形态：<strong>带序号滑块</strong>（数字要按序排）与<strong>正三角形密铺滑块</strong>；谜题菜单改说人话（如「6×6 等级2」）并按形态分组</div>
+          </div>
+          <div class="timeline-item" data-date="20260922" data-ver="py">
+            <div class="timeline-date">9月22日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>米字格的移动动画补齐，撤销 / 重做不再瞬移</div>
+          </div>
+          <div class="timeline-item" data-date="20260923" data-ver="py">
+            <div class="timeline-date">9月23日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>米字格形态完整落地（引擎 + 视图 + 拖拽定向 + 八向虚拟键盘），斜向一次走一格；修好错位态下缝隙点不中的问题；新增可开关的操作日志</div>
+          </div>
+          <div class="timeline-item" data-date="20260924" data-ver="py">
+            <div class="timeline-date">9月24日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>三种形态统一「同组着色 / 悬停连锁」提示；创造模式的手动构造扩展到三角与米字</div>
+          </div>
+          <div class="timeline-item" data-date="20260925" data-ver="py">
+            <div class="timeline-date">9月25日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>谜题菜单改二级结构（矩形正阶主位、异形收进子菜单）；三角 / 米字的 1 级连锁与高亮越界修复</div>
+          </div>
+          <div class="timeline-item" data-date="20260926" data-ver="py">
+            <div class="timeline-date">9月26日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>拖拽松手不再「跳回起点重滑一遍」；三角 / 米字的构造合法性把朝向算进去；帮助重写成速查手册</div>
+          </div>
+          <div class="timeline-item" data-date="20260929" data-ver="py">
+            <div class="timeline-date">9月29日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>存档写入校验和（损坏能被发现）、成绩写入不再写坏文件、命令行参数缺参不再闪退、大棋盘导出提速</div>
+          </div>
+          <div class="timeline-item" data-date="20260930" data-ver="py">
+            <div class="timeline-date">9月30日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>补缺宏（封壳 + 内部共轭 + 拆壳）与全对称群轨道求解上线；混合求解器改「聚拢 + 填洞」多段交替，实测快约 4.5 倍</div>
+          </div>
+          <div class="timeline-item" data-date="20261001" data-ver="py">
+            <div class="timeline-date">10月1日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>一批新解法宏（带移盖洞 / 粘上接走 / 移形换位 / 刚体挤入）；求解可随时停止、边算边播，并加时间预算（算不出来尽早停）</div>
+          </div>
+          <div class="timeline-item" data-date="20261002" data-ver="py">
+            <div class="timeline-date">10月2日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>混合求解器改自动规划（按空位数选路线）；「带移让位 + 粘上接走」让原本 215 秒解不出的 07 局 0.6 秒解出；数字谜题接入求解器</div>
+          </div>
+          <div class="timeline-item" data-date="20261003" data-ver="py">
+            <div class="timeline-date">10月3日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>三角形聚拢求解器上线并接入界面（自动求解 → 回放全链路）；米字格若干崩溃修复</div>
+          </div>
+          <div class="timeline-item" data-date="20261004" data-ver="py">
+            <div class="timeline-date">10月4日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>米字格聚拢求解器 + F2 调试面板；米字格每步耗时 72.8ms 降到 26.9ms；修掉三个界面 bug（复原弹窗从没显示过、浮动面板跑到屏幕外、缩放窗口后面板错位）</div>
+          </div>
+          <div class="timeline-item" data-date="20261005" data-ver="py">
+            <div class="timeline-date">10月5日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>缝两端的方向按键改成可点击的贴图按钮；「能不能走」改为引擎实际干跑判定，看到的箭头和点下去的结果严格一致；求解演示给「当前在动的那一组」加白框光边；三种形态统一用同一个求解入口</div>
+          </div>
+          <div class="timeline-item" data-date="20261006" data-ver="py">
+            <div class="timeline-date">10月6日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>修打包版白屏无响应；打包改成一文件夹模式，启动约 3.8 秒降到约 2 秒；求解宏加总时间预算，长时间算不出不再卡住界面；新增发版脚本，Windows 版开始随 GitHub Release 发布</div>
+          </div>
+          <div class="timeline-item" data-date="20261006" data-ver="web">
+            <div class="timeline-date">10月6日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>官网首页重做：改成五大功能区，新增独立的「玩法详解」页；导航加入支持作者的入口；下载改成直链</div>
+          </div>
+          <div class="timeline-item" data-date="20261007" data-ver="web">
+            <div class="timeline-date">10月7日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>官网配图全部换成真实游戏截图（手绘图退场）；四种形态改成「还原态 + 多尺寸」三联拼图；首页新增 6 段真实玩法动图</div>
+          </div>
+          <div class="timeline-item" data-date="20261007" data-ver="web">
+            <div class="timeline-date">10月7日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>首页补齐等级说明、五种操作方式、宏与悬浮面板的介绍；移除重复的截图画廊，改成各章节就近配图</div>
+          </div>
+          <div class="timeline-item" data-date="20261007" data-ver="web">
+            <div class="timeline-date">10月7日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>首页背景改用循环动图，不再在背景里跑一整套游戏引擎，加载更轻</div>
+          </div>
+          <div class="timeline-item" data-date="20261012" data-ver="web">
+            <div class="timeline-date">10月12日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>新增数字形态：滑块上写着它原本该排在第几位，规则跟矩形一样，但看得见该怎么归位</div>
+          </div>
+          <div class="timeline-item" data-date="20261012" data-ver="web">
+            <div class="timeline-date">10月12日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>新增新手引导：第一次进来会带着走一遍「点缝 → 点块 → 推」，一步就能推回去，随时可跳过</div>
+          </div>
+          <div class="timeline-item" data-date="20261012" data-ver="web">
+            <div class="timeline-date">10月12日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>手机上的菜单栏不再被挤成一团：菜单与状态栏会自动收紧，下拉菜单也不会开到屏幕外面</div>
+          </div>
+          <div class="timeline-item" data-date="20261012" data-ver="web">
+            <div class="timeline-date">10月12日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>界面与桌面原版逐项对齐：统一字型、菜单顺序、右栏开关与状态栏布局；顺手修掉数字形态切换后的几处小毛病（菜单对齐、下拉文字颜色、通知位置）</div>
+          </div>
+          <div class="timeline-item" data-date="20261014" data-ver="py">
+            <div class="timeline-date">10月14日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>界面代码大梳理：交互、移动、自动求解、会话、外部控制等按职责拆成独立模块（纯搬移、零逻辑改动），后续迭代不再往一个大文件里堆</div>
+          </div>
+          <div class="timeline-item" data-date="20261015" data-ver="py">
+            <div class="timeline-date">10月15日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>外部控制接口补上信息层：动作可以先「干跑预览」再执行、缝隙线号范围公开，并配上 API 语义文档</div>
+          </div>
+          <div class="timeline-item" data-date="20261015" data-ver="py">
+            <div class="timeline-date">10月15日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>命令面板与帮助框检索增强，预留大模型兜底的接缝；启动时预热求解器依赖，根治外部 API 首次打乱的死锁</div>
+          </div>
+          <div class="timeline-item" data-date="20261015" data-ver="py">
+            <div class="timeline-date">10月15日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>测试与 CI 基建落地：存量脚本测试零改动接入 pytest、GitHub Actions 开跑、基本操作冒烟测试入库；「能不能走」的择优判定收敛成单一真源；顺手修了聚拢参数减号显示成方框等界面小问题</div>
+          </div>
+          <div class="timeline-item" data-date="20261016" data-ver="py">
+            <div class="timeline-date">10月16日</div>
+            <div class="timeline-desc"><span class="tag tag-py">py版</span>求解器做消融实验：实测确认内填洞宏拖慢混合流水线，把它移除；「用不用填洞」做成可开关的消融项，夜间实验工具与两份汇总入库</div>
+          </div>
+          <div class="timeline-item" data-date="20261016" data-ver="web">
+            <div class="timeline-date">10月16日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>官网新增「状态图图解」页与轻量数据集，用真实局面讲清状态图、集合关系这些概念</div>
+          </div>
+          <div class="timeline-item" data-date="20261017" data-ver="web">
+            <div class="timeline-date">10月17日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>图解页状态图改用真实子图，新增 22 个谜题对比与「出路条数」分布</div>
+          </div>
+          <div class="timeline-item" data-date="20261017" data-ver="web">
+            <div class="timeline-date">10月17日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>图解页新增形状体检（聚拢度 / 边界盒 / 剖面缺陷 Φ）与真实局面画廊；死局判定改回「打乱能踩到但回不去」的口径，边界盒改成热力图</div>
+          </div>
+          <div class="timeline-item" data-date="20261017" data-ver="web">
+            <div class="timeline-date">10月17日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>新手教程闯关与创造模式从完整版移植：6 章选关、进度解锁、解法回放；创造模式可随机生成缺口，也能手动构造自定义形状</div>
+          </div>
+          <div class="timeline-item" data-date="20261017" data-ver="web">
+            <div class="timeline-date">10月17日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>复刻完整版的两处交互：缝两端的箭头按键（点了就朝那个方向滑，走不通的方向不显示）与点击涟漪反馈；初始谜题改为 6×6 等级 2，并修好缩放滑条初始位置不对的问题</div>
+          </div>
+          <div class="timeline-item" data-date="20261018" data-ver="web">
+            <div class="timeline-date">10月18日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>教程存档数据原本是带缩进的对象字面量，光它就占了整个 app.js 的九成；改成紧凑 JSON 字符串存放，并去掉两个没有任何代码读取的字段，app.js 从 1.8MB 瘦到 286KB（约六分之一），启动加载快了很多；所有关卡的解法数据已与完整版存档逐字段比对，确认一字未改</div>
+          </div>
         </div>
       </div>
     </div>
+
+    <script>
+      (function () {
+        var wrap = document.querySelector('.wrap');
+        var blocks = Array.prototype.slice.call(document.querySelectorAll('.year-block'));
+        var sortBtns = Array.prototype.slice.call(document.querySelectorAll('[data-sort]'));
+        var filterBtns = Array.prototype.slice.call(document.querySelectorAll('[data-filter]'));
+        var order = 'asc';    // 'asc' | 'desc'
+        var filter = 'all';   // 'all' | 'py' | 'web'
+
+        function apply() {
+          // 年度区块排序
+          var ordered = blocks.slice().sort(function (a, b) {
+            var d = Number(a.dataset.year) - Number(b.dataset.year);
+            return order === 'asc' ? d : -d;
+          });
+          ordered.forEach(function (b) { wrap.appendChild(b); });
+          // 区块内条目按日期排序（同日保持原有先后）
+          ordered.forEach(function (b) {
+            var tl = b.querySelector('.timeline');
+            var items = Array.prototype.slice.call(tl.querySelectorAll('.timeline-item'))
+              .map(function (it, i) { return { it: it, i: i, d: Number(it.dataset.date) }; });
+            items.sort(function (x, y) {
+              var d = order === 'asc' ? (x.d - y.d) || (x.i - y.i) : (y.d - x.d) || (y.i - x.i);
+              return d;
+            });
+            items.forEach(function (x) { tl.appendChild(x.it); });
+          });
+          // 筛选（无版本标记的条目仅在「全部」里显示），空年度整体隐藏
+          blocks.forEach(function (b) {
+            var visible = 0;
+            Array.prototype.forEach.call(b.querySelectorAll('.timeline-item'), function (it) {
+              var ver = it.dataset.ver || '';
+              var show = filter === 'all' || ver === filter;
+              it.style.display = show ? '' : 'none';
+              if (show) visible++;
+            });
+            b.style.display = visible ? '' : 'none';
+          });
+        }
+
+        sortBtns.forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            order = btn.dataset.sort;
+            sortBtns.forEach(function (x) { x.classList.toggle('active', x === btn); });
+            apply();
+          });
+        });
+        filterBtns.forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            filter = btn.dataset.filter;
+            filterBtns.forEach(function (x) { x.classList.toggle('active', x === btn); });
+            apply();
+          });
+        });
+      })();
+    </script>
   </body>
 </html>

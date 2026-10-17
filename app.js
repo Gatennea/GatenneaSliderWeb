@@ -13,6 +13,8 @@ const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
 const { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } = require("./io/SaveManager.js");
 const { Timer, formatTime } = require("./feature/Timer.js");
 const { Records, stats } = require("./feature/Records.js");
+const { TutorialController } = require("./feature/tutorial.js");
+const { CreativeController } = require("./feature/create.js");
 const app = document.querySelector('#app');
 app.style.background = COLORS.background;
 app.style.height = '100vh';
@@ -312,8 +314,11 @@ function showToast(text) {
     toastTimer = window.setTimeout(() => (toast.textContent = ''), 1400);
 }
 // ---------- 遊戲狀態 ----------
-const store = new GameStore(4, 4, 2);
+// 初始謎題：6×6 等級2（原 4×4 等級2）
+const store = new GameStore(6, 6, 2);
 const renderer = new BoardRenderer(canvas.getContext('2d'), 1);
+// 點擊漣漪存活期間需要連續重繪；schedulePaint 是函式聲明（已提升），此處可直接引用
+renderer.repaint = schedulePaint;
 let gameMode = 'practice';
 const timer = new Timer();
 const records = new Records();
@@ -345,15 +350,17 @@ function updateStatus() {
     stZoom.textContent = `缩放：${Math.round(renderer.zoom * 100)}%`;
     const timerText = gameMode === 'practice'
         ? '练习模式'
-        : timer.state === 'idle'
-            ? '竞速模式（待打乱）'
-            : timer.state === 'ready'
-                ? '竞速模式（就绪，空格开始）'
-                : timer.state === 'running'
-                    ? `竞速模式 ${formatTime(timer.elapsedMs)}`
-                    : timer.state === 'solved'
-                        ? `竞速模式 成绩 ${formatTime(timer.elapsedMs)}`
-                        : '竞速模式 DNF';
+        : gameMode === 'creative'
+            ? '创造模式'
+            : timer.state === 'idle'
+                ? '竞速模式（待打乱）'
+                : timer.state === 'ready'
+                    ? '竞速模式（就绪，空格开始）'
+                    : timer.state === 'running'
+                        ? `竞速模式 ${formatTime(timer.elapsedMs)}`
+                        : timer.state === 'solved'
+                            ? `竞速模式 成绩 ${formatTime(timer.elapsedMs)}`
+                            : '竞速模式 DNF';
     stTimer.textContent = timerText;
     stTimer.style.color = timer.state === 'running' ? COLORS.timer_running : COLORS.status_text;
 }
@@ -376,6 +383,7 @@ function schedulePaint() {
             renderer.draw(store);
             updateStatus();
             tickTutorial();
+            tutorial.tick();
         }
     }, rafDelay);
 }
@@ -396,10 +404,11 @@ const controller = new BoardController({
         return null;
     },
     onChanged: () => {
-        // 引導期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
-        if (!tutorialActive())
+        // 引導/章節/解法回放期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
+        if (!tutorialActive() && !tutorial.chapterActive())
             autosave(store);
         tutorialOnMoved();
+        tutorial.onMoved();
         if (gameMode === 'timed') {
             if (store.solved && timer.state === 'running') {
                 timer.solve();
@@ -409,6 +418,54 @@ const controller = new BoardController({
             }
         }
         schedulePaint();
+    },
+});
+// ---------- 章節教程 / 創造模式 控制器（在 controller 之後、任何 schedulePaint 呼叫之前實例化，避免 TDZ）----------
+const tutorial = new TutorialController({
+    store, renderer, controller, app,
+    schedulePaint, showToast, centerCamera,
+    frameBounds: (minRow, minCol, maxRow, maxCol) => {
+        const left = minCol * renderer.step;
+        const right = maxCol * renderer.step + renderer.cell;
+        const top = minRow * renderer.step;
+        const bottom = maxRow * renderer.step + renderer.cell;
+        const w = (right - left) * renderer.zoom;
+        const h = (bottom - top) * renderer.zoom;
+        renderer.cameraX = (canvas.width - w) / 2 - left * renderer.zoom;
+        renderer.cameraY = (canvas.height - h) / 2 - top * renderer.zoom;
+        schedulePaint();
+    },
+    ensurePractice: () => {
+        if (gameMode !== 'practice')
+            setGameMode('practice');
+        else
+            timer.cancel();
+    },
+});
+const creative = new CreativeController({
+    store, renderer, controller, app,
+    schedulePaint, showToast, centerCamera,
+    applyAsPuzzle: (m, n, step, blocks, solution) => {
+        store.solutionMask = solution;
+        store.applyPuzzle(m, n, step, blocks);
+        renderer.solutionMask = solution;
+        centerCamera();
+        schedulePaint();
+    },
+    enterCreative: () => {
+        if (timer.state === 'running') {
+            showToast('計時中無法進入創造模式');
+            return;
+        }
+        gameMode = 'creative';
+        timer.cancel();
+        store.cmd.selectedGap = null;
+        store.cmd.selectedBlock = null;
+        store.game.selected.clear();
+    },
+    exitCreative: () => {
+        gameMode = 'practice';
+        timer.cancel();
     },
 });
 // ---------- 新手引導 ----------
@@ -598,6 +655,7 @@ const switchStates = [
     { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
     { key: 'coloring_enabled', label: '着色', get: () => renderer.coloringEnabled, set: (v) => { renderer.coloringEnabled = v; schedulePaint(); } },
     { key: 'chain_hint_enabled', label: '连锁', get: () => renderer.chainHintEnabled, set: (v) => { renderer.chainHintEnabled = v; schedulePaint(); } },
+    { key: 'arrows_enabled', label: '箭头', get: () => renderer.arrowEnabled, set: (v) => { renderer.arrowEnabled = v; schedulePaint(); } },
     { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') {
             showToast('計時中無法切換模式');
             return;
@@ -703,6 +761,21 @@ syncZoomSlider = () => {
         zoomSlider.knob.style.top = `${(1 - ratio) * rect.height - 6}px`;
     }
 };
+// 速度滑條旋鈕同步（與縮放條同一套機制；onChange 為 800 - ratio*740，反解得 ratio）
+let syncSpeedSlider = () => { };
+syncSpeedSlider = () => {
+    const ratio = Math.max(0, Math.min(1, (800 - controller.moveDurationMs) / 740));
+    const rect = speedSlider.track.getBoundingClientRect();
+    if (rect.height > 0) {
+        speedSlider.knob.style.top = `${(1 - ratio) * rect.height - 6}px`;
+    }
+};
+// 啟動時把旋鈕同步到當前值（修復 bug：初始縮放 100%，旋鈕卻停在頂端=400%）。
+// knob 建立時沒有初始 top（默認停在 track 頂端），此前僅在滾輪/拖動/捏合時同步。
+// 立即同步一次；若此刻面板尚未完成布局（height=0 被守衛跳過），下一幀再補一次。
+syncZoomSlider();
+syncSpeedSlider();
+requestAnimationFrame(() => { syncZoomSlider(); syncSpeedSlider(); });
 // ---------- 虛擬鍵盤浮動面板 ----------
 let stickyOn = false;
 function buildVK() {
@@ -1007,9 +1080,11 @@ function runHistoryAnimation(kind, onDone) {
 }
 function handleUndo() {
     requestHistoryStep('undo');
+    tutorial.onUndo();
 }
 function handleRedo() {
     requestHistoryStep('redo');
+    tutorial.onRedo();
 }
 function handleShuffle() {
     if (gameMode === 'timed' && timer.state === 'running') {
@@ -1161,13 +1236,21 @@ function handlePresetPuzzle(label) {
     showToast(`切換謎題 ${step}~${m}*${n}`);
 }
 function setGameMode(mode) {
-    if (timer.state === 'running') {
+    if (mode !== 'practice' && timer.state === 'running') {
         showToast('計時中無法切換模式');
         return;
     }
+    // 離開創造模式時收起其面板
+    if (mode !== 'creative')
+        creative.exit();
     gameMode = mode;
     timer.cancel();
-    showToast(mode === 'timed' ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時');
+    if (mode === 'timed')
+        showToast('計時模式：打亂後需按空格開始');
+    else if (mode === 'creative')
+        showToast('創造模式：生成謎題後自由還原');
+    else
+        showToast('練習模式：可自由滑動，不計時');
     schedulePaint();
 }
 /** 標成完整版專屬：體驗版保留選單位階，但明確告知做不到，引導去下載。 */
@@ -1206,13 +1289,15 @@ const menus = [
     },
     // 數字形態是方形底板加編號，規則與方形完全相同，體驗版也能做；
     // 三角 / 米字要另一套座標與畫法，仍留在完整版。
-    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '3~6*6', '3~7*7', '3~8*8', '3~9*9', '3~10*10', '---', '自定义...', '模式:练习', '模式:竞速', '---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...')], handler: (item) => {
+    { label: '谜题', items: ['2~4*4', '2~5*5', '2~6*6', '2~7*7', '2~8*8', '2~9*9', '2~10*10', '---', '3~6*6', '3~7*7', '3~8*8', '3~9*9', '3~10*10', '---', '自定义...', '模式:练习', '模式:竞速', '模式:创造', '---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...')], handler: (item) => {
             if (item === '自定义...')
                 handleCustomPuzzle();
             else if (item === '模式:练习')
                 setGameMode('practice');
             else if (item === '模式:竞速')
                 setGameMode('timed');
+            else if (item === '模式:创造')
+                creative.enter();
             else if (item.startsWith('數字形態'))
                 toggleNumbered();
             else if (item !== '---')
@@ -1236,7 +1321,10 @@ const menus = [
                 startTutorial();
         }
     },
-    { label: '教程', items: [pro('新手教程'), pro('教程关卡...'), '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)] },
+    { label: '教程', items: ['新手教程', '教程关卡...', '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)], handler: (item) => {
+            if (item.includes('新手教程') || item.includes('教程关卡'))
+                tutorial.openLevelSelect();
+        } },
     { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 let activeMenu = null;
@@ -1742,7 +1830,7 @@ document.addEventListener('click', (e) => {
 buildMenu();
 buildVK();
 layoutCanvas();
-window.addEventListener('resize', () => { closeAllMenus(); applyChromeDensity(); layoutCanvas(); schedulePaint(); });
+window.addEventListener('resize', () => { closeAllMenus(); applyChromeDensity(); layoutCanvas(); syncZoomSlider(); syncSpeedSlider(); schedulePaint(); });
 // ---------- 首頁玩法演示模式（?demo=存檔路徑） ----------
 const demoFile = new URLSearchParams(window.location.search).get('demo');
 function followDemoCamera() {
@@ -1845,8 +1933,8 @@ else if (autoload(store)) {
     showToast('已恢復上次進度');
 }
 else if (!tutorialSeen()) {
-    // 第一次來、又沒有舊進度：直接帶著走一遍，免得對著一盤拼好的方塊發呆
-    startTutorial();
+    // 第一次來、又沒有舊進度：打開章節教程（新手教程）選關，帶著由淺入深地玩
+    tutorial.openLevelSelect();
 }
 schedulePaint();
 setInterval(() => {
@@ -1871,6 +1959,8 @@ return {};
  *   - 縫隙 h line：y = (line+1)*(CELL+GAP) - GAP/2；v 同理
  */
 const { COLORS, GEOMETRY, easeOut, FONT_FAMILY } = require("./theme.js");
+const { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP } = require("../core/rules.js");
+const { ARROW_IMAGE_DATA_URI } = require("./arrowImage.js");
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
 function hsvToRgb(h, s, v) {
@@ -1920,6 +2010,8 @@ class BoardRenderer {
         this.animation = null;
         /** 選中動畫：短暫高亮的格子集合（undo/redo 時顯示移動過的組） */
         this.highlightCells = null;
+        /** 創造模式自定義目標形狀的「虛影」：把目標格（且當前未被佔用）畫成淡藍虛線框。 */
+        this.solutionMask = null;
         /** 著色器：按 (r%step,c%step) 給滑塊描邊同色 */
         this.coloringEnabled = false;
         /** 連鎖器：懸停時提亮同組位置（含空格） */
@@ -1927,10 +2019,33 @@ class BoardRenderer {
         /** 目前懸停格（棋盤座標；可為空格） */
         this.hoverCell = null;
         this.lastBounds = null;
+        // ---- 箭頭按鍵（復刻原版 S1-4：選中縫隙 + 選中組後，切片兩端各一個可點箭頭）----
+        /** 箭頭按鍵總開關（原版 arrows_enabled，預設開）。 */
+        this.arrowEnabled = true;
+        this.arrowImage = null;
+        this.arrowSpriteCache = new Map();
+        /** 每幀重算的命中矩形，供點擊檢測複用同一套幾何（原版 _arrow_buttons）。 */
+        this.arrowButtons = [];
+        /** 上次點中滑塊的「世界座標」，作為箭頭錨點（原版 _gap_anchor_world）。 */
+        this.lastBlockClickWorld = null;
+        // ---- 點擊漣漪反饋（原版 spawn_click_feedback / draw_click_feedback）----
+        this.clickFeedback = [];
+        /** 漣漪存活期間持續重繪用的回調（main 注入 schedulePaint）。 */
+        this.repaint = null;
         this.ctx = ctx;
         this.zoom = zoom;
         this.cameraX = 0;
         this.cameraY = 0;
+        this.loadArrowImage();
+    }
+    /** 懶加載原版 arrow_B.png（已內聯為 Data URI，無 file:// 污染問題）。 */
+    loadArrowImage() {
+        // Node 測試環境沒有 Image 構造器；箭頭貼圖只在瀏覽器裡載入
+        if (typeof Image === 'undefined' || this.arrowImage)
+            return;
+        const img = new Image();
+        img.onload = () => { this.arrowImage = img; this.repaint?.(); };
+        img.src = ARROW_IMAGE_DATA_URI;
     }
     /** 分組描邊色：由 (r%step, c%step) 唯一決定（對照原版 _group_color）。 */
     groupColor(r, c, step) {
@@ -2077,6 +2192,8 @@ class BoardRenderer {
         }
         // 2) 縫隙線（先畫，讓滑塊蓋在上面；選中紅線、其餘灰線）
         this.drawGapLines(bounds, selectedGap);
+        // 2.5) 創造模式目標虛影（畫在縫隙之上、滑塊之下；已被佔用的格子不畫）
+        this.drawSolutionGhosts(store);
         // 3) 滑塊（動畫中則用插值位置；著色器描邊；連鎖器提亮）
         const hint = this.chainHintCells(store.currentStep);
         for (let idx = 0; idx < store.game.blocks.length; idx++) {
@@ -2153,6 +2270,29 @@ class BoardRenderer {
                 ctx.fill();
             }
         }
+        // 5) 箭頭按鍵（選中縫隙 + 選中組後，切片兩端各一個可點箭頭；動畫中不畫）
+        this.drawGapDirectionArrows(store);
+        // 6) 點擊漣漪反饋（最上層，蓋住所有內容）
+        this.drawClickFeedback();
+    }
+    drawSolutionGhosts(store) {
+        if (!this.solutionMask || this.solutionMask.size === 0)
+            return;
+        const occupied = new Set(store.game.blocks.map((b) => `${b.row}:${b.col}`));
+        const { ctx } = this;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(120,180,255,0.6)';
+        ctx.lineWidth = Math.max(1, 2 * this.zoom);
+        ctx.setLineDash([6, 4]);
+        for (const key of this.solutionMask) {
+            if (occupied.has(key))
+                continue;
+            const [r, c] = key.split(':').map(Number);
+            const [x, y] = this.worldToScreen(c * this.step, r * this.step);
+            this.roundRect(x, y, this.scaledCell, this.scaledCell, GEOMETRY.block_radius * this.zoom);
+            ctx.stroke();
+        }
+        ctx.restore();
     }
     drawGapLines(bounds, selectedGap) {
         const { ctx } = this;
@@ -2197,11 +2337,528 @@ class BoardRenderer {
         ctx.arcTo(x, y, x + w, y, radius);
         ctx.closePath();
     }
+    // ---------------- S1-4 箭頭按鍵（復刻原版 gui/renderer.py） ----------------
+    /** 按鍵邊長：只跟隨全域縮放，與方向無關（原版 _arrow_button_size）。 */
+    arrowButtonSize() {
+        return Math.max(18, Math.round(46 * this.zoom));
+    }
+    /** 旋轉後的箭頭貼圖快取（先縮放到 size、再旋轉，旋轉結果不二次縮放）。 */
+    arrowSprite(angleRad) {
+        const img = this.arrowImage;
+        if (!img || !img.complete)
+            return null;
+        const size = this.arrowButtonSize();
+        const key = `${size}_${Math.round((angleRad * 180) / Math.PI) % 360}`;
+        const cache = this.arrowSpriteCache;
+        if (cache.size > 96)
+            cache.clear();
+        const cached = cache.get(key);
+        if (cached)
+            return cached;
+        const cv = document.createElement('canvas');
+        cv.width = size;
+        cv.height = size;
+        const c = cv.getContext('2d');
+        c.translate(size / 2, size / 2);
+        c.rotate(angleRad);
+        c.drawImage(img, -size / 2, -size / 2, size, size);
+        cache.set(key, cv);
+        return cv;
+    }
+    /**
+     * 計算切片兩端的箭頭按鍵幾何（每幀重算，不快取幾何）。
+     * 命中矩形寫入 this.arrowButtons，供點擊檢測複用同一套幾何。
+     * 方向一律用 VALID_DIRECTIONS_FOR_GAP + DIRECTION_DELTA 推導，保證與
+     * animateMove 實際移動一致；禁用方向（try_move 會失敗）直接不畫。
+     */
+    computeArrowButtons(store) {
+        this.arrowButtons = [];
+        if (!this.arrowEnabled)
+            return;
+        const gap = store.cmd.selectedGap;
+        const sel = store.game.selected;
+        if (!gap || sel.size === 0 || this.animation)
+            return;
+        const dirs = VALID_DIRECTIONS_FOR_GAP[gap.type];
+        if (dirs.length !== 2)
+            return;
+        const size = this.arrowButtonSize();
+        // dirs[0] 單步的螢幕位移單位向量 u（row 向下、col 向右）
+        const d0 = DIRECTION_DELTA[dirs[0]];
+        const ux = d0[1] * this.stepPx;
+        const uy = d0[0] * this.stepPx;
+        const ulen = Math.hypot(ux, uy) || 1;
+        const uxN = ux / ulen;
+        const uyN = uy / ulen;
+        const px = -uyN; // 垂直於推行方向
+        const py = uxN;
+        // 選中滑塊的螢幕中心
+        const centers = [];
+        for (const b of store.game.blocks) {
+            if (!sel.has(b))
+                continue;
+            const [sx, sy] = this.worldToScreen(b.col * this.step + CELL / 2, b.row * this.step + CELL / 2);
+            centers.push([sx, sy]);
+        }
+        if (centers.length === 0)
+            return;
+        let hi;
+        let lo;
+        const anchor = this.lastBlockClickWorld;
+        if (anchor) {
+            // 鼠標點附近：兩個按鍵沿推行軸分居兩側（原版「不額外讓位」路徑）
+            const [awx, awy] = this.worldToScreen(anchor[0], anchor[1]);
+            const off = size * 0.8;
+            hi = { x: awx + uxN * off, y: awy + uyN * off };
+            lo = { x: awx - uxN * off, y: awy - uyN * off };
+        }
+        else {
+            // 切片投影外沿中點 + 向外讓位（原版 use_pad 路徑）
+            let tLo = Infinity, tHi = -Infinity;
+            let sSum = 0;
+            for (const [sx, sy] of centers) {
+                const t = sx * uxN + sy * uyN;
+                const s = sx * px + sy * py;
+                if (t < tLo)
+                    tLo = t;
+                if (t > tHi)
+                    tHi = t;
+                sSum += s;
+            }
+            const sMid = sSum / centers.length;
+            const hiPt = { x: uxN * tHi + px * sMid, y: uyN * tHi + py * sMid };
+            const loPt = { x: uxN * tLo + px * sMid, y: uyN * tLo + py * sMid };
+            const blockR = this.scaledCell / 2;
+            const pad = Math.max(blockR + size / 2 + 4, blockR + size / 2 + blockR * 0.1);
+            // 出屏收縮，保證按鍵可見
+            let p = pad;
+            const m = size / 2 + 4;
+            const W = this.ctx.canvas.width;
+            const H = this.ctx.canvas.height;
+            const inside = (pt) => m <= pt.x && pt.x <= W - m && m <= pt.y && pt.y <= H - m;
+            for (let k = 0; k < 6; k++) {
+                const aHi = { x: hiPt.x + uxN * p, y: hiPt.y + uyN * p };
+                const aLo = { x: loPt.x - uxN * p, y: loPt.y - uyN * p };
+                if (inside(aHi) && inside(aLo))
+                    break;
+                p *= 0.65;
+            }
+            hi = { x: hiPt.x + uxN * p, y: hiPt.y + uyN * p };
+            lo = { x: loPt.x - uxN * p, y: loPt.y - uyN * p };
+        }
+        // dirs[0] 指向 +u（hi 端），dirs[1] 指向 -u（lo 端）
+        this.pushArrowButton(dirs[0], hi, uxN, uyN, store, size);
+        this.pushArrowButton(dirs[1], lo, -uxN, -uyN, store, size);
+    }
+    pushArrowButton(dir, pt, vx, vy, store, size) {
+        const W = this.ctx.canvas.width;
+        const H = this.ctx.canvas.height;
+        const x = Math.min(Math.max(pt.x, size / 2), W - size / 2);
+        const y = Math.min(Math.max(pt.y, size / 2), H - size / 2);
+        // 與點擊同判定路徑：該方向真走得動才畫（原版「禁用態不畫」）
+        if (store.game.try_move(dir, store.currentStep) === null)
+            return;
+        const angle = Math.atan2(vy, vx);
+        this.arrowButtons.push({ dir, x, y, size, angle });
+    }
+    /** 繪製選中縫隙兩端的箭頭按鍵（在滑塊之後呼叫）。 */
+    drawGapDirectionArrows(store) {
+        this.computeArrowButtons(store);
+        if (this.arrowButtons.length === 0)
+            return;
+        const { ctx } = this;
+        for (const b of this.arrowButtons) {
+            const spr = this.arrowSprite(b.angle);
+            if (!spr)
+                continue;
+            ctx.drawImage(spr, b.x - b.size / 2, b.y - b.size / 2);
+        }
+    }
+    /** 點擊座標是否命中某個箭頭按鍵，回傳該端方向，否則 null（原版 _arrow_button_hit）。 */
+    hitArrowButton(x, y) {
+        for (const b of this.arrowButtons) {
+            if (Math.abs(x - b.x) <= b.size / 2 && Math.abs(y - b.y) <= b.size / 2)
+                return b.dir;
+        }
+        return null;
+    }
+    // ---------------- 點擊漣漪反饋（復刻原版 spawn/draw_click_feedback） ----------------
+    /** 記錄一次點擊的漣漪（在事件分發最前面呼叫，與命中何種控制無關）。 */
+    spawnClickFeedback(x, y) {
+        this.clickFeedback.push({ x, y, t0: performance.now() });
+        if (this.clickFeedback.length > BoardRenderer.CLICK_FEEDBACK_MAX) {
+            this.clickFeedback.splice(0, this.clickFeedback.length - BoardRenderer.CLICK_FEEDBACK_MAX);
+        }
+        this.repaint?.();
+    }
+    /** 繪製左鍵點擊漣漪：外擴圓環 + 中心亮點，隨時間淡出。在整幀最上層呼叫。 */
+    drawClickFeedback() {
+        const fx = this.clickFeedback;
+        if (!fx.length)
+            return;
+        const now = performance.now();
+        const ms = BoardRenderer.CLICK_FEEDBACK_MS;
+        const rMax = BoardRenderer.CLICK_FEEDBACK_RADIUS;
+        const { ctx } = this;
+        const alive = [];
+        for (const item of fx) {
+            const p = (now - item.t0) / ms;
+            if (p >= 1)
+                continue;
+            alive.push(item);
+            const alpha = Math.round(170 * (1 - p));
+            if (alpha <= 0)
+                continue;
+            const radius = 6 + (rMax - 6) * (1 - (1 - p) ** 2); // 緩出：先快後慢
+            ctx.save();
+            ctx.globalAlpha = alpha / 255;
+            ctx.strokeStyle = 'rgb(150,220,255)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(item.x, item.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+            const dotR = Math.max(1, Math.round(4 * (1 - p)));
+            ctx.fillStyle = 'rgb(225,245,255)';
+            ctx.beginPath();
+            ctx.arc(item.x, item.y, dotR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        this.clickFeedback = alive;
+        if (alive.length > 0)
+            this.repaint?.();
+    }
 }
+BoardRenderer.CLICK_FEEDBACK_MS = 380;
+BoardRenderer.CLICK_FEEDBACK_RADIUS = 34;
+BoardRenderer.CLICK_FEEDBACK_MAX = 12;
 
 return { BoardRenderer };
 },
     "m10": function (require) {
+/**
+ * 滑塊矩陣核心邏輯（對照 game.py::SliderMatrix 逐函數移植）
+ *
+ * 移植紀律：分支結構與原版保持一致；只把選中旗標 be_opted
+ * 從 Block 物件移到 `selected` 集合，語義不變。
+ */
+const { Block } = require("./Block.js");
+const { DIRECTION_DELTA } = require("./rules.js");
+class SliderMatrix {
+    constructor(m = 6, n = 6) {
+        /**
+         * 自定義「目標形狀」（座標集合 "r:c"）。
+         * - 為 null 時：is_solved 走原本的「m×n 實心矩形」判定（練習 / 競速 / 教程沿用）。
+         * - 非 null 時：is_solved 改為「當前所有滑塊位置恰好等於此集合」（創造模式手造形狀用）。
+         */
+        this.solutionMask = null;
+        this.m = m;
+        this.n = n;
+        this.blocks = [];
+        this.selected = new Set();
+        for (let i = 0; i < m; i++) {
+            for (let j = 0; j < n; j++) {
+                this.blocks.push(new Block([i, j]));
+            }
+        }
+    }
+    get_boundaries() {
+        if (this.blocks.length === 0) {
+            return { min_row: 0, max_row: 0, min_col: 0, max_col: 0 };
+        }
+        const rows = this.blocks.map((b) => b.row);
+        const cols = this.blocks.map((b) => b.col);
+        return {
+            min_row: Math.min(...rows),
+            max_row: Math.max(...rows),
+            min_col: Math.min(...cols),
+            max_col: Math.max(...cols),
+        };
+    }
+    is_valid_h_line(line) {
+        const bounds = this.get_boundaries();
+        return bounds.min_row <= line && line < bounds.max_row;
+    }
+    is_valid_v_line(line) {
+        const bounds = this.get_boundaries();
+        return bounds.min_col <= line && line < bounds.max_col;
+    }
+    /**
+     * 檢查移動後是否合法（碰撞 + 全體單一連通）。
+     * 對照 game.py::check_move_valid。
+     */
+    static check_move_valid(selectedPositions, nonSelectedPositions) {
+        if (selectedPositions.size + nonSelectedPositions.size === 0)
+            return true;
+        for (const pos of selectedPositions) {
+            if (nonSelectedPositions.has(pos))
+                return false; // collision
+        }
+        const all = new Set([...selectedPositions, ...nonSelectedPositions]);
+        return SliderMatrix.is_single_connected(all);
+    }
+    static is_single_connected(positions) {
+        if (positions.size === 0)
+            return true;
+        const start = positions.values().next().value;
+        const visited = new Set();
+        const stack = [start];
+        while (stack.length > 0) {
+            const current = stack.pop();
+            if (visited.has(current))
+                continue;
+            visited.add(current);
+            const [r, c] = current.split(':').map(Number);
+            for (const [dr, dc] of [
+                [-1, 0],
+                [1, 0],
+                [0, -1],
+                [0, 1],
+            ]) {
+                const neighbor = `${r + dr}:${c + dc}`;
+                if (positions.has(neighbor) && !visited.has(neighbor)) {
+                    stack.push(neighbor);
+                }
+            }
+        }
+        return visited.size === positions.size;
+    }
+    /**
+     * 選中分割線一側、與選中滑塊連通的整片方塊。
+     * 對照 game.py::opt（DFS）。
+     * @returns 選中的位置集合（原版直接標 be_opted）
+     */
+    opt(gapType, line, selectedBlock) {
+        // 清除舊選中（原版會先清所有 be_opted）
+        this.selected.clear();
+        const blockSet = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
+        const isConnected = (a, b) => {
+            // 判斷兩個相鄰方塊是否在同一側（不被分割線隔開）
+            if (gapType === 'h') {
+                if ((a[0] <= line && b[0] > line) || (a[0] > line && b[0] <= line)) {
+                    return false;
+                }
+            }
+            else {
+                if ((a[1] <= line && b[1] > line) || (a[1] > line && b[1] <= line)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const start = selectedBlock.location;
+        const visited = new Set();
+        const stack = [start];
+        while (stack.length > 0) {
+            const current = stack.pop();
+            const key = `${current[0]}:${current[1]}`;
+            if (visited.has(key))
+                continue;
+            visited.add(key);
+            const [row, col] = current;
+            for (const [dr, dc] of [
+                [-1, 0],
+                [1, 0],
+                [0, -1],
+                [0, 1],
+            ]) {
+                const neighbor = [row + dr, col + dc];
+                const nKey = `${row + dr}:${col + dc}`;
+                if (blockSet.has(nKey) && !visited.has(nKey) && isConnected(current, neighbor)) {
+                    stack.push(neighbor);
+                }
+            }
+        }
+        // 依原版：把 visited 對應的方塊標為選中
+        for (const b of this.blocks) {
+            if (visited.has(`${b.row}:${b.col}`)) {
+                this.selected.add(b);
+            }
+        }
+        return visited;
+    }
+    /**
+     * 預測移動（純邏輯，逐步 1 格驗證）。
+     * 對照 game.py::try_move；不合法回傳 null。
+     */
+    try_move(direction, step) {
+        const selected = this.blocks.filter((b) => this.selected.has(b));
+        const nonSelectedPositions = new Set(this.blocks.filter((b) => !this.selected.has(b)).map((b) => `${b.row}:${b.col}`));
+        if (selected.length === 0)
+            return null;
+        const delta = DIRECTION_DELTA[direction];
+        if (!delta)
+            return null;
+        let current = selected.map((b) => [b.row, b.col]);
+        for (let k = 0; k < step; k++) {
+            const next = current.map(([r, c]) => [r + delta[0], c + delta[1]]);
+            const nextSet = new Set(next.map(([r, c]) => `${r}:${c}`));
+            if (!SliderMatrix.check_move_valid(nextSet, nonSelectedPositions)) {
+                return null;
+            }
+            current = next;
+        }
+        return current.map(([r, c]) => [r, c]);
+    }
+    /** 提交移動（對照 game.py::commit_move）。 */
+    commit_move(finalPositions) {
+        const selected = this.blocks.filter((b) => this.selected.has(b));
+        for (let i = 0; i < selected.length; i++) {
+            selected[i].location = [finalPositions[i][0], finalPositions[i][1]];
+        }
+    }
+    is_solved() {
+        if (this.blocks.length === 0)
+            return false;
+        // 創造模式：比對自定義目標形狀（不要求矩形）
+        if (this.solutionMask) {
+            if (this.blocks.length !== this.solutionMask.size)
+                return false;
+            const pos = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
+            for (const p of this.solutionMask) {
+                if (!pos.has(p))
+                    return false;
+            }
+            return true;
+        }
+        const rows = this.blocks.map((b) => b.row);
+        const cols = this.blocks.map((b) => b.col);
+        const minR = Math.min(...rows);
+        const maxR = Math.max(...rows);
+        const minC = Math.min(...cols);
+        const maxC = Math.max(...cols);
+        const height = maxR - minR + 1;
+        const width = maxC - minC + 1;
+        if (!((height === this.m && width === this.n) || (height === this.n && width === this.m))) {
+            return false;
+        }
+        const posSet = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
+        for (let r = minR; r <= maxR; r++) {
+            for (let c = minC; c <= maxC; c++) {
+                if (!posSet.has(`${r}:${c}`))
+                    return false;
+            }
+        }
+        return true;
+    }
+    /**
+     * 隨機打亂（對照 game.py::shuffle）。
+     * 注意：刻意保留原版候選縫隙範圍 `range(min+1, max)` —— 不選邊界縫隙是「規定」，
+     * 使網頁版行為與原版逐位元一致。
+     */
+    shuffle(attempts, step, rng = Math.random) {
+        for (let i = 0; i < attempts; i++) {
+            const bounds = this.get_boundaries();
+            const { min_row, max_row, min_col, max_col } = bounds;
+            const hLines = [];
+            for (let line = min_row + 1; line < max_row; line++) {
+                if (this.is_valid_h_line(line))
+                    hLines.push(line);
+            }
+            const vLines = [];
+            for (let line = min_col + 1; line < max_col; line++) {
+                if (this.is_valid_v_line(line))
+                    vLines.push(line);
+            }
+            const allGaps = [
+                ...hLines.map((line) => ({ type: 'h', line })),
+                ...vLines.map((line) => ({ type: 'v', line })),
+            ];
+            if (allGaps.length === 0)
+                continue;
+            const gap = allGaps[Math.floor(rng() * allGaps.length)];
+            const direction = gap.type === 'h' ? (rng() < 0.5 ? 'a' : 'd') : rng() < 0.5 ? 'w' : 's';
+            const block = this.blocks[Math.floor(rng() * this.blocks.length)];
+            this.opt(gap.type, gap.line, block);
+            const finalPositions = this.try_move(direction, step);
+            if (!finalPositions) {
+                this.selected.clear();
+                continue;
+            }
+            this.commit_move(finalPositions);
+            this.selected.clear();
+        }
+        this.selected.clear();
+    }
+    /** 導出 map 文本（#=方塊、_=空白）。對照 game.py::export_map。 */
+    export_map() {
+        const { min_row, max_row, min_col, max_col } = this.get_boundaries();
+        const blockSet = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
+        const rows = [];
+        for (let row = min_row; row <= max_row; row++) {
+            let line = '';
+            for (let col = min_col; col <= max_col; col++) {
+                line += blockSet.has(`${row}:${col}`) ? '#' : '_';
+            }
+            rows.push(line);
+        }
+        return rows.join('\n');
+    }
+    /** 導入 map 文本。對照 game.py::import_map。 */
+    import_map(mapStr) {
+        const lines = mapStr
+            .split('\n')
+            .map((l) => l.trim())
+            .filter((l) => l.length > 0);
+        if (lines.length === 0)
+            return false;
+        this.blocks = [];
+        this.selected.clear();
+        this.m = lines.length;
+        this.n = lines[0]?.length ?? 0;
+        for (let row = 0; row < lines.length; row++) {
+            const line = lines[row];
+            for (let col = 0; col < line.length; col++) {
+                if (line[col] === '#') {
+                    this.blocks.push(new Block([row, col]));
+                }
+            }
+        }
+        return true;
+    }
+    /** 原地重設為 m×n 實心矩形（reset 用，避免外部 store 持有舊引用）。 */
+    resetTo(m, n) {
+        this.m = m;
+        this.n = n;
+        this.blocks = [];
+        this.selected.clear();
+        for (let i = 0; i < m; i++) {
+            for (let j = 0; j < n; j++) {
+                this.blocks.push(new Block([i, j]));
+            }
+        }
+    }
+    /** 快照當前版面（供 GameHistory 使用）。編號要一起帶走，否則撤銷會把數字弄丟。 */
+    snapshot() {
+        const snap = { blocks: this.blocks.map((b) => [b.row, b.col]) };
+        if (this.blocks.some((b) => b.number !== null)) {
+            snap.numbers = this.blocks.map((b) => b.number);
+        }
+        return snap;
+    }
+    /** 由快照還原版面。 */
+    restore(snapshot) {
+        this.blocks = snapshot.blocks.map(([r, c], i) => {
+            const b = new Block([r, c]);
+            b.number = snapshot.numbers?.[i] ?? null;
+            return b;
+        });
+        this.selected.clear();
+    }
+    /**
+     * 數字形態：按行主序把編號 1..m*n 寫進滑塊（對照 GUI.new_puzzle 的編號步驟）。
+     * 版面被打亂後編號仍跟著各自滑塊，玩家靠它判斷「這塊原本該在哪」。
+     */
+    assignNumbers(enabled) {
+        this.blocks.forEach((b, i) => {
+            b.number = enabled ? i + 1 : null;
+        });
+    }
+}
+
+return { SliderMatrix };
+},
+    "m11": function (require) {
 /**
  * 存檔/導入（M4）：localStorage 自動快照 + 檔案下載/上傳 + 解析 map 文本。
  * 存檔 JSON 與原版完全一致（{version, puzzle, step_count, history:{history_index, snapshots}}）。
@@ -2402,7 +3059,7 @@ function downloadText(filename, text) {
 
 return { compactJsonDumps, autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, updateSlot, loadSlot, deleteSlot };
 },
-    "m11": function (require) {
+    "m12": function (require) {
 /**
  * 計時器（M5，對照原版競速狀態機）
  * 狀態：idle（待打亂）→ ready（就緒，空格開始）→ running → solved | dnf
@@ -2471,7 +3128,7 @@ class Timer {
 
 return { formatTime, Timer };
 },
-    "m12": function (require) {
+    "m13": function (require) {
 /**
  * 成績記錄（M6）：按 puzzle 分組存 localStorage，統計 count/best/worst/ao5/ao12/dnf。
  * 對照 records.py 的語義（AoN 取最近 n 次、去掉最好與最差、DNF 視為無窮）。
@@ -2566,6 +3223,1297 @@ class Records {
 
 return { avgOf, stats, puzzleKey, Records };
 },
+    "m14": function (require) {
+/**
+ * 新手教程控制器（對照原版 gui/tutorial.py 的 TutorialMixin 數據驅動設計）
+ *
+ * 移植要點：
+ * - 關卡數據由 scripts/gen-tutorial-data.mjs 從原版 beginner_archive + tutorial_texts.json 生成，
+ *   內聯進 tutorialData.ts，file:// 下無需 fetch。
+ * - 第 1 關為互動教學（選縫→選塊→推→撤銷→重做→挑戰還原）；其餘關「少量引導 + 自己還原過關」，
+ *   解法可一鍵回放（依序把存檔快照重播，沒解法的占位關顯示「敬請期待」）。
+ * - 過關評分沿用原版公式：存檔步數 / 玩家步數 * 100（封頂 100）。
+ * - 關卡解鎖遞進、完成度持久化到 localStorage。
+ *
+ * 與 main.ts 解耦：只透過 TutorialHost 拿遊戲物件與幾個 UI 鉤子，不反向依賴 main。
+ */
+const { TUTORIAL_LEVELS, TUTORIAL_ORDER, TUTORIAL_ARCHIVES, TUTORIAL_TEXTS } = require("../tutorial/tutorialData.js");
+const { COLORS, GEOMETRY } = require("../render/theme.js");
+// 生成的資料是「字面值鍵」型別，直接用 string 索引會報錯；統一以 any 視之最省事
+const ARCHIVES = TUTORIAL_ARCHIVES;
+const TEXTS = TUTORIAL_TEXTS;
+const LEVELS = TUTORIAL_LEVELS;
+const BRAND = '#4696c8';
+const PROGRESS_KEY = 'gatennea-web:tutorial-progress';
+function snapshotBlocks(snap) {
+    const out = [];
+    const m = snap?.matrix;
+    const b = snap?.bounds;
+    if (!Array.isArray(m) || !b)
+        return out;
+    for (let r = 0; r < m.length; r++) {
+        const row = m[r];
+        if (!Array.isArray(row))
+            continue;
+        for (let c = 0; c < row.length; c++) {
+            if (row[c] === 1)
+                out.push([b.min_row + r, b.min_col + c]);
+        }
+    }
+    return out;
+}
+function delay(ms) {
+    return new Promise((res) => setTimeout(res, ms));
+}
+/**
+ * 把 from/to 兩個「以 [row,col] 列表描述的局面」做滑塊對齊，
+ * 使 start[k] 與 end[k] 指向同一個物理滑塊（位置級插值才不會把整排一起平移）。
+ * Gatennea 每次移動至多一個滑塊越過缺口，故先用「位置相同」配對靜止塊，
+ * 剩餘的用最近距離貪心配對（即移動中的滑塊）。
+ *
+ * 關鍵：start/end 必須以「from 的索引順序」回填（start[i]=from[i]），
+ * 這樣渲染器才能用 animation.start[idx]/end[idx] 對應到 game.blocks[idx]。
+ */
+function alignSnapshots(from, to) {
+    const start = new Array(from.length);
+    const end = new Array(from.length);
+    const usedTo = new Array(to.length).fill(false);
+    const unmatched = [];
+    for (let i = 0; i < from.length; i++) {
+        const f = from[i];
+        let m = -1;
+        for (let j = 0; j < to.length; j++) {
+            if (!usedTo[j] && to[j][0] === f[0] && to[j][1] === f[1]) {
+                m = j;
+                break;
+            }
+        }
+        if (m >= 0) {
+            usedTo[m] = true;
+            start[i] = [f[0], f[1]];
+            end[i] = [to[m][0], to[m][1]];
+        }
+        else {
+            unmatched.push(i);
+        }
+    }
+    for (const i of unmatched) {
+        let best = -1;
+        let bestD = Infinity;
+        for (let j = 0; j < to.length; j++) {
+            if (usedTo[j])
+                continue;
+            const d = Math.abs(to[j][0] - from[i][0]) + Math.abs(to[j][1] - from[i][1]);
+            if (d < bestD) {
+                bestD = d;
+                best = j;
+            }
+        }
+        if (best >= 0) {
+            usedTo[best] = true;
+            start[i] = [from[i][0], from[i][1]];
+            end[i] = [to[best][0], to[best][1]];
+        }
+    }
+    return { start, end };
+}
+class TutorialController {
+    constructor(host) {
+        this.active = false; // 章節系統是否運行中
+        this.teaching = false; // 是否為第 1 關互動教學
+        this.replaying = false; // 是否正在回放解法
+        this.completed = false; // 當前關是否已過關（避免重複觸發）
+        this.challengeStep = false; // 教學進入「挑戰」後才檢查 solved
+        this.currentSub = null;
+        this.returnSave = null;
+        this.teachingSteps = [];
+        this.teachingIdx = -1;
+        this.levelSelect = null;
+        this.host = host;
+        this.bar = document.createElement('div');
+        this.bar.style.position = 'fixed';
+        this.bar.style.left = '50%';
+        this.bar.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
+        this.bar.style.transform = 'translateX(-50%)';
+        this.bar.style.display = 'none';
+        this.bar.style.alignItems = 'center';
+        this.bar.style.gap = '10px';
+        this.bar.style.maxWidth = 'calc(100vw - 24px)';
+        this.bar.style.background = COLORS.dialog_bg;
+        this.bar.style.border = `1px solid ${COLORS.dialog_border}`;
+        this.bar.style.borderRadius = '8px';
+        this.bar.style.padding = '8px 12px';
+        this.bar.style.color = COLORS.dialog_text;
+        this.bar.style.fontSize = '13px';
+        this.bar.style.lineHeight = '1.5';
+        this.bar.style.zIndex = '800';
+        this.bar.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
+        this.barText = document.createElement('span');
+        this.barText.style.flex = '1';
+        this.barText.style.whiteSpace = 'pre-line';
+        this.barBtns = document.createElement('span');
+        this.barBtns.style.display = 'flex';
+        this.barBtns.style.gap = '8px';
+        this.barBtns.style.flex = '0 0 auto';
+        this.bar.append(this.barText, this.barBtns);
+        host.app.appendChild(this.bar);
+    }
+    // ---------- 進度持久化 ----------
+    loadProgress() {
+        try {
+            return JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}');
+        }
+        catch {
+            return {};
+        }
+    }
+    saveProgress(p) {
+        try {
+            localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+        }
+        catch {
+            /* 隱私模式寫不進：不影響遊戲 */
+        }
+    }
+    isUnlocked(subId) {
+        const i = TUTORIAL_ORDER.indexOf(subId);
+        if (i <= 0)
+            return true;
+        const prev = TUTORIAL_ORDER[i - 1];
+        return this.loadProgress()[prev] !== undefined;
+    }
+    isCompleted(subId) {
+        return this.loadProgress()[subId] !== undefined;
+    }
+    /** 供 main 判斷是否要跳過自動存檔。 */
+    chapterActive() {
+        return this.active;
+    }
+    /** 當前是否正在回放解法（main 的 onChanged 應因此跳過自動存檔與過關偵測）。 */
+    isReplaying() {
+        return this.replaying;
+    }
+    // ---------- 選關面板 ----------
+    openLevelSelect() {
+        this.closeLevelSelect();
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.55)';
+        overlay.style.zIndex = '2000';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.addEventListener('click', () => this.closeLevelSelect());
+        const box = document.createElement('div');
+        box.style.background = COLORS.dialog_bg;
+        box.style.border = `1px solid ${COLORS.dialog_border}`;
+        box.style.borderRadius = '10px';
+        box.style.padding = '18px';
+        box.style.width = 'min(560px, 92vw)';
+        box.style.maxHeight = '86vh';
+        box.style.overflowY = 'auto';
+        box.style.color = COLORS.dialog_text;
+        box.style.fontSize = '13px';
+        box.style.boxShadow = '0 6px 24px rgba(0,0,0,0.5)';
+        box.addEventListener('click', (e) => e.stopPropagation());
+        const title = document.createElement('div');
+        title.textContent = TEXTS.level_select?.title ?? '选择关卡';
+        title.style.fontWeight = 'bold';
+        title.style.fontSize = '15px';
+        title.style.marginBottom = '4px';
+        box.appendChild(title);
+        const sub = document.createElement('div');
+        sub.textContent = '完成一關才會解鎖下一關；點擊已解鎖的關卡開始。';
+        sub.style.opacity = '0.7';
+        sub.style.marginBottom = '12px';
+        box.appendChild(sub);
+        for (const lv of LEVELS) {
+            const lvHead = document.createElement('div');
+            lvHead.textContent = lv.title;
+            lvHead.style.fontWeight = 'bold';
+            lvHead.style.margin = '12px 0 6px';
+            lvHead.style.color = BRAND;
+            box.appendChild(lvHead);
+            const grid = document.createElement('div');
+            grid.style.display = 'grid';
+            grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(150px, 1fr))';
+            grid.style.gap = '8px';
+            for (const sub2 of lv.sublevels) {
+                grid.appendChild(this.makeLevelButton(sub2));
+            }
+            box.appendChild(grid);
+        }
+        const exit = mkBtn('回到练习模式', false, () => this.closeLevelSelect());
+        exit.style.marginTop = '16px';
+        box.appendChild(exit);
+        overlay.appendChild(box);
+        this.host.app.appendChild(overlay);
+        this.levelSelect = overlay;
+    }
+    closeLevelSelect() {
+        if (this.levelSelect) {
+            this.levelSelect.remove();
+            this.levelSelect = null;
+        }
+    }
+    makeLevelButton(sub) {
+        const btn = document.createElement('button');
+        btn.style.textAlign = 'left';
+        btn.style.background = COLORS.input_bg;
+        btn.style.color = COLORS.dialog_text;
+        btn.style.border = `1px solid ${COLORS.border}`;
+        btn.style.borderRadius = '6px';
+        btn.style.padding = '8px 10px';
+        btn.style.cursor = 'pointer';
+        btn.style.fontSize = '12px';
+        const hasArchive = !!ARCHIVES[sub.archiveId];
+        const completed = this.isCompleted(sub.id);
+        const unlocked = this.isUnlocked(sub.id);
+        const mark = completed ? `  ✓${this.loadProgress()[sub.id] ?? ''}` : unlocked ? '' : '  🔒';
+        btn.textContent = sub.title + mark;
+        if (!hasArchive) {
+            btn.title = '敬请期待（本关为占位，尚未制作）';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+        }
+        else if (!unlocked) {
+            btn.title = '完成上一关后解锁';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+        }
+        else {
+            btn.addEventListener('click', () => {
+                this.closeLevelSelect();
+                this.startSublevel(sub.id);
+            });
+        }
+        return btn;
+    }
+    // ---------- 開始某關 ----------
+    startSublevel(subId) {
+        const sub = this.findSublevel(subId);
+        const archive = ARCHIVES[sub?.archiveId ?? ''];
+        if (!sub || !archive) {
+            this.host.showToast('这一关还在制作中，敬请期待~');
+            return;
+        }
+        this.returnSave = this.host.store.serialize();
+        this.host.ensurePractice();
+        this.active = true;
+        this.currentSub = subId;
+        this.replaying = false;
+        this.completed = false;
+        this.challengeStep = false;
+        this.teaching = false;
+        const pz = archive.puzzle;
+        const blocks = snapshotBlocks(archive.history.snapshots[0]);
+        this.host.store.solutionMask = null;
+        this.host.store.applyPuzzle(pz.m, pz.n, pz.step, blocks);
+        this.host.renderer.solutionMask = null;
+        this.host.centerCamera();
+        if (sub.teaching) {
+            this.startTeaching();
+        }
+        else {
+            this.showBar(sub.guidance ?? '', [
+                this.replayEnabled(archive) ? mkBtn('查看解法', true, () => this.viewSolution()) : null,
+                mkBtn('退出', false, () => this.exit()),
+            ]);
+        }
+        this.host.schedulePaint();
+    }
+    startTeaching() {
+        this.teaching = true;
+        // 第 1 關：先用一塊「完整還原的 3×3」教基礎操作（撤銷/重做才有東西可動），
+        // 進入「挑戰」時再載入官方亂局讓玩家自己還原。
+        this.host.store.solutionMask = null;
+        this.host.store.newPuzzle(3, 3, 1);
+        this.host.renderer.solutionMask = null;
+        this.host.centerCamera();
+        const steps = TEXTS.levels?.['1']?.steps;
+        this.teachingSteps = steps
+            ? [
+                { text: steps['1'], wait: 'gap' },
+                { text: steps['2'], wait: 'block' },
+                { text: steps['3'], wait: 'move' },
+                { text: steps['4'], wait: 'undo' },
+                { text: steps['5'], wait: 'redo' },
+                { text: steps['6'], wait: 'solved' },
+                { text: steps['7'], wait: 'final' },
+            ]
+            : [{ text: '把这块拼图还原成完整矩形即可过关！', wait: 'solved' }];
+        this.teachingIdx = 0;
+        this.showBar(this.teachingSteps[0].text, [mkBtn('跳过引导', false, () => this.exit())]);
+    }
+    findSublevel(subId) {
+        for (const lv of LEVELS) {
+            const s = lv.sublevels.find((x) => x.id === subId);
+            if (s)
+                return s;
+        }
+        return null;
+    }
+    replayEnabled(archive) {
+        return Array.isArray(archive?.history?.snapshots) && archive.history.snapshots.length > 1;
+    }
+    // ---------- 每次重繪呼叫（main 的 schedulePaint 中觸發）----------
+    tick() {
+        if (!this.active || this.replaying || this.completed)
+            return;
+        if (this.teaching) {
+            this.tickTeaching();
+            return;
+        }
+        if (this.challengeStep && this.host.store.solved)
+            this.complete();
+    }
+    /** 移動提交後（main 的 onChanged 中觸發）。 */
+    onMoved() {
+        if (!this.active || this.replaying || this.completed)
+            return;
+        if (this.teaching) {
+            if (this.challengeStep) {
+                if (this.host.store.solved)
+                    this.complete();
+                return;
+            }
+            const w = this.teachingSteps[this.teachingIdx]?.wait;
+            if (w === 'move')
+                this.advanceTeaching();
+            return;
+        }
+        if (this.challengeStep && this.host.store.solved)
+            this.complete();
+    }
+    onUndo() {
+        if (this.teaching && this.teachingSteps[this.teachingIdx]?.wait === 'undo')
+            this.advanceTeaching();
+    }
+    onRedo() {
+        if (this.teaching && this.teachingSteps[this.teachingIdx]?.wait === 'redo')
+            this.advanceTeaching();
+    }
+    tickTeaching() {
+        if (this.teachingIdx < 0)
+            return;
+        const step = this.teachingSteps[this.teachingIdx];
+        if (!step)
+            return;
+        if (step.wait === 'gap') {
+            const g = this.host.store.cmd.selectedGap;
+            if (g)
+                this.advanceTeaching();
+        }
+        else if (step.wait === 'block') {
+            if (this.host.store.game.selected.size > 0)
+                this.advanceTeaching();
+        }
+        // move/undo/redo/solved 由 onMoved/onUndo/onRedo 收尾
+    }
+    advanceTeaching() {
+        this.teachingIdx += 1;
+        const step = this.teachingSteps[this.teachingIdx];
+        if (!step) {
+            this.complete();
+            return;
+        }
+        if (step.wait === 'solved' && !this.challengeStep) {
+            // 進入挑戰：載入官方亂局，玩家自己還原
+            const archive = ARCHIVES['1'];
+            if (archive) {
+                const pz = archive.puzzle;
+                this.host.store.solutionMask = null;
+                this.host.store.applyPuzzle(pz.m, pz.n, pz.step, snapshotBlocks(archive.history.snapshots[0]));
+                this.host.renderer.solutionMask = null;
+                this.host.centerCamera();
+            }
+            this.challengeStep = true;
+            this.showBar(step.text, [mkBtn('查看解法', true, () => this.viewSolution()), mkBtn('退出', false, () => this.exit())]);
+            this.host.schedulePaint();
+            return;
+        }
+        this.barText.textContent = step.text;
+        this.host.schedulePaint();
+    }
+    // ---------- 過關 ----------
+    computeScore(subId) {
+        const archive = ARCHIVES[this.findSublevel(subId)?.archiveId ?? ''];
+        const solSteps = archive?.step_count ?? 0;
+        const playerSteps = this.host.store.cmd.stepCount;
+        if (solSteps <= 0)
+            return 100; // 沒有參考解（如第1關）統一給滿分
+        if (playerSteps <= 0)
+            return 100;
+        let s = Math.round((solSteps / playerSteps) * 100);
+        if (s > 100)
+            s = 100;
+        if (s < 0)
+            s = 0;
+        return s;
+    }
+    complete() {
+        if (this.completed)
+            return;
+        this.completed = true;
+        const subId = this.currentSub;
+        if (subId) {
+            const score = this.computeScore(subId);
+            const p = this.loadProgress();
+            p[subId] = Math.max(p[subId] ?? 0, score);
+            this.saveProgress(p);
+        }
+        this.teaching = false;
+        const sub = this.findSublevel(subId ?? '');
+        const notify = sub ? sub.title + ' 完成！' : '过关！';
+        this.host.showToast(notify);
+        // 過關後：顯示成績與下一步
+        const nextId = this.nextSublevel(subId);
+        const btns = [];
+        if (nextId) {
+            btns.push(mkBtn('下一关', true, () => this.startSublevel(nextId)));
+        }
+        btns.push(mkBtn('返回练习', false, () => this.exit()));
+        const scoreLine = subId ? `\n得分 ${this.computeScore(subId)}` : '';
+        this.showBar(notify + scoreLine + '\n（可继续下一关，或返回练习模式）', btns);
+        this.host.schedulePaint();
+    }
+    nextSublevel(subId) {
+        if (!subId)
+            return null;
+        const i = TUTORIAL_ORDER.indexOf(subId);
+        if (i < 0 || i + 1 >= TUTORIAL_ORDER.length)
+            return null;
+        return TUTORIAL_ORDER[i + 1];
+    }
+    // ---------- 查看解法（回放存檔歷史）----------
+    async viewSolution() {
+        const subId = this.currentSub;
+        const archive = ARCHIVES[this.findSublevel(subId ?? '')?.archiveId ?? ''];
+        if (!archive || !this.replayEnabled(archive)) {
+            this.host.showToast('暂无解法可回放');
+            return;
+        }
+        this.replaying = true;
+        this.host.showToast('正在回放解法…');
+        const pz = archive.puzzle;
+        const snaps = archive.history.snapshots.map((s) => snapshotBlocks(s));
+        // 回到起點
+        this.host.store.solutionMask = null;
+        this.host.store.applyPuzzle(pz.m, pz.n, pz.step, snaps[0]);
+        this.host.renderer.solutionMask = null;
+        this.host.schedulePaint();
+        // 取法：取所有快照的聯集邊界，回放全程固定取景（缺口滑出矩陣時版面不會亂跳）。
+        let mnR = Infinity, mxR = -Infinity, mnC = Infinity, mxC = -Infinity;
+        for (const s of snaps) {
+            for (const [r, c] of s) {
+                if (r < mnR)
+                    mnR = r;
+                if (r > mxR)
+                    mxR = r;
+                if (c < mnC)
+                    mnC = c;
+                if (c > mxC)
+                    mxC = c;
+            }
+        }
+        this.host.frameBounds(mnR, mnC, mxR, mxC);
+        await delay(350);
+        // 依序把每個快照重播（位置級插值過渡，與歷史動畫一致，與步長無關）。
+        // 原版「其餘關」的解法查看就是重播存檔歷史，而非重模擬移動指令，
+        // 這樣能避開 move_info.step 與 puzzle.step 偶爾不一致的脫鉤問題。
+        for (let i = 1; i < snaps.length; i++) {
+            await this.animateStatic(snaps[i - 1], snaps[i]);
+            this.host.store.applyPuzzle(pz.m, pz.n, pz.step, snaps[i]);
+            this.host.store.cmd.stepCount = i;
+            this.host.schedulePaint();
+            await delay(140);
+        }
+        await delay(550);
+        // 回到起點讓玩家自己試（重新對準起點局面）
+        this.host.store.solutionMask = null;
+        this.host.store.applyPuzzle(pz.m, pz.n, pz.step, snaps[0]);
+        this.host.renderer.solutionMask = null;
+        this.host.centerCamera();
+        this.replaying = false;
+        this.completed = false;
+        this.host.schedulePaint();
+        this.host.showToast('已回到起点，试着自己还原吧');
+    }
+    /**
+     * 位置級插值過渡：依據 from/to 把對應的滑塊平滑移動到新位置（與步長無關）。
+     * 用 alignSnapshots 做滑塊對齊，避免「整排一起平移」的錯覺。
+     */
+    animateStatic(from, to) {
+        return new Promise((resolve) => {
+            const r = this.host.renderer;
+            const { start, end } = alignSnapshots(from, to);
+            r.animation = { start, end, progress: 0, durationMs: this.host.controller.moveDurationMs };
+            const t0 = performance.now();
+            const frame = (now) => {
+                const a = r.animation;
+                if (!a)
+                    return resolve();
+                const p = Math.min(1, (now - t0) / a.durationMs);
+                a.progress = p;
+                this.host.schedulePaint();
+                if (p < 1)
+                    requestAnimationFrame(frame);
+                else {
+                    r.animation = null;
+                    resolve();
+                }
+            };
+            requestAnimationFrame(frame);
+        });
+    }
+    // ---------- 退出 ----------
+    exit() {
+        this.active = false;
+        this.teaching = false;
+        this.replaying = false;
+        this.completed = false;
+        this.challengeStep = false;
+        this.currentSub = null;
+        if (this.returnSave) {
+            this.host.store.deserialize(this.returnSave);
+            this.returnSave = null;
+        }
+        this.hideBar();
+        this.host.ensurePractice();
+        this.host.centerCamera();
+        this.host.schedulePaint();
+    }
+    // ---------- 引導條 ----------
+    showBar(text, btns) {
+        this.barText.textContent = text;
+        this.barBtns.innerHTML = '';
+        for (const b of btns)
+            if (b)
+                this.barBtns.appendChild(b);
+        this.bar.style.display = 'flex';
+    }
+    hideBar() {
+        this.bar.style.display = 'none';
+    }
+}
+function mkBtn(label, primary, onClick) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.background = primary ? BRAND : COLORS.input_bg;
+    b.style.color = '#fff';
+    b.style.border = primary ? 'none' : `1px solid ${COLORS.border}`;
+    b.style.borderRadius = '4px';
+    b.style.padding = '5px 12px';
+    b.style.cursor = 'pointer';
+    b.style.fontSize = '12px';
+    b.style.whiteSpace = 'nowrap';
+    b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onClick();
+    });
+    return b;
+}
+
+return { TutorialController };
+},
+    "m15": function (require) {
+/**
+ * 新手教程數據（由 scripts/gen-tutorial-data.mjs 自動生成，來源為原版 GatenneaSlider）。
+ * 內聯以避免 file:// 下 fetch 本地 JSON 失敗。請勿手動編輯。
+ *
+ * - TUTORIAL_TEXTS：原版 gui/tutorial_texts.json（含 prompt / level_select / score / 各關文案）
+ * - TUTORIAL_LEVELS：關卡層級結構（levels → sublevels），每個 sublevel 指向一個 archiveId
+ * - TUTORIAL_ARCHIVES：各關存檔（與 GameStore.deserialize 相容的 {version,puzzle,step_count,history}）
+ *   其中 snapshots 為「解法序列」：snapshot[0] 是起始亂局，snapshot[last] 是已還原的目標；
+ *   「查看解法」即依序把這些快照播一遍。
+ *   體積佔 app.js 絕大部分，故以緊湊 JSON 字串內聯（見生成腳本註解），解析後結構不變。
+ */
+const TUTORIAL_TEXTS = {
+    "prompt": {
+        "title": "新手教程",
+        "body": "本游戏带有由浅入深的新手教程（待完善）。\n第 1 关会带你先学会基本操作。\n（可随时在 谜题菜单 → 新手教程 回顾，也可跳过）",
+        "start_btn": "开始教程",
+        "skip_btn": "跳过"
+    },
+    "level_select": {
+        "title": "选择关卡",
+        "locked": "待补充",
+        "completed_mark": "✓",
+        "exit_btn": "回到练习模式"
+    },
+    "score": {
+        "notify": "本次得分 {score}",
+        "best": "最高 {score}"
+    },
+    "levels": {
+        "1": {
+            "title": "第 1 关·基本操作",
+            "steps": {
+                "1": "① 选中缝隙\n这是一块完整还原的滑块组\n（请留意底部标题：2~4*4）。\n请先点击一条「缝隙」（滑块间的分隔线），\n它会变成红色。",
+                "2": "② 选中一部分滑块\n请点击缝隙一侧的任意滑块\n变成绿色的为已选中。",
+                "3": "③ 移动滑块\n请按 方向键W/A/S/D 将滑块组移动一次\n（虚拟键盘的按键也可以）。\n\n注意：整组滑块必须一直连在一起。\n如果某次移动会让滑块组“断开成两截”，这次移动就无法执行（游戏会自动阻止）。",
+                "4": "④ 撤销\n请按 Ctrl+Z 撤销刚才的移动\n棋盘会回到上一步",
+                "5": "⑤ 重做\n请按 Ctrl+X 重做一次\n刚才的移动会被重新应用",
+                "6": "⑥ 挑战\n注意到了吗？底部标题改变了：1~3*3。\n第一个数字叫步长（等级）：滑块每次统一移动的格数。\n后两个数字叫尺寸，即还原时的大小。本关步长为 1：按一次方向键就移动 1 格。\n步长越大移动越快，但也更难控制。\n\n尺寸：本关是 3×3，即 3 行 3 列。\n谜题越大越难；通关后还有更大的挑战等着你。\n\n请把这块拼图还原成完整矩形，即可过关！\n（不会解时可点「查看解法」）",
+                "7": "✓ 过关！\n第 1 关完成！你已经掌握了基本操作。\n"
+            },
+            "complete_notify": "过关！第 1 关完成"
+        },
+        "2": {
+            "title": "第 2 关·填洞",
+            "sublevel_titles": {
+                "2.1": "2.1 单洞填补",
+                "2.2": "2.2 更大的谜题",
+                "2.3": "2.3 内部洞 + 底部大缺口"
+            },
+            "sublevels": {
+                "2.1": "滑块组内部缺了一块，试试把右下角凸起的滑块放入孔洞。",
+                "2.2": "尺寸更大了，但方法差不多，只是要多走几步。",
+                "2.3": "先把凸起移到一边，然后……你应该知道怎么做~"
+            },
+            "solve_tail": "",
+            "complete_notify": "过关！第 2 关（填洞）完成"
+        },
+        "3": {
+            "title": "第 3 关·多洞与分组",
+            "sublevel_titles": {
+                "3.1": "3.1 两种匹配都可以？",
+                "3.2": "3.2 看着近不一定真的近",
+                "3.3": "3.3 四个分组",
+                "3.4": "3.4 扎堆怎么办？"
+            },
+            "sublevels": {
+                "3.1": "哪个凸起填哪个洞？有时候都可以啦",
+                "3.2": "这两个凸起如图宿敌，井水不犯河水",
+                "3.3": "总结出规律了吗？实际上，2级谜题的滑块分为四组，打开右下角的着色/连锁功能，可以帮你更快分类，以后就不用一个个尝试啦~",
+                "3.4": "上面这些滑块挤在一起，多动脑筋拆开它们才能还原"
+            },
+            "solve_tail": "",
+            "complete_notify": "过关！第 3 关（多洞与分组）完成"
+        },
+        "4": {
+            "title": "第 4 关·缺口",
+            "sublevel_titles": {
+                "4.1": "4.1 边缺口",
+                "4.2": "4.2 多个边缺口",
+                "4.3": "4.3 当缺口位于角块时",
+                "4.4": "4.4 缺口挡住了填洞？",
+                "4.5": "4.5 尺寸太小怎么办",
+                "4.6": "4.6 相连的缺口"
+            },
+            "sublevels": {
+                "4.1": "填缺口的填孔洞的大致思路是一样的，不过需要先把缺口开口的一边堵上（这通常至少需要两步），让它转换为一个孔洞，我们可以称其为构造。然后用孔洞解法填上，再逆序做构造。如果你精通魔方或群论就会知道这是常见的共轭操作。",
+                "4.2": "想想之前处理多洞的方法",
+                "4.3": "角缺口比边缺口更难处理，至少需要三步才能构造一个孔洞出来",
+                "4.4": "有时候，缺口的存在会妨碍填洞，因为凸起无法跨过它，不过没关系，一般来说先填缺口是更好的选择",
+                "4.5": "4*4的滑块组对于补缺来说，资源显得捉襟见肘。回想之前复原1级谜题的方法，如果你把每个2*2部分视为一个滑块，就可以用'移形换位'大法来造洞",
+                "4.6": "处理方法和上一关类似。"
+            },
+            "solve_tail": "",
+            "complete_notify": "过关！第 4 关（缺口）完成"
+        },
+        "5": {
+            "title": "第 5 关·二连刚体凸起",
+            "sublevel_titles": {
+                "5.1": "5.1 大洞",
+                "5.2": "5.2 构建大洞",
+                "5.3": "5.3 构建大缺口",
+                "5.4": "5.4 拆东墙补西墙",
+                "5.5": "5.5 构建大缺口2"
+            },
+            "sublevels": {
+                "5.1": "右侧凸起是两个滑块组成的，不能像3.4中那样直接拆开，我们称其为刚体凸起。而洞刚好也是相同形状，所以可以直接'挤'进去",
+                "5.2": "洞可以自由移动，让它变成1*2的形状吧",
+                "5.3": "缺口也是类似的",
+                "5.4": "左下的缺口和右侧凸起位置相对，这时可以直接'挤'掉这个缺口",
+                "5.5": "很可惜，这下不能拆东墙补西墙了"
+            },
+            "solve_tail": "",
+            "complete_notify": "过关！第 5 关（刚体凸起）完成"
+        },
+        "6": {
+            "title": "第 6 关·更复杂的刚体凸起",
+            "sublevel_titles": {
+                "6.1": "6.1 ...",
+                "6.2": "6.2 ...",
+                "6.3": "6.3 ...",
+                "6.4": "6.4 ...",
+                "6.5": "6.5 ..."
+            },
+            "sublevels": {
+                "6.1": "...",
+                "6.2": "...",
+                "6.3": "...",
+                "6.4": "...",
+                "6.5": "..."
+            },
+            "solve_tail": "",
+            "complete_notify": "过关！第 6 关（更复杂的刚体凸起）完成"
+        }
+    }
+};
+const TUTORIAL_LEVELS = [
+    {
+        "id": "1",
+        "title": "第 1 关·基本操作",
+        "complete_notify": "过关！第 1 关完成",
+        "solve_tail": "",
+        "sublevels": [
+            {
+                "id": "1",
+                "title": "第 1 关·基本操作",
+                "guidance": null,
+                "steps": {
+                    "1": "① 选中缝隙\n这是一块完整还原的滑块组\n（请留意底部标题：2~4*4）。\n请先点击一条「缝隙」（滑块间的分隔线），\n它会变成红色。",
+                    "2": "② 选中一部分滑块\n请点击缝隙一侧的任意滑块\n变成绿色的为已选中。",
+                    "3": "③ 移动滑块\n请按 方向键W/A/S/D 将滑块组移动一次\n（虚拟键盘的按键也可以）。\n\n注意：整组滑块必须一直连在一起。\n如果某次移动会让滑块组“断开成两截”，这次移动就无法执行（游戏会自动阻止）。",
+                    "4": "④ 撤销\n请按 Ctrl+Z 撤销刚才的移动\n棋盘会回到上一步",
+                    "5": "⑤ 重做\n请按 Ctrl+X 重做一次\n刚才的移动会被重新应用",
+                    "6": "⑥ 挑战\n注意到了吗？底部标题改变了：1~3*3。\n第一个数字叫步长（等级）：滑块每次统一移动的格数。\n后两个数字叫尺寸，即还原时的大小。本关步长为 1：按一次方向键就移动 1 格。\n步长越大移动越快，但也更难控制。\n\n尺寸：本关是 3×3，即 3 行 3 列。\n谜题越大越难；通关后还有更大的挑战等着你。\n\n请把这块拼图还原成完整矩形，即可过关！\n（不会解时可点「查看解法」）",
+                    "7": "✓ 过关！\n第 1 关完成！你已经掌握了基本操作。\n"
+                },
+                "archiveId": "1",
+                "teaching": true
+            }
+        ]
+    },
+    {
+        "id": "2",
+        "title": "第 2 关·填洞",
+        "complete_notify": "过关！第 2 关（填洞）完成",
+        "solve_tail": "",
+        "sublevels": [
+            {
+                "id": "2.1",
+                "title": "2.1 单洞填补",
+                "guidance": "滑块组内部缺了一块，试试把右下角凸起的滑块放入孔洞。",
+                "steps": null,
+                "archiveId": "2.1",
+                "teaching": false
+            },
+            {
+                "id": "2.2",
+                "title": "2.2 更大的谜题",
+                "guidance": "尺寸更大了，但方法差不多，只是要多走几步。",
+                "steps": null,
+                "archiveId": "2.2",
+                "teaching": false
+            },
+            {
+                "id": "2.3",
+                "title": "2.3 内部洞 + 底部大缺口",
+                "guidance": "先把凸起移到一边，然后……你应该知道怎么做~",
+                "steps": null,
+                "archiveId": "2.3",
+                "teaching": false
+            }
+        ]
+    },
+    {
+        "id": "3",
+        "title": "第 3 关·多洞与分组",
+        "complete_notify": "过关！第 3 关（多洞与分组）完成",
+        "solve_tail": "",
+        "sublevels": [
+            {
+                "id": "3.1",
+                "title": "3.1 两种匹配都可以？",
+                "guidance": "哪个凸起填哪个洞？有时候都可以啦",
+                "steps": null,
+                "archiveId": "3.1",
+                "teaching": false
+            },
+            {
+                "id": "3.2",
+                "title": "3.2 看着近不一定真的近",
+                "guidance": "这两个凸起如图宿敌，井水不犯河水",
+                "steps": null,
+                "archiveId": "3.2",
+                "teaching": false
+            },
+            {
+                "id": "3.3",
+                "title": "3.3 四个分组",
+                "guidance": "总结出规律了吗？实际上，2级谜题的滑块分为四组，打开右下角的着色/连锁功能，可以帮你更快分类，以后就不用一个个尝试啦~",
+                "steps": null,
+                "archiveId": "3.3",
+                "teaching": false
+            },
+            {
+                "id": "3.4",
+                "title": "3.4 扎堆怎么办？",
+                "guidance": "上面这些滑块挤在一起，多动脑筋拆开它们才能还原",
+                "steps": null,
+                "archiveId": "3.4",
+                "teaching": false
+            }
+        ]
+    },
+    {
+        "id": "4",
+        "title": "第 4 关·缺口",
+        "complete_notify": "过关！第 4 关（缺口）完成",
+        "solve_tail": "",
+        "sublevels": [
+            {
+                "id": "4.1",
+                "title": "4.1 边缺口",
+                "guidance": "填缺口的填孔洞的大致思路是一样的，不过需要先把缺口开口的一边堵上（这通常至少需要两步），让它转换为一个孔洞，我们可以称其为构造。然后用孔洞解法填上，再逆序做构造。如果你精通魔方或群论就会知道这是常见的共轭操作。",
+                "steps": null,
+                "archiveId": "4.1",
+                "teaching": false
+            },
+            {
+                "id": "4.2",
+                "title": "4.2 多个边缺口",
+                "guidance": "想想之前处理多洞的方法",
+                "steps": null,
+                "archiveId": "4.2",
+                "teaching": false
+            },
+            {
+                "id": "4.3",
+                "title": "4.3 当缺口位于角块时",
+                "guidance": "角缺口比边缺口更难处理，至少需要三步才能构造一个孔洞出来",
+                "steps": null,
+                "archiveId": "4.3",
+                "teaching": false
+            },
+            {
+                "id": "4.4",
+                "title": "4.4 缺口挡住了填洞？",
+                "guidance": "有时候，缺口的存在会妨碍填洞，因为凸起无法跨过它，不过没关系，一般来说先填缺口是更好的选择",
+                "steps": null,
+                "archiveId": "4.4",
+                "teaching": false
+            },
+            {
+                "id": "4.5",
+                "title": "4.5 尺寸太小怎么办",
+                "guidance": "4*4的滑块组对于补缺来说，资源显得捉襟见肘。回想之前复原1级谜题的方法，如果你把每个2*2部分视为一个滑块，就可以用'移形换位'大法来造洞",
+                "steps": null,
+                "archiveId": "4.5",
+                "teaching": false
+            },
+            {
+                "id": "4.6",
+                "title": "4.6 相连的缺口",
+                "guidance": "处理方法和上一关类似。",
+                "steps": null,
+                "archiveId": "4.6",
+                "teaching": false
+            }
+        ]
+    },
+    {
+        "id": "5",
+        "title": "第 5 关·二连刚体凸起",
+        "complete_notify": "过关！第 5 关（刚体凸起）完成",
+        "solve_tail": "",
+        "sublevels": [
+            {
+                "id": "5.1",
+                "title": "5.1 大洞",
+                "guidance": "右侧凸起是两个滑块组成的，不能像3.4中那样直接拆开，我们称其为刚体凸起。而洞刚好也是相同形状，所以可以直接'挤'进去",
+                "steps": null,
+                "archiveId": "5.1",
+                "teaching": false
+            },
+            {
+                "id": "5.2",
+                "title": "5.2 构建大洞",
+                "guidance": "洞可以自由移动，让它变成1*2的形状吧",
+                "steps": null,
+                "archiveId": "5.2",
+                "teaching": false
+            },
+            {
+                "id": "5.3",
+                "title": "5.3 构建大缺口",
+                "guidance": "缺口也是类似的",
+                "steps": null,
+                "archiveId": "5.3",
+                "teaching": false
+            },
+            {
+                "id": "5.4",
+                "title": "5.4 拆东墙补西墙",
+                "guidance": "左下的缺口和右侧凸起位置相对，这时可以直接'挤'掉这个缺口",
+                "steps": null,
+                "archiveId": "5.4",
+                "teaching": false
+            },
+            {
+                "id": "5.5",
+                "title": "5.5 构建大缺口2",
+                "guidance": "很可惜，这下不能拆东墙补西墙了",
+                "steps": null,
+                "archiveId": "5.5",
+                "teaching": false
+            }
+        ]
+    },
+    {
+        "id": "6",
+        "title": "第 6 关·更复杂的刚体凸起",
+        "complete_notify": "过关！第 6 关（更复杂的刚体凸起）完成",
+        "solve_tail": "",
+        "sublevels": [
+            {
+                "id": "6.1",
+                "title": "6.1 ...",
+                "guidance": "...",
+                "steps": null,
+                "archiveId": "6.1",
+                "teaching": false
+            },
+            {
+                "id": "6.2",
+                "title": "6.2 ...",
+                "guidance": "...",
+                "steps": null,
+                "archiveId": "6.2",
+                "teaching": false
+            },
+            {
+                "id": "6.3",
+                "title": "6.3 ...",
+                "guidance": "...",
+                "steps": null,
+                "archiveId": "6.3",
+                "teaching": false
+            },
+            {
+                "id": "6.4",
+                "title": "6.4 ...",
+                "guidance": "...",
+                "steps": null,
+                "archiveId": "6.4",
+                "teaching": false
+            },
+            {
+                "id": "6.5",
+                "title": "6.5 ...",
+                "guidance": "...",
+                "steps": null,
+                "archiveId": "6.5",
+                "teaching": false
+            }
+        ]
+    }
+];
+/** 攤平後的有序 sublevel id 列表（解鎖鏈順序）。 */
+const TUTORIAL_ORDER = [
+    "1",
+    "2.1",
+    "2.2",
+    "2.3",
+    "3.1",
+    "3.2",
+    "3.3",
+    "3.4",
+    "4.1",
+    "4.2",
+    "4.3",
+    "4.4",
+    "4.5",
+    "4.6",
+    "5.1",
+    "5.2",
+    "5.3",
+    "5.4",
+    "5.5",
+    "6.1",
+    "6.2",
+    "6.3",
+    "6.4",
+    "6.5"
+];
+const TUTORIAL_ARCHIVES = JSON.parse("{\"1\":{\"version\":1,\"puzzle\":{\"m\":3,\"n\":3,\"step\":1},\"step_count\":0,\"history\":{\"history_index\":0,\"snapshots\":[{\"matrix\":[[0,0,1,1,0],[1,1,1,1,0],[0,0,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":-4,\"min_col\":-4,\"max_col\":0}}]}},\"2.1\":{\"version\":1,\"puzzle\":{\"m\":4,\"n\":4,\"step\":2},\"step_count\":3,\"history\":{\"history_index\":3,\"snapshots\":[{\"matrix\":[[1,1,1,1],[1,1,1,1],[1,0,1,1],[1,1,1,1],[0,0,0,1]],\"bounds\":{\"min_row\":0,\"max_row\":4,\"min_col\":0,\"max_col\":3}},{\"matrix\":[[0,0,1,1],[0,0,1,1],[1,1,1,1],[1,1,1,1],[1,0,0,1],[1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":0,\"max_col\":3}},{\"matrix\":[[0,0,1,1],[0,0,1,1],[1,1,1,1],[1,1,1,1],[1,1,0,0],[1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":0,\"max_col\":3}},{\"matrix\":[[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":3,\"min_col\":0,\"max_col\":3}}]}},\"2.2\":{\"version\":1,\"puzzle\":{\"m\":6,\"n\":6,\"step\":2},\"step_count\":5,\"history\":{\"history_index\":5,\"snapshots\":[{\"matrix\":[[0,1,1,1,1,1,1],[0,1,1,1,1,1,1],[0,1,1,1,0,1,1],[0,1,1,1,1,1,1],[1,1,1,1,1,1,1],[0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-1,\"max_col\":5}},{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,0,1,1,0,0],[0,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,0,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":9}},{\"matrix\":[[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":9}},{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":5}}]}},\"2.3\":{\"version\":1,\"puzzle\":{\"m\":9,\"n\":9,\"step\":2},\"step_count\":6,\"history\":{\"history_index\":6,\"snapshots\":[{\"matrix\":[[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,0,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":0,\"max_col\":8}},{\"matrix\":[[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,0,0,0,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":0,\"max_col\":8}},{\"matrix\":[[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,0,1,0,0,0,0],[1,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":8,\"min_col\":0,\"max_col\":8}},{\"matrix\":[[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,0,0,1,0,0,0,0],[1,1,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":-4,\"max_row\":8,\"min_col\":0,\"max_col\":8}},{\"matrix\":[[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":-4,\"max_row\":8,\"min_col\":0,\"max_col\":8}},{\"matrix\":[[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":8,\"min_col\":0,\"max_col\":8}},{\"matrix\":[[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":8,\"min_col\":0,\"max_col\":8}}]}},\"3.1\":{\"version\":1,\"puzzle\":{\"m\":8,\"n\":8,\"step\":2},\"step_count\":15,\"history\":{\"history_index\":15,\"snapshots\":[{\"matrix\":[[0,0,0,0,0,0,1,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,0,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,1,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,0,1,0,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[1,1,1,1,1,0,1,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,0,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,0,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":11,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[1,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,0,0,1,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,0,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":13,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[1,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,0,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":13,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[1,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,0,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":11,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,0,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,0,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,0,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":9}},{\"matrix\":[[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,0,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":11}},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,0,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":13}},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":13}},{\"matrix\":[[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":11}},{\"matrix\":[[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":9}},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":7}}]},\"readonly\":false},\"3.2\":{\"version\":1,\"puzzle\":{\"m\":7,\"n\":7,\"step\":2},\"step_count\":13,\"history\":{\"history_index\":13,\"snapshots\":[{\"matrix\":[[0,0,1,0,0,0,0,0],[1,1,1,1,1,1,1,0],[1,1,1,0,1,1,1,0],[1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,0],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,0]],\"bounds\":{\"min_row\":-1,\"max_row\":6,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,0,0,0,0],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,1,1,0,1,1,1,0],[1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":6,\"min_col\":-2,\"max_col\":6}},{\"matrix\":[[0,0,0,0,0,0,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,0,1,1,1,0,0,0],[1,1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":6,\"min_col\":-4,\"max_col\":6}},{\"matrix\":[[0,0,0,0,0,0,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,0,1,1,0,0,0,0],[1,1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":6,\"min_col\":-4,\"max_col\":6}},{\"matrix\":[[0,0,0,0,0,0,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,0,0,0,0],[1,1,1,1,0,1,1,0,0,0,0],[1,1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":6,\"min_col\":-4,\"max_col\":6}},{\"matrix\":[[0,0,0,0,1,0,0,0,0],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,1,1,0,1,1,0,0],[1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":6,\"min_col\":-2,\"max_col\":6}},{\"matrix\":[[0,0,1,0,0,0,0],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,1,1],[1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":6,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[0,0,0,0,1,1,1],[0,0,1,0,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":8,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,1,0,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":10,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,1,0,0,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":12,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":12,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":10,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[0,0,0,0,1,1,1],[0,0,0,0,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,0,0,0],[1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":8,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":6,\"min_col\":0,\"max_col\":6}}]},\"readonly\":false},\"3.3\":{\"version\":1,\"puzzle\":{\"m\":8,\"n\":8,\"step\":2},\"step_count\":37,\"history\":{\"history_index\":24,\"snapshots\":[{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,0,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,0,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,1,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":8,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,0,0],[0,1,0,1,1,1,1,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,0,1,1,0,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,1,0,1,1],[0,0,0,0,0,0,0,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,0,0],[0,1,0,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,0,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,0,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,1,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":11,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,0,0],[0,1,0,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,0,1,1,0,0],[1,1,1,0,1,1,1,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,1,0,0,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":13,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,0,0],[0,1,0,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,0,1,1,0,0],[1,1,1,0,1,1,1,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":13,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,0,0],[0,1,0,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0],[0,1,1,1,0,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":11,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,0,0],[0,1,0,1,1,1,1,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,0,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,0,0,1,1],[0,0,0,0,0,0,0,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,0,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":8,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,0,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,1,0,0,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":11,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":11,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,0,0,0,1,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,1,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,1,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-4,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[1,1,1,0,0,1,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[1,1,1,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":5,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,0,0,0,0,0],[0,1,0,1,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1],[0,0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":3,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":1,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,1,1,0,0],[1,0,1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":1,\"min_col\":-2,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,1,1,0,0],[1,0,1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":1,\"min_col\":-2,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":1,\"min_col\":-2,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":1,\"min_col\":0,\"max_col\":7}}]},\"readonly\":false},\"3.4\":{\"version\":1,\"puzzle\":{\"m\":8,\"n\":8,\"step\":2},\"step_count\":31,\"history\":{\"history_index\":31,\"snapshots\":[{\"matrix\":[[0,1,0,0,1,1,1,0],[1,1,1,1,1,1,1,1],[1,1,0,1,0,1,1,1],[1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,1]],\"bounds\":{\"min_row\":-1,\"max_row\":8,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,1,0],[0,0,0,0,1,1,1,1],[0,1,0,0,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,0,1,1,1,1],[1,1,1,1,0,0,0,1],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":9,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,1,0],[0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,1,1,1,1],[0,1,0,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,0,0,0,1],[1,0,1,0,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":11,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,1,0],[0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,1,1,1,1],[0,0,0,0,1,1,1,1],[0,0,0,0,1,1,1,1],[0,1,0,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,0,0,0,0,1],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":13,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,1,0],[0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,1,1,1,1],[0,0,0,0,1,1,1,1],[0,0,0,0,1,1,1,1],[0,1,0,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,0,0,1,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":13,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,1,0],[0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,1,1,1,1],[0,0,0,0,1,1,1,1],[0,0,0,0,1,1,1,1],[0,1,0,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":13,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,1,0],[0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,1,1,1,1],[0,1,0,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":11,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,1,0],[0,0,0,0,1,1,1,1],[0,1,0,0,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,0,1,1,1,1],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":9,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,1,0,0,1,1,1,0],[1,1,1,1,1,1,1,1],[1,1,0,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,0,0,1,1,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-3,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,1,0,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-3,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,1,0,1,1,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,1,0,0,0],[0,0,0,1,1,1,1,1],[0,1,0,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0]],\"bounds\":{\"min_row\":-3,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,1,0,0,0],[0,0,0,1,1,1,1,1],[0,0,0,1,0,1,1,1],[0,0,0,1,1,1,1,1],[0,1,0,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0]],\"bounds\":{\"min_row\":-5,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,1,0,0,0],[0,0,0,1,1,1,1,1],[0,0,0,1,0,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[0,1,0,0,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0]],\"bounds\":{\"min_row\":-7,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,1,0,0,0],[0,0,0,1,1,1,1,1],[0,0,0,1,0,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0]],\"bounds\":{\"min_row\":-7,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,1,0,0,0],[0,0,0,1,1,1,1,1],[0,0,0,1,0,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,0,0,0,0,0],[1,0,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0]],\"bounds\":{\"min_row\":-5,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,1,0,0,0],[0,0,0,1,1,1,1,1],[0,0,0,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0]],\"bounds\":{\"min_row\":-3,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,1,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,0,0,0],[0,0,0,0,1,1,1,1],[0,0,0,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-3,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,0,0,1,0],[0,0,0,0,1,1,1,1],[0,0,0,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-3,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,1,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,1,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,1,0,0,1,0],[1,1,1,1,1,1,1,1],[1,0,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-4,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,0,0,1,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-6,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-4,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,0,0,0],[1,1,1,1,0,0,1,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,0,0,0],[1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":7}}]},\"readonly\":false},\"4.1\":{\"version\":1,\"puzzle\":{\"m\":8,\"n\":8,\"step\":2},\"step_count\":8,\"history\":{\"history_index\":8,\"snapshots\":[{\"matrix\":[[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,0,0,0,0,0,0],[0,1,1,0,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,1,1,0,0,0,0,0,0],[0,1,1,0,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":0,\"max_col\":9}},{\"matrix\":[[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":0,\"max_col\":9}},{\"matrix\":[[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":0,\"max_col\":9}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":9,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":7}}]}},\"4.2\":{\"version\":1,\"puzzle\":{\"m\":8,\"n\":8,\"step\":2},\"step_count\":31,\"history\":{\"history_index\":25,\"snapshots\":[{\"matrix\":[[0,1,1,1,1,0,1,1,1,1],[0,0,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,0,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-1,\"max_col\":8}},{\"matrix\":[[0,0,0,1,1,1,1,0,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,0,1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-3,\"max_col\":8},\"steps\":1,\"step_total\":1},{\"matrix\":[[0,1,1,1,1,1,1,0,1,1,1,1],[1,1,1,0,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,0,1,1,1,1,1,1,0,0,0],[0,0,0,1,1,1,1,1,1,0,0,0],[0,0,0,1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-3,\"max_col\":8},\"steps\":1,\"step_total\":2},{\"matrix\":[[0,0,1,1,1,1,1,1,0,1,1,1,1],[0,1,1,1,0,1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,1,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0],[1,0,1,1,1,1,1,1,0,0,0,0,0],[0,0,1,1,1,1,1,1,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-2,\"max_col\":10},\"steps\":1,\"step_total\":3},{\"matrix\":[[0,0,0,0,1,1,1,1,1,1,0,1,1,1,1],[0,0,0,1,1,1,0,1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0],[1,0,1,1,1,1,1,1,0,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,0,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-2,\"max_col\":12},\"steps\":1,\"step_total\":4},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,1,1,0,1,1,1,1],[0,0,0,0,0,1,1,1,0,1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[1,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-2,\"max_col\":14},\"steps\":1,\"step_total\":5},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,1,1,0,1,1,1,1],[0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[1,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-2,\"max_col\":14},\"steps\":3,\"step_total\":8},{\"matrix\":[[0,1,1,1,1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,0,1,1,1,1,1,1,0,0,0],[0,0,0,1,1,1,1,1,1,0,0,0],[0,0,0,1,1,1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-3,\"max_col\":8},\"steps\":3,\"step_total\":11},{\"matrix\":[[0,0,0,1,1,1,1,0,1,1,1,1],[0,0,0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0],[0,1,0,1,1,1,1,1,1,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-3,\"max_col\":8},\"steps\":1,\"step_total\":12},{\"matrix\":[[0,1,1,1,1,0,1,1,1,1],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,0,1,1,1,1,1,1,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-3,\"max_col\":6},\"steps\":1,\"step_total\":13},{\"matrix\":[[0,1,1,1,1,0,0,0,0,0],[0,1,1,1,1,0,0,0,0,0],[0,1,1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,0,1,1,1,1,1,1,0],[0,0,0,0,0,1,1,1,1,0],[0,0,0,0,0,1,1,1,1,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":6},\"steps\":1,\"step_total\":14},{\"matrix\":[[0,0,0,1,1,1,1,0,0,0],[0,0,0,1,1,1,1,0,0,0],[0,1,1,1,1,0,1,1,1,1],[1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,0,1,1,1,1,1,1,0],[0,0,0,0,0,1,1,1,1,0],[0,0,0,0,0,1,1,1,1,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":6},\"steps\":1,\"step_total\":15},{\"matrix\":[[0,0,0,1,1,1,1,0,0,0],[0,0,0,1,1,1,1,0,0,0],[0,1,1,1,1,0,1,1,1,0],[1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0],[0,1,0,1,1,1,1,1,1,0],[0,0,0,0,0,1,1,1,1,0],[0,0,0,0,0,1,1,1,1,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":6},\"steps\":1,\"step_total\":16},{\"matrix\":[[0,0,0,0,0,1,1,1,1,0,0],[0,0,0,0,0,1,1,1,1,0,0],[0,0,0,1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,1,1,0,0],[0,1,0,1,1,1,1,1,1,0,0],[0,0,0,0,0,1,1,1,1,0,0],[0,0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":7},\"steps\":1,\"step_total\":17},{\"matrix\":[[0,0,0,0,0,0,0,1,1,1,1,0,0],[0,0,0,0,0,0,0,1,1,1,1,0,0],[0,0,0,0,0,1,1,1,1,0,1,1,1],[1,1,1,1,1,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1,1,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0,0],[0,1,0,1,1,1,1,1,1,0,0,0,0],[0,0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":9},\"steps\":1,\"step_total\":18},{\"matrix\":[[0,0,0,0,0,0,0,1,1,1,1,0,0],[0,0,0,0,0,0,0,1,1,1,1,0,0],[0,0,0,0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1,0,0,0,0],[0,1,0,1,1,1,1,1,1,0,0,0,0],[0,0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":9},\"steps\":1,\"step_total\":19},{\"matrix\":[[0,0,0,1,1,1,1,0,0],[0,0,0,1,1,1,1,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":5},\"steps\":2,\"step_total\":21},{\"matrix\":[[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,1],[0,0,0,0,0,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":5},\"steps\":1,\"step_total\":22},{\"matrix\":[[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-3,\"max_col\":5},\"steps\":1,\"step_total\":23},{\"matrix\":[[0,1,1,0,0,0,0,0,0],[0,1,1,0,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":5},\"steps\":1,\"step_total\":24},{\"matrix\":[[0,1,1,0,0,0,0,0,0],[0,1,1,0,0,0,0,0,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-3,\"max_col\":5},\"steps\":1,\"step_total\":25},{\"matrix\":[[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,0,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":26},{\"matrix\":[[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-4,\"max_col\":5},\"steps\":2,\"step_total\":28},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":29},{\"matrix\":[[1,1,0,0,0,0,0,0],[1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":7,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":30},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":31}]},\"readonly\":true},\"4.3\":{\"version\":1,\"puzzle\":{\"m\":8,\"n\":8,\"step\":2},\"step_count\":13,\"history\":{\"history_index\":9,\"snapshots\":[{\"matrix\":[[0,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":-1,\"max_col\":7}},{\"matrix\":[[1,1,1,1,1,1,1,0,0,0,0,0],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":11},\"steps\":2,\"step_total\":2},{\"matrix\":[[0,0,0,0,0,0,0,0,1,1,1,1],[1,1,1,1,1,1,1,0,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":11},\"steps\":1,\"step_total\":3},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":11},\"steps\":1,\"step_total\":4},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,0,1,1,1,1,0,0,0,0],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":-4,\"max_col\":11},\"steps\":2,\"step_total\":6},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0],[1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":-4,\"max_col\":11},\"steps\":1,\"step_total\":7},{\"matrix\":[[0,0,0,0,0,0,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":11},\"steps\":2,\"step_total\":9},{\"matrix\":[[0,0,0,0,0,0,0,0,1,1,1,1],[1,1,1,1,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-1,\"max_row\":7,\"min_col\":0,\"max_col\":11},\"steps\":1,\"step_total\":10},{\"matrix\":[[1,1,1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":11},\"steps\":1,\"step_total\":11},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":4,\"max_col\":11},\"steps\":2,\"step_total\":13}]},\"readonly\":true},\"4.4\":{\"version\":1,\"puzzle\":{\"m\":6,\"n\":6,\"step\":2},\"step_count\":15,\"history\":{\"history_index\":11,\"snapshots\":[{\"matrix\":[[0,0,0,1,0,0,0],[0,1,1,1,1,1,1],[0,1,1,1,0,1,1],[0,1,1,1,1,1,1],[0,0,1,1,1,1,1],[0,1,1,1,1,1,1],[1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":5,\"min_col\":-1,\"max_col\":5}},{\"matrix\":[[0,0,1,0,0,0,0,0],[1,1,1,1,1,1,0,0],[1,1,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[0,0,0,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":1},{\"matrix\":[[0,0,1,0,0,0,0,0],[0,0,1,1,1,1,0,0],[0,0,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,0,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":2},{\"matrix\":[[0,0,0,0,1,0,0,0],[0,0,1,1,1,1,0,0],[0,0,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,0,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-1,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":3},{\"matrix\":[[0,0,1,0,0,0,0,0],[0,0,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,0,0,1,0,0,0],[1,1,1,1,1,1,0,0],[0,1,1,0,1,1,0,0],[0,0,0,1,1,1,0,0],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-4,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":2,\"step_total\":5},{\"matrix\":[[0,0,1,0,0,0,0,0],[0,0,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,0,0,0,0,0],[1,1,1,1,1,1,0,0],[0,1,1,0,1,1,0,0],[0,0,0,1,1,1,0,0],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1]],\"bounds\":{\"min_row\":-4,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":6},{\"matrix\":[[0,0,1,1,1,1,0,0],[0,0,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":2,\"step_total\":8},{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":9},{\"matrix\":[[0,1,1,1,1,1,1],[0,1,1,1,0,1,1],[0,1,1,1,1,1,1],[1,1,1,1,1,1,1],[0,1,1,1,1,1,1],[0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-1,\"max_col\":5},\"steps\":1,\"step_total\":10},{\"matrix\":[[1,1,1,1,1,1,0,0,0,0],[1,1,1,0,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":2,\"step_total\":12},{\"matrix\":[[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":13},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":5},\"steps\":2,\"step_total\":15}]},\"readonly\":true},\"4.5\":{\"version\":1,\"puzzle\":{\"m\":4,\"n\":4,\"step\":2},\"step_count\":8,\"history\":{\"history_index\":8,\"snapshots\":[{\"matrix\":[[1,1,1,1],[1,1,1,1],[1,1,1,0],[1,1,1,1],[0,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":4,\"min_col\":0,\"max_col\":3}},{\"matrix\":[[0,0,1,1,1,1],[0,0,1,1,1,1],[1,1,1,0,0,0],[1,1,1,1,0,0],[0,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":4,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":1},{\"matrix\":[[0,0,1,1,0,0],[0,0,1,1,0,0],[1,1,1,0,1,1],[1,1,1,1,1,1],[0,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":4,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":2},{\"matrix\":[[1,1,1,1,0,0],[1,1,1,1,0,0],[0,1,1,0,1,1],[0,0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":3,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":3},{\"matrix\":[[0,1,1,1,1],[0,1,1,1,1],[1,1,0,1,1],[0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":3,\"min_col\":1,\"max_col\":5},\"steps\":1,\"step_total\":4},{\"matrix\":[[1,1,1,1,1],[0,1,1,1,1],[0,1,0,1,1],[0,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":3,\"min_col\":1,\"max_col\":5},\"steps\":1,\"step_total\":5},{\"matrix\":[[0,1,1,1,1,1],[0,0,1,1,1,1],[1,0,1,1,0,0],[1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":3,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":6},{\"matrix\":[[0,0,1,1,1,1],[0,0,1,1,1,1],[1,1,1,1,0,0],[1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":3,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":7},{\"matrix\":[[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":3,\"min_col\":2,\"max_col\":5},\"steps\":1,\"step_total\":8}]},\"readonly\":true},\"4.6\":{\"version\":1,\"puzzle\":{\"m\":6,\"n\":6,\"step\":2},\"step_count\":18,\"history\":{\"history_index\":18,\"snapshots\":[{\"matrix\":[[0,1,1,1,1,1,1],[0,1,1,1,1,1,1],[1,1,1,1,1,1,0],[1,1,1,1,1,1,0],[1,1,1,1,1,1,0],[1,1,1,1,1,1,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":6}},{\"matrix\":[[0,1,1,1,1,1,0],[0,1,1,1,1,1,0],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,0],[1,1,1,1,1,1,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":6},\"steps\":1,\"step_total\":1},{\"matrix\":[[0,0,0,1,1,1,1,1],[0,0,0,1,1,1,1,1],[1,1,1,1,1,1,1,0],[1,1,1,1,1,1,1,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":2},{\"matrix\":[[0,0,0,0,0,1,1,1,1,1],[0,0,0,0,0,1,1,1,1,1],[1,1,1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,0,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":3},{\"matrix\":[[1,1,1,1,0,1,1,1,1,1],[1,1,1,1,0,1,1,1,1,1],[1,1,1,1,1,1,1,0,0,0],[1,1,1,1,1,1,1,0,0,0],[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":4},{\"matrix\":[[1,1,0,0,0,0,0,0,0,0],[1,1,0,0,0,0,0,0,0,0],[1,1,1,1,0,1,1,1,1,1],[1,1,1,1,0,1,1,1,1,1],[0,0,1,1,1,1,1,0,0,0],[0,0,1,1,1,1,1,0,0,0],[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":5},{\"matrix\":[[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[1,1,1,1,0,1,1,1,1,1],[1,1,1,1,0,1,1,1,1,1],[0,0,1,1,1,1,1,0,0,0],[0,0,1,1,1,1,1,0,0,0],[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":6},{\"matrix\":[[1,1,1,1,0,0,0,0,0,0],[1,1,1,1,0,0,0,0,0,0],[0,0,1,1,0,1,1,1,1,1],[0,0,1,1,0,1,1,1,1,1],[0,0,1,1,1,1,1,0,0,0],[0,0,1,1,1,1,1,0,0,0],[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":7},{\"matrix\":[[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,0,1,1,1,1,1],[1,1,0,1,1,1,1,1],[1,1,1,1,1,0,0,0],[1,1,1,1,1,0,0,0],[0,0,1,1,0,0,0,0],[0,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":8},{\"matrix\":[[0,0,1,1,1,1,0,0,0,0],[0,0,1,1,1,1,0,0,0,0],[0,0,1,1,0,1,1,1,1,1],[0,0,1,1,0,1,1,1,1,1],[1,1,1,1,1,0,0,0,0,0],[1,1,1,1,1,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":7},\"steps\":1,\"step_total\":9},{\"matrix\":[[0,0,1,1,1,1,0,0,0,0],[0,0,1,1,1,1,0,0,0,0],[0,0,1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1,1],[1,1,1,1,0,0,0,0,0,0],[1,1,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0],[0,0,1,1,0,0,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":7},\"steps\":1,\"step_total\":10},{\"matrix\":[[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[0,0,1,1,0,0,0,0],[0,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":11},{\"matrix\":[[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,0,0,0,0],[0,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":12},{\"matrix\":[[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":13},{\"matrix\":[[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":14},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":15},{\"matrix\":[[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,0,0],[0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":-4,\"max_col\":3},\"steps\":1,\"step_total\":16},{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":-4,\"max_col\":3},\"steps\":1,\"step_total\":17},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":-2,\"max_col\":3},\"steps\":1,\"step_total\":18}]},\"readonly\":true},\"5.1\":{\"version\":1,\"puzzle\":{\"m\":7,\"n\":7,\"step\":2},\"step_count\":4,\"history\":{\"history_index\":4,\"snapshots\":[{\"matrix\":[[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,0,0,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":6,\"min_col\":0,\"max_col\":8}},{\"matrix\":[[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,0,0,1,1,1,1,1],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":6,\"min_col\":0,\"max_col\":8},\"steps\":1,\"step_total\":1},{\"matrix\":[[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[1,1,0,0,1,1,1,1,1],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":6,\"min_col\":-2,\"max_col\":6},\"steps\":1,\"step_total\":2},{\"matrix\":[[1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":6,\"min_col\":-2,\"max_col\":6},\"steps\":1,\"step_total\":3},{\"matrix\":[[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1],[1,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":6,\"min_col\":0,\"max_col\":6},\"steps\":1,\"step_total\":4}]},\"readonly\":true},\"5.2\":{\"version\":1,\"puzzle\":{\"m\":6,\"n\":6,\"step\":2},\"step_count\":8,\"history\":{\"history_index\":5,\"snapshots\":[{\"matrix\":[[1,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,1,0,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,0,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-2,\"max_col\":5}},{\"matrix\":[[1,1,1,1,1,0,0,0],[0,0,1,1,1,0,0,0],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,1,1],[0,0,1,1,0,0,1,1],[0,0,1,1,1,1,1,1],[0,0,0,0,0,1,1,1],[0,0,0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":1},{\"matrix\":[[0,0,1,1,1,1,1,0,0,0],[0,0,0,0,1,1,1,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[1,1,0,0,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[0,0,0,1,1,1,0,0,0,0],[0,0,0,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":2,\"step_total\":3},{\"matrix\":[[0,0,0,0,1,1,1,0,0,0],[0,0,0,0,1,1,1,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[0,0,0,1,1,1,0,0,0,0],[0,0,0,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":2,\"step_total\":5},{\"matrix\":[[1,1,1,0,0,0],[1,1,1,0,0,0],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[0,0,0,1,1,1],[0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":0,\"max_col\":5},\"steps\":2,\"step_total\":7},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":8}]},\"readonly\":true},\"5.3\":{\"version\":1,\"puzzle\":{\"m\":6,\"n\":6,\"step\":2},\"step_count\":9,\"history\":{\"history_index\":8,\"snapshots\":[{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,0,1,1,0,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,0,1,0,0],[1,1,1,1,0,0,0,0],[1,0,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":0,\"max_col\":7},\"steps\":1,\"step_total\":1},{\"matrix\":[[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,0,1,0,0],[0,0,1,1,1,1,0,0],[0,0,1,0,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":0,\"max_col\":7},\"steps\":1,\"step_total\":2},{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[0,0,1,1,1,1,0,0],[0,0,1,0,0,1,0,0],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":7},\"steps\":1,\"step_total\":3},{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[0,0,1,1,1,1,0,0],[0,0,1,0,0,1,1,1],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":7},\"steps\":2,\"step_total\":5},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[0,0,1,1,1,1],[0,0,1,1,1,1],[0,0,1,1,0,0],[0,0,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":6},{\"matrix\":[[0,0,1,1,1,1],[0,0,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[0,0,1,1,0,0],[0,0,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":7},{\"matrix\":[[0,0,1,1,1,1],[0,0,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,0,0,0,0],[1,1,0,0,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":7,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":8},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":9}]},\"readonly\":true},\"5.4\":{\"version\":1,\"puzzle\":{\"m\":6,\"n\":6,\"step\":2},\"step_count\":12,\"history\":{\"history_index\":10,\"snapshots\":[{\"matrix\":[[1,1,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[0,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[1,1,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":7},\"steps\":1,\"step_total\":1},{\"matrix\":[[1,1,1,0,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[0,1,1,1,1,1,1,1],[0,0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":2},{\"matrix\":[[0,1,1,1,0,1,1],[0,1,1,1,1,1,1],[0,1,1,1,1,1,1],[0,1,1,1,1,1,1],[1,1,1,1,1,1,1],[0,1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-1,\"max_col\":5},\"steps\":1,\"step_total\":3},{\"matrix\":[[0,1,1,1,0,0,0],[0,1,1,1,0,0,0],[0,1,1,1,0,1,1],[0,1,1,1,1,1,1],[1,1,1,1,1,1,1],[0,1,1,1,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-1,\"max_col\":5},\"steps\":1,\"step_total\":4},{\"matrix\":[[0,0,0,1,1,1,0],[0,0,0,1,1,1,0],[0,1,1,1,0,1,1],[0,1,1,1,1,1,1],[1,1,1,1,1,1,1],[0,1,1,1,1,1,1],[0,0,0,0,1,1,1],[0,0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-1,\"max_col\":5},\"steps\":1,\"step_total\":5},{\"matrix\":[[0,0,1,1,1,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[1,1,1,0,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,1,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,0,0,0,1,1,1],[0,0,0,0,0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":2,\"step_total\":7},{\"matrix\":[[0,0,1,1,1,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,0,0,0,1,1,1],[0,0,0,0,0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":8},{\"matrix\":[[0,0,1,1,1,0],[0,0,1,1,1,0],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[0,0,0,1,1,1],[0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":0,\"max_col\":5},\"steps\":2,\"step_total\":10},{\"matrix\":[[1,1,1,0,0,0],[1,1,1,0,0,0],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[0,0,0,1,1,1],[0,0,0,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":11},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1]],\"bounds\":{\"min_row\":-2,\"max_row\":3,\"min_col\":0,\"max_col\":5},\"steps\":1,\"step_total\":12}]},\"readonly\":true},\"5.5\":{\"version\":1,\"puzzle\":{\"m\":6,\"n\":6,\"step\":2},\"step_count\":13,\"history\":{\"history_index\":13,\"snapshots\":[{\"matrix\":[[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[0,1,1,1,1,0,0,0],[1,1,1,1,1,1,0,0]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":0,\"max_col\":7}},{\"matrix\":[[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,0,0,0],[1,1,1,1,1,1,0,0],[0,1,1,1,0,0,0,0],[1,1,1,1,0,0,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":0,\"max_col\":7},\"steps\":1,\"step_total\":1},{\"matrix\":[[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0],[1,1,1,1,1,1,1,1],[1,1,1,1,1,1,0,0],[1,1,1,1,1,0,0,0],[0,0,1,1,1,1,1,1],[0,0,0,1,1,1,0,0],[0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-2,\"max_col\":5},\"steps\":1,\"step_total\":2},{\"matrix\":[[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,0,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":3},{\"matrix\":[[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,0,1,1,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":4},{\"matrix\":[[0,0,0,0,0,0,1,1,0,0],[0,0,0,0,0,0,1,1,0,0],[0,0,1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1,0,0],[1,1,1,1,1,0,1,1,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,0,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":5},{\"matrix\":[[0,0,1,1,1,0,1,1,0,0],[0,0,1,1,1,0,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0],[0,0,0,0,0,0,1,1,0,0],[0,0,0,0,0,1,1,1,1,1],[0,0,0,0,0,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":6},{\"matrix\":[[0,0,1,1,1,0,1,1,0,0,0,0],[0,0,1,1,1,0,1,1,0,0,0,0],[1,1,1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,0,0,0,0],[0,0,0,0,0,0,1,1,0,0,0,0],[0,0,0,0,0,0,0,1,1,1,1,1],[0,0,0,0,0,0,0,1,1,1,0,0],[0,0,0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-6,\"max_col\":5},\"steps\":1,\"step_total\":7},{\"matrix\":[[0,0,1,1,1,0,1,1,0,0],[0,0,1,1,1,0,1,1,0,0],[1,1,1,1,1,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0],[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,0,1,1,1,1,1],[0,0,0,0,0,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":8},{\"matrix\":[[0,0,0,0,0,0,1,1,0,0],[0,0,0,0,0,0,1,1,0,0],[0,0,1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":9},{\"matrix\":[[0,0,0,0,1,1,0,0,0,0],[0,0,0,0,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[1,1,1,1,1,1,0,0,0,0],[0,0,0,0,1,1,1,1,1,1],[0,0,0,0,1,1,1,1,0,0],[0,0,0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":5},\"steps\":1,\"step_total\":10},{\"matrix\":[[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[1,1,1,1,1,1,0,0],[0,0,1,1,1,1,1,1],[0,0,1,1,1,1,0,0],[0,0,1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":3},\"steps\":1,\"step_total\":11},{\"matrix\":[[0,0,0,0,1,1],[0,0,0,0,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,0,0],[1,1,1,1,0,0]],\"bounds\":{\"min_row\":-2,\"max_row\":5,\"min_col\":-4,\"max_col\":1},\"steps\":1,\"step_total\":12},{\"matrix\":[[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,1,1]],\"bounds\":{\"min_row\":0,\"max_row\":5,\"min_col\":-4,\"max_col\":1},\"steps\":1,\"step_total\":13}]},\"readonly\":true}}");
+
+return { TUTORIAL_TEXTS, TUTORIAL_LEVELS, TUTORIAL_ORDER, TUTORIAL_ARCHIVES };
+},
+    "m16": function (require) {
+/**
+ * 創造模式控制器（對照原版 gui/annotation.py + speedrun.py 的模式開關第三態）。
+ *
+ * 兩種造謎方式：
+ * - 隨機生成：在 m×n 實心矩形上挖掉一塊並頂到外側（挖洞 / 缺口），目標仍是還原成實心矩形。
+ * - 手動構造：在網格上點選連通形狀，該形狀即為「目標」，套用後隨機打亂，玩家要把滑塊復原回這個形狀。
+ *   目標會以淡藍虛線「虛影」顯示在棋盤上（BoardRenderer.solutionMask）。
+ *
+ * 與 main.ts 解耦：只透過 CreativeHost 拿遊戲物件與套用謎題的鉤子。
+ */
+const { SliderMatrix } = require("../core/SliderMatrix.js");
+const { COLORS, GEOMETRY } = require("../render/theme.js");
+const BRAND = '#4696c8';
+const EDITOR_SIZE = 12; // 手動構造網格 12×12
+class CreativeController {
+    constructor(host) {
+        this.editor = null;
+        this.host = host;
+        this.panel = document.createElement('div');
+        this.panel.style.position = 'fixed';
+        this.panel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
+        this.panel.style.right = '8px';
+        this.panel.style.display = 'none';
+        this.panel.style.flexDirection = 'column';
+        this.panel.style.gap = '8px';
+        this.panel.style.width = '210px';
+        this.panel.style.background = COLORS.dialog_bg;
+        this.panel.style.border = `1px solid ${COLORS.dialog_border}`;
+        this.panel.style.borderRadius = '8px';
+        this.panel.style.padding = '12px';
+        this.panel.style.color = COLORS.dialog_text;
+        this.panel.style.fontSize = '12px';
+        this.panel.style.zIndex = '700';
+        this.panel.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
+        this.buildPanel();
+        host.app.appendChild(this.panel);
+    }
+    buildPanel() {
+        const title = document.createElement('div');
+        title.textContent = '创造模式';
+        title.style.fontWeight = 'bold';
+        title.style.fontSize = '13px';
+        title.style.marginBottom = '2px';
+        this.panel.appendChild(title);
+        const sizeRow = document.createElement('div');
+        sizeRow.style.display = 'flex';
+        sizeRow.style.gap = '6px';
+        sizeRow.style.alignItems = 'center';
+        const mkNum = (label, def) => {
+            const wrap = document.createElement('label');
+            wrap.style.display = 'flex';
+            wrap.style.flexDirection = 'column';
+            wrap.style.fontSize = '11px';
+            wrap.style.opacity = '0.8';
+            const span = document.createElement('span');
+            span.textContent = label;
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.value = String(def);
+            inp.min = '2';
+            inp.max = '20';
+            inp.style.width = '48px';
+            inp.style.background = COLORS.input_bg;
+            inp.style.color = COLORS.dialog_text;
+            inp.style.border = `1px solid ${COLORS.border}`;
+            inp.style.borderRadius = '4px';
+            inp.style.padding = '2px 4px';
+            wrap.append(span, inp);
+            return inp;
+        };
+        const mInp = mkNum('行 m', 6);
+        const nInp = mkNum('列 n', 6);
+        const sInp = mkNum('步距', 2);
+        sizeRow.append(mInp, nInp, sInp);
+        this.panel.append(title, sizeRow);
+        const note = document.createElement('div');
+        note.textContent = '随机生成：挖掉一块顶到外侧，目标仍是还原成实心矩形。';
+        note.style.opacity = '0.7';
+        note.style.lineHeight = '1.4';
+        this.panel.appendChild(note);
+        const grid = document.createElement('div');
+        grid.style.display = 'grid';
+        grid.style.gridTemplateColumns = '1fr 1fr';
+        grid.style.gap = '6px';
+        grid.append(this.mkBtn('随机生成（挖洞）', true, () => this.randomGen(mInp, nInp, sInp, false)), this.mkBtn('随机生成（缺口）', true, () => this.randomGen(mInp, nInp, sInp, true)), this.mkBtn('手动构造…', false, () => this.openEditor(sInp)), this.mkBtn('退出创造模式', false, () => this.host.exitCreative()));
+        this.panel.appendChild(grid);
+    }
+    enter() {
+        this.host.enterCreative();
+        this.panel.style.display = 'flex';
+        this.host.showToast('创造模式：生成谜题后自由还原');
+        this.host.schedulePaint();
+    }
+    exit() {
+        this.panel.style.display = 'none';
+        this.closeEditor();
+    }
+    // ---------- 隨機生成 ----------
+    randomGen(mInp, nInp, sInp, edgeOnly) {
+        const m = clampInt(mInp.value, 2, 20, 6);
+        const n = clampInt(nInp.value, 2, 20, 6);
+        const step = clampInt(sInp.value, 1, Math.max(m, n) - 1, 2);
+        const blocks = this.buildRandomShape(m, n, edgeOnly);
+        this.host.applyAsPuzzle(m, n, step, blocks, null);
+        this.host.showToast(edgeOnly ? '已生成「缺口」谜题' : '已生成「挖洞」谜题');
+    }
+    /** 完整矩形挖掉一格並在外側補一個凸起；保證連通且可還原為實心矩形。 */
+    buildRandomShape(m, n, edgeOnly) {
+        const rect = [];
+        for (let r = 0; r < m; r++)
+            for (let c = 0; c < n; c++)
+                rect.push([r, c]);
+        const candidates = [];
+        for (let r = 0; r < m; r++) {
+            for (let c = 0; c < n; c++) {
+                const edge = r === 0 || c === 0 || r === m - 1 || c === n - 1;
+                if (edgeOnly ? edge : !edge)
+                    candidates.push([r, c]);
+            }
+        }
+        if (candidates.length === 0)
+            candidates.push([Math.floor(m / 2), Math.floor(n / 2)]);
+        const [hr, hc] = candidates[Math.floor(Math.random() * candidates.length)];
+        // 找一個「外側、且與挖掉格的某個剩餘鄰格相鄰」的凸起格 → 保證連通
+        const neighbors = [
+            [hr - 1, hc],
+            [hr + 1, hc],
+            [hr, hc - 1],
+            [hr, hc + 1],
+        ].filter(([r, c]) => r >= 0 && r < m && c >= 0 && c < n && !(r === hr && c === hc));
+        const outs = [];
+        for (const [r, c] of neighbors) {
+            outs.push([r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]);
+        }
+        const protrusion = outs.find(([r, c]) => r < 0 || r >= m || c < 0 || c >= n);
+        const set = new Set(rect.map(([r, c]) => `${r}:${c}`));
+        set.delete(`${hr}:${hc}`);
+        set.add(`${protrusion[0]}:${protrusion[1]}`);
+        return [...set].map((k) => k.split(':').map(Number));
+    }
+    // ---------- 手動構造 ----------
+    openEditor(sInp) {
+        this.closeEditor();
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.55)';
+        overlay.style.zIndex = '2000';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.addEventListener('click', () => this.closeEditor());
+        const box = document.createElement('div');
+        box.style.background = COLORS.dialog_bg;
+        box.style.border = `1px solid ${COLORS.dialog_border}`;
+        box.style.borderRadius = '10px';
+        box.style.padding = '16px';
+        box.style.color = COLORS.dialog_text;
+        box.style.fontSize = '13px';
+        box.style.boxShadow = '0 6px 24px rgba(0,0,0,0.5)';
+        box.addEventListener('click', (e) => e.stopPropagation());
+        const title = document.createElement('div');
+        title.textContent = '手动构造（点格增减滑块，需连成一片）';
+        title.style.fontWeight = 'bold';
+        title.style.marginBottom = '8px';
+        box.appendChild(title);
+        const cells = new Set();
+        const grid = document.createElement('div');
+        grid.style.display = 'grid';
+        grid.style.gridTemplateColumns = `repeat(${EDITOR_SIZE}, 22px)`;
+        grid.style.gap = '2px';
+        const cellEls = [];
+        for (let r = 0; r < EDITOR_SIZE; r++) {
+            for (let c = 0; c < EDITOR_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.style.width = '22px';
+                cell.style.height = '22px';
+                cell.style.borderRadius = '3px';
+                cell.style.background = COLORS.input_bg;
+                cell.style.border = `1px solid ${COLORS.border}`;
+                cell.style.cursor = 'pointer';
+                const key = `${r}:${c}`;
+                cell.addEventListener('click', () => {
+                    if (cells.has(key))
+                        cells.delete(key);
+                    else
+                        cells.add(key);
+                    cell.style.background = cells.has(key) ? BRAND : COLORS.input_bg;
+                });
+                cellEls.push(cell);
+                grid.appendChild(cell);
+            }
+        }
+        box.appendChild(grid);
+        const btnRow = document.createElement('div');
+        btnRow.style.display = 'flex';
+        btnRow.style.gap = '8px';
+        btnRow.style.marginTop = '12px';
+        btnRow.appendChild(this.mkBtn('应用为谜题', true, () => {
+            const shape = [...cells].map((k) => {
+                const parts = k.split(':');
+                return [Number(parts[0]), Number(parts[1])];
+            });
+            if (shape.length < 2) {
+                this.host.showToast('至少选 2 个相连滑块');
+                return;
+            }
+            // 連通性檢查
+            if (!SliderMatrix.is_single_connected(new Set(shape.map(([r, c]) => `${r}:${c}`)))) {
+                this.host.showToast('形状必须连成一片');
+                return;
+            }
+            const step = clampInt(sInp.value, 1, 10, 2);
+            const tmp = new SliderMatrix(1, 1);
+            tmp.restore({ blocks: shape });
+            // 打亂幾步，避免一開始就是還原態；仍保證可還原（反向即回原狀）
+            let attempts = 0;
+            do {
+                tmp.shuffle(8, step);
+                attempts++;
+            } while (tmp.is_solved() && attempts < 6);
+            const scrambled = tmp.blocks.map((b) => [b.row, b.col]);
+            const solution = new Set(shape.map(([r, c]) => `${r}:${c}`));
+            let maxR = 0;
+            let maxC = 0;
+            for (const [r, c] of shape) {
+                maxR = Math.max(maxR, r);
+                maxC = Math.max(maxC, c);
+            }
+            this.host.applyAsPuzzle(maxR + 1, maxC + 1, step, scrambled, solution);
+            this.closeEditor();
+            this.host.showToast('已套用：把滑块复原回虚线形状');
+        }));
+        btnRow.appendChild(this.mkBtn('清空', false, () => {
+            cells.clear();
+            for (const el of cellEls)
+                el.style.background = COLORS.input_bg;
+        }));
+        btnRow.appendChild(this.mkBtn('取消', false, () => this.closeEditor()));
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        this.host.app.appendChild(overlay);
+        this.editor = overlay;
+    }
+    closeEditor() {
+        if (this.editor) {
+            this.editor.remove();
+            this.editor = null;
+        }
+    }
+    mkBtn(label, primary, onClick) {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.style.background = primary ? BRAND : COLORS.input_bg;
+        b.style.color = '#fff';
+        b.style.border = primary ? 'none' : `1px solid ${COLORS.border}`;
+        b.style.borderRadius = '4px';
+        b.style.padding = '6px 8px';
+        b.style.cursor = 'pointer';
+        b.style.fontSize = '12px';
+        b.style.textAlign = 'center';
+        b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onClick();
+        });
+        return b;
+    }
+}
+function clampInt(v, lo, hi, def) {
+    const x = Math.floor(Number(v));
+    if (!Number.isFinite(x))
+        return def;
+    return Math.max(lo, Math.min(hi, x));
+}
+
+return { CreativeController };
+},
     "m2": function (require) {
 /**
  * 畫風 token（對照 docs/theme.md；來源 GUI.py::self.colors 與 gui/renderer.py）
@@ -2639,6 +4587,45 @@ return { COLORS, GEOMETRY, easeOut, FONT_FAMILY, TEXT };
 },
     "m3": function (require) {
 /**
+ * 規則常量（對照 game.py / 術語規定.md）
+ *
+ * - h 縫隙（橫向，row 之間）只能 a/d（左右）
+ * - v 縫隙（縱向，col 之間）只能 w/s（上下）
+ * - side 邊界：above/left 含 line（<=），below/right 不含（>）
+ */
+const DIRECTION_DELTA = {
+    w: [-1, 0],
+    s: [1, 0],
+    a: [0, -1],
+    d: [0, 1],
+};
+/** h 縫隙的合法移動方向 */
+const VALID_DIRECTIONS_FOR_GAP = {
+    h: ['a', 'd'],
+    v: ['w', 's'],
+};
+function isValidDirectionForGap(gap, dir) {
+    return VALID_DIRECTIONS_FOR_GAP[gap].includes(dir);
+}
+/**
+ * mod 不變量：step > 1 時，每次合法移動使每塊的 (r % step, c % step) 永不變。
+ * 互動邏輯不依賴它，但務必保留此假設（日後接求解器/著色/連鎖時共用）。
+ */
+function modGroupOf(r, c, step) {
+    return ((r % step) * step + (c % step)) >>> 0;
+}
+
+return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modGroupOf };
+},
+    "m4": function (require) {
+// 原版 arrow_B.png 的 base64 Data URI（gui/renderer.py 默认 _ARROW_STYLE='B'）。
+// 直接内联，避免 file:// 下 <img> 加载污染 canvas 或路径问题。
+const ARROW_IMAGE_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAFOUlEQVR4nO3by40VOxiFUYNuLAwQWZAB2RAB2ZABWSAGRMPgqlED/aiHq/xve63xGVjd3l9bap3WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYHFvRh+gp+8/fn4afQbm9+H9u6+jz9BLfACMnpHSYxAbAMOnktQQRAbA+KkoMQJxATB+KkuLQFQAjJ8ESRGICYDxkyQlAhEBMH4SJUSgfAAOjP/bJQeB/33c8+HqESgdgJ3jN3zutDkElSPwdvQBOjF+7jbFnSv7Atjx13+KXwSxNr0Eqr4C0l8Axs9o0XcwOQDRP3imEnsXSwbAv/2YTdU7XTIAG8QWl2lF3snUAAAdCAAsTABgYQIACxMAWJgAwMIEABYmALAwAYCFCQAsTAD2+TL6ANCTAOz3pQkBkxCA44SAeAJwnhAQSwD6EQLiCEB/QkAMAbiOEFCeAFxPCChLAO4jBJQjAPcTAsoQgHGEgOEEYDwhYBgBqEMIuJ0A1CME3EYA6hICLicA9QkBlxGAHEJAdwKQRwjoRgByCQGnCUA+IeAwAZiHELCbAMxHCNhMAOYlBLxKAOYnBDxLANYhBPxDANYjBPwmAPt8Hn2AjoQAATjgcxMCJiEAxwkB8QTgPCEglgD0IwTEEYD+hIAYAnAdIaA8AbieEFCWANxHCChHAO4nBJQhAOMIAcMJwHhCwDACUIcQcDsBqEcIuI0A1CUEXE4A6hMCLiMAOYSA7gQgjxDQjQDkEgJOE4B8QsBhAjAPIWA3AZiPELCZAMxLCHiVAMxPCHiWAKxDCPiHAKxHCPhNANYlBAgAU4aAjQSAB7OFgA0EgL8JwUIEgOcIwQIEgNcIwcQEgK2EYEICwF5CMBEB4CghmIAAcJYQBBMAehGCQAJAb0IQRAC4ihAEEACuJgSFCQB38AWdov4bfQCmZvjFCQBXMPwQAkBPhh9GAOjB8EMJAGcYfjgB4AjDn4QAsIfhT0YA2MLwJyUAvMTwJycAPMXwFyEAPGb4ixEAWjP8ZQnA2mYbvm8d7iQAazJ8WmsCsBrD5w8CsAbD50kCMDfD50UCMCfDZxMBmIvhs4sAzMHwOUQAshk+pwhAJsOnCwHIYvh0JQAZDJ9LCEBths+lBKAmw+cWAlCL4XMrAajB8BlCAMYyfIYSgDEMnxIE4F6GTykCcA/DpyQBuJbhU5oAXMPwiSAAfRk+UQSgD8MnkgCcY/hEE4BjDJ8pCMA+hs9UBGBNhk9rTQBWY/j8QQDWYPg8SQDmZvi8SADmZPhsIgBzMXx2EYA5GD6HCEA2w+cUAchk+HQhAFkMn64EIIPhcwkBqM3wuZQA1GT43EIAajF8biUANRg+QwjAWIbPUAIwhuFTggDcy/ApRQDuYfiUJADXMnxKE4BrGD4RBKAvwyeKAPRh+EQSgHMMn2gCcIzhMwUB2Mfwmcrb0QcAxhEAWJgAwMIEABYmALAwAYCFCQAsTABgYQIAC0sNwMfRB4C/RN7JkgH48P7d19FngJ6q3umSAdgosrhMKfYuJgegteAfPNOIvoNvRh/gJd9//Py08aPfLj0IPG3T+Ks+/1vLfwE8iK4wkaa4c6VfAK3tegU88BrgSruGX/mvf2sBAWjtUARguOrjby0kAK2JAFkSxt9aUABaEwEypIy/tbAAtCYC1JY0/tYCA9CaCFBT2vhbCw1AayJALYnjby04AA+EgJFSh/8gPgCPiQF3SB89AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8MgvBf32PCl9htwAAAAASUVORK5CYII=';
+
+return { ARROW_IMAGE_DATA_URI };
+},
+    "m5": function (require) {
+/**
  * 棋盤互動控制器（M2）
  * 對照 gui/events.py 的三連互動與 gui/renderer.py 的命中測試。
  *
@@ -2700,6 +4687,8 @@ class BoardController {
         /** 單次觸控完成後是否清空選中，確保下次拖拽是全新的單次操作 */
         this.clearSelectionAfterMove = false;
         this.pinchDist = 0;
+        /** 按下時的鼠標鍵（0=左鍵）；非左鍵不觸發點擊/滑動（原版僅左鍵操作） */
+        this.downButton = 0;
         this.pinchZoom = 1;
         this.pinchActive = false;
         this.ui = ui;
@@ -2744,7 +4733,7 @@ class BoardController {
     }
     attach() {
         const c = this.canvas;
-        c.addEventListener('mousedown', (e) => this.onPointerDown(e.offsetX, e.offsetY));
+        c.addEventListener('mousedown', (e) => this.onPointerDown(e.offsetX, e.offsetY, e.button));
         c.addEventListener('mousemove', (e) => this.onPointerMove(e.offsetX, e.offsetY));
         window.addEventListener('mouseup', () => this.onPointerUp());
         // 觸控
@@ -2813,7 +4802,11 @@ class BoardController {
         if (changed)
             this.ui.requestPaint?.();
     }
-    onPointerDown(x, y) {
+    onPointerDown(x, y, button = 0) {
+        // 原版：事件分發最前面呼叫 spawn_click_feedback —— 左鍵按下都給漣漪
+        this.downButton = button;
+        if (button === 0)
+            this.ui.renderer.spawnClickFeedback(x, y);
         // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移
         const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
         this.drag = {
@@ -2846,6 +4839,8 @@ class BoardController {
         }
     }
     onPointerUp() {
+        const downButton = this.downButton;
+        this.downButton = 0;
         if (!this.drag.active)
             return;
         const { store } = this.ui;
@@ -2855,6 +4850,9 @@ class BoardController {
         const dy = this.drag.ay;
         const [x, y] = [this.drag.startX, this.drag.startY];
         this.drag.active = false;
+        // 非左鍵鬆開：平移已在 move 期間跟手生效，這裡不再觸發點擊/滑動
+        if (downButton !== 0)
+            return;
         if (!moved) {
             // 視為點擊
             this.handleClick(x, y);
@@ -2895,6 +4893,12 @@ class BoardController {
     }
     handleClick(x, y) {
         const { store, renderer } = this.ui;
+        // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）
+        const arrowDir = renderer.hitArrowButton(x, y);
+        if (arrowDir) {
+            this.animateMove(arrowDir);
+            return;
+        }
         const gap = renderer.getGapAtPos(x, y, store);
         const block = renderer.getBlockAtPos(x, y, store);
         if (gap !== null) {
@@ -2904,19 +4908,24 @@ class BoardController {
                 store.cmd.selectedGap = null;
                 store.cmd.selectedBlock = null;
                 store.game.selected.clear();
+                renderer.lastBlockClickWorld = null;
                 this.notify('已取消縫隙');
             }
             else {
                 const reply = selectGap(store.cmd, gap.type, gap.line);
+                renderer.lastBlockClickWorld = null;
                 this.notify(reply.ok ? `選中${gap.type === 'v' ? '縱' : '橫'}向縫隙` : reply.message);
             }
         }
         else if (block !== null && store.cmd.selectedGap !== null) {
             const reply = selectBlock(store.cmd, block.row, block.col);
+            if (reply.ok)
+                renderer.lastBlockClickWorld = renderer.screenToWorld(x, y);
             this.notify(reply.ok ? `選中滑塊組 共${store.game.selected.size}個` : reply.message);
         }
         else if (renderer.isBlankArea(x, y, store)) {
             this.deselect();
+            renderer.lastBlockClickWorld = null;
             this.notify('已取消選中');
         }
     }
@@ -3042,7 +5051,7 @@ class BoardController {
 
 return { BoardController };
 },
-    "m4": function (require) {
+    "m6": function (require) {
 /**
  * 內部指令匯流排（對照 gui/events.py::process_commands 的動作語義）
  *
@@ -3161,7 +5170,7 @@ function reset(ctx) {
 
 return { createContext, selectGap, selectBlock, move, undo, redo, shuffle, reset };
 },
-    "m5": function (require) {
+    "m7": function (require) {
 /**
  * 快照式撤銷/重做（對照 history.py::GameHistory + move_info）
  *
@@ -3277,7 +5286,7 @@ class GameHistory {
 
 return { GameHistory };
 },
-    "m6": function (require) {
+    "m8": function (require) {
 /**
  * 滑塊 Block（對照 game.py::Block）
  *
@@ -3309,39 +5318,7 @@ class Block {
 
 return { Block };
 },
-    "m7": function (require) {
-/**
- * 規則常量（對照 game.py / 術語規定.md）
- *
- * - h 縫隙（橫向，row 之間）只能 a/d（左右）
- * - v 縫隙（縱向，col 之間）只能 w/s（上下）
- * - side 邊界：above/left 含 line（<=），below/right 不含（>）
- */
-const DIRECTION_DELTA = {
-    w: [-1, 0],
-    s: [1, 0],
-    a: [0, -1],
-    d: [0, 1],
-};
-/** h 縫隙的合法移動方向 */
-const VALID_DIRECTIONS_FOR_GAP = {
-    h: ['a', 'd'],
-    v: ['w', 's'],
-};
-function isValidDirectionForGap(gap, dir) {
-    return VALID_DIRECTIONS_FOR_GAP[gap].includes(dir);
-}
-/**
- * mod 不變量：step > 1 時，每次合法移動使每塊的 (r % step, c % step) 永不變。
- * 互動邏輯不依賴它，但務必保留此假設（日後接求解器/著色/連鎖時共用）。
- */
-function modGroupOf(r, c, step) {
-    return ((r % step) * step + (c % step)) >>> 0;
-}
-
-return { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP, isValidDirectionForGap, modGroupOf };
-},
-    "m8": function (require) {
+    "m9": function (require) {
 /**
  * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
  * 存檔格式與原版完全一致：{version, puzzle, step_count, history:{history_index, snapshots:[{matrix,bounds,move_info?}]}}
@@ -3398,11 +5375,17 @@ function blocksToMatrix(blocks) {
 }
 class GameStore {
     constructor(m = 4, n = 4, step = 2, numbered = false) {
+        /**
+         * 自定義目標形狀（創造模式手造形狀用）。null 表示沿用「m×n 實心矩形」判定。
+         * 矩陣每次重建後都要重新掛回，所以集中在各 new SliderMatrix 之後賦值。
+         */
+        this.solutionMask = null;
         this.currentM = m;
         this.currentN = n;
         this.currentStep = step;
         this.numbered = numbered;
         this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
         this.game.assignNumbers(numbered);
         this.cmd = createContext(this.game, step);
     }
@@ -3428,9 +5411,27 @@ class GameStore {
         this.currentStep = step;
         this.numbered = numbered;
         this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
         this.game.assignNumbers(numbered);
         this.cmd = createContext(this.game, step);
         return true;
+    }
+    /**
+     * 直接套用一段「以 [row,col] 列表描述的局面」作為新謎題起點（歷史清空為單一原點）。
+     * 教程載入某一關的起始亂局、創造模式套用手造形狀都走這裡。
+     * solutionMask 由呼叫方另行設定（教程為 null → 走矩形判定）。
+     */
+    applyPuzzle(m, n, step, blocks) {
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.numbered = false;
+        this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
+        this.game.restore({ blocks });
+        this.cmd = createContext(this.game, step);
+        this.cmd.history.save_snapshot(this.game);
+        this.cmd.stepCount = 0;
     }
     /**
      * 新手引導用的固定局面：4×4 等級 1，最下面一整排向右錯開一格。
@@ -3477,6 +5478,7 @@ class GameStore {
                 ...(this.numbered ? { kind: 'numbered' } : {}),
             },
             step_count: this.cmd.stepCount,
+            ...(this.solutionMask ? { solution: Array.from(this.solutionMask) } : {}),
             history: {
                 history_index: this.cmd.history.currentIndex,
                 snapshots,
@@ -3496,7 +5498,11 @@ class GameStore {
         this.currentN = n;
         this.currentStep = step;
         this.numbered = p.puzzle?.kind === 'numbered';
+        this.solutionMask = Array.isArray(p.solution)
+            ? new Set(p.solution)
+            : null;
         this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
         // 將各格式歷史轉為 HistoryEntry（blocks + numbers? + move_info?）
         const entries = [];
         if (Array.isArray(p.history)) {
@@ -3538,312 +5544,6 @@ class GameStore {
 }
 
 return { GameStore };
-},
-    "m9": function (require) {
-/**
- * 滑塊矩陣核心邏輯（對照 game.py::SliderMatrix 逐函數移植）
- *
- * 移植紀律：分支結構與原版保持一致；只把選中旗標 be_opted
- * 從 Block 物件移到 `selected` 集合，語義不變。
- */
-const { Block } = require("./Block.js");
-const { DIRECTION_DELTA } = require("./rules.js");
-class SliderMatrix {
-    constructor(m = 6, n = 6) {
-        this.m = m;
-        this.n = n;
-        this.blocks = [];
-        this.selected = new Set();
-        for (let i = 0; i < m; i++) {
-            for (let j = 0; j < n; j++) {
-                this.blocks.push(new Block([i, j]));
-            }
-        }
-    }
-    get_boundaries() {
-        if (this.blocks.length === 0) {
-            return { min_row: 0, max_row: 0, min_col: 0, max_col: 0 };
-        }
-        const rows = this.blocks.map((b) => b.row);
-        const cols = this.blocks.map((b) => b.col);
-        return {
-            min_row: Math.min(...rows),
-            max_row: Math.max(...rows),
-            min_col: Math.min(...cols),
-            max_col: Math.max(...cols),
-        };
-    }
-    is_valid_h_line(line) {
-        const bounds = this.get_boundaries();
-        return bounds.min_row <= line && line < bounds.max_row;
-    }
-    is_valid_v_line(line) {
-        const bounds = this.get_boundaries();
-        return bounds.min_col <= line && line < bounds.max_col;
-    }
-    /**
-     * 檢查移動後是否合法（碰撞 + 全體單一連通）。
-     * 對照 game.py::check_move_valid。
-     */
-    static check_move_valid(selectedPositions, nonSelectedPositions) {
-        if (selectedPositions.size + nonSelectedPositions.size === 0)
-            return true;
-        for (const pos of selectedPositions) {
-            if (nonSelectedPositions.has(pos))
-                return false; // collision
-        }
-        const all = new Set([...selectedPositions, ...nonSelectedPositions]);
-        return SliderMatrix.is_single_connected(all);
-    }
-    static is_single_connected(positions) {
-        if (positions.size === 0)
-            return true;
-        const start = positions.values().next().value;
-        const visited = new Set();
-        const stack = [start];
-        while (stack.length > 0) {
-            const current = stack.pop();
-            if (visited.has(current))
-                continue;
-            visited.add(current);
-            const [r, c] = current.split(':').map(Number);
-            for (const [dr, dc] of [
-                [-1, 0],
-                [1, 0],
-                [0, -1],
-                [0, 1],
-            ]) {
-                const neighbor = `${r + dr}:${c + dc}`;
-                if (positions.has(neighbor) && !visited.has(neighbor)) {
-                    stack.push(neighbor);
-                }
-            }
-        }
-        return visited.size === positions.size;
-    }
-    /**
-     * 選中分割線一側、與選中滑塊連通的整片方塊。
-     * 對照 game.py::opt（DFS）。
-     * @returns 選中的位置集合（原版直接標 be_opted）
-     */
-    opt(gapType, line, selectedBlock) {
-        // 清除舊選中（原版會先清所有 be_opted）
-        this.selected.clear();
-        const blockSet = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
-        const isConnected = (a, b) => {
-            // 判斷兩個相鄰方塊是否在同一側（不被分割線隔開）
-            if (gapType === 'h') {
-                if ((a[0] <= line && b[0] > line) || (a[0] > line && b[0] <= line)) {
-                    return false;
-                }
-            }
-            else {
-                if ((a[1] <= line && b[1] > line) || (a[1] > line && b[1] <= line)) {
-                    return false;
-                }
-            }
-            return true;
-        };
-        const start = selectedBlock.location;
-        const visited = new Set();
-        const stack = [start];
-        while (stack.length > 0) {
-            const current = stack.pop();
-            const key = `${current[0]}:${current[1]}`;
-            if (visited.has(key))
-                continue;
-            visited.add(key);
-            const [row, col] = current;
-            for (const [dr, dc] of [
-                [-1, 0],
-                [1, 0],
-                [0, -1],
-                [0, 1],
-            ]) {
-                const neighbor = [row + dr, col + dc];
-                const nKey = `${row + dr}:${col + dc}`;
-                if (blockSet.has(nKey) && !visited.has(nKey) && isConnected(current, neighbor)) {
-                    stack.push(neighbor);
-                }
-            }
-        }
-        // 依原版：把 visited 對應的方塊標為選中
-        for (const b of this.blocks) {
-            if (visited.has(`${b.row}:${b.col}`)) {
-                this.selected.add(b);
-            }
-        }
-        return visited;
-    }
-    /**
-     * 預測移動（純邏輯，逐步 1 格驗證）。
-     * 對照 game.py::try_move；不合法回傳 null。
-     */
-    try_move(direction, step) {
-        const selected = this.blocks.filter((b) => this.selected.has(b));
-        const nonSelectedPositions = new Set(this.blocks.filter((b) => !this.selected.has(b)).map((b) => `${b.row}:${b.col}`));
-        if (selected.length === 0)
-            return null;
-        const delta = DIRECTION_DELTA[direction];
-        if (!delta)
-            return null;
-        let current = selected.map((b) => [b.row, b.col]);
-        for (let k = 0; k < step; k++) {
-            const next = current.map(([r, c]) => [r + delta[0], c + delta[1]]);
-            const nextSet = new Set(next.map(([r, c]) => `${r}:${c}`));
-            if (!SliderMatrix.check_move_valid(nextSet, nonSelectedPositions)) {
-                return null;
-            }
-            current = next;
-        }
-        return current.map(([r, c]) => [r, c]);
-    }
-    /** 提交移動（對照 game.py::commit_move）。 */
-    commit_move(finalPositions) {
-        const selected = this.blocks.filter((b) => this.selected.has(b));
-        for (let i = 0; i < selected.length; i++) {
-            selected[i].location = [finalPositions[i][0], finalPositions[i][1]];
-        }
-    }
-    is_solved() {
-        if (this.blocks.length === 0)
-            return false;
-        const rows = this.blocks.map((b) => b.row);
-        const cols = this.blocks.map((b) => b.col);
-        const minR = Math.min(...rows);
-        const maxR = Math.max(...rows);
-        const minC = Math.min(...cols);
-        const maxC = Math.max(...cols);
-        const height = maxR - minR + 1;
-        const width = maxC - minC + 1;
-        if (!((height === this.m && width === this.n) || (height === this.n && width === this.m))) {
-            return false;
-        }
-        const posSet = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
-        for (let r = minR; r <= maxR; r++) {
-            for (let c = minC; c <= maxC; c++) {
-                if (!posSet.has(`${r}:${c}`))
-                    return false;
-            }
-        }
-        return true;
-    }
-    /**
-     * 隨機打亂（對照 game.py::shuffle）。
-     * 注意：刻意保留原版候選縫隙範圍 `range(min+1, max)` —— 不選邊界縫隙是「規定」，
-     * 使網頁版行為與原版逐位元一致。
-     */
-    shuffle(attempts, step, rng = Math.random) {
-        for (let i = 0; i < attempts; i++) {
-            const bounds = this.get_boundaries();
-            const { min_row, max_row, min_col, max_col } = bounds;
-            const hLines = [];
-            for (let line = min_row + 1; line < max_row; line++) {
-                if (this.is_valid_h_line(line))
-                    hLines.push(line);
-            }
-            const vLines = [];
-            for (let line = min_col + 1; line < max_col; line++) {
-                if (this.is_valid_v_line(line))
-                    vLines.push(line);
-            }
-            const allGaps = [
-                ...hLines.map((line) => ({ type: 'h', line })),
-                ...vLines.map((line) => ({ type: 'v', line })),
-            ];
-            if (allGaps.length === 0)
-                continue;
-            const gap = allGaps[Math.floor(rng() * allGaps.length)];
-            const direction = gap.type === 'h' ? (rng() < 0.5 ? 'a' : 'd') : rng() < 0.5 ? 'w' : 's';
-            const block = this.blocks[Math.floor(rng() * this.blocks.length)];
-            this.opt(gap.type, gap.line, block);
-            const finalPositions = this.try_move(direction, step);
-            if (!finalPositions) {
-                this.selected.clear();
-                continue;
-            }
-            this.commit_move(finalPositions);
-            this.selected.clear();
-        }
-        this.selected.clear();
-    }
-    /** 導出 map 文本（#=方塊、_=空白）。對照 game.py::export_map。 */
-    export_map() {
-        const { min_row, max_row, min_col, max_col } = this.get_boundaries();
-        const blockSet = new Set(this.blocks.map((b) => `${b.row}:${b.col}`));
-        const rows = [];
-        for (let row = min_row; row <= max_row; row++) {
-            let line = '';
-            for (let col = min_col; col <= max_col; col++) {
-                line += blockSet.has(`${row}:${col}`) ? '#' : '_';
-            }
-            rows.push(line);
-        }
-        return rows.join('\n');
-    }
-    /** 導入 map 文本。對照 game.py::import_map。 */
-    import_map(mapStr) {
-        const lines = mapStr
-            .split('\n')
-            .map((l) => l.trim())
-            .filter((l) => l.length > 0);
-        if (lines.length === 0)
-            return false;
-        this.blocks = [];
-        this.selected.clear();
-        this.m = lines.length;
-        this.n = lines[0]?.length ?? 0;
-        for (let row = 0; row < lines.length; row++) {
-            const line = lines[row];
-            for (let col = 0; col < line.length; col++) {
-                if (line[col] === '#') {
-                    this.blocks.push(new Block([row, col]));
-                }
-            }
-        }
-        return true;
-    }
-    /** 原地重設為 m×n 實心矩形（reset 用，避免外部 store 持有舊引用）。 */
-    resetTo(m, n) {
-        this.m = m;
-        this.n = n;
-        this.blocks = [];
-        this.selected.clear();
-        for (let i = 0; i < m; i++) {
-            for (let j = 0; j < n; j++) {
-                this.blocks.push(new Block([i, j]));
-            }
-        }
-    }
-    /** 快照當前版面（供 GameHistory 使用）。編號要一起帶走，否則撤銷會把數字弄丟。 */
-    snapshot() {
-        const snap = { blocks: this.blocks.map((b) => [b.row, b.col]) };
-        if (this.blocks.some((b) => b.number !== null)) {
-            snap.numbers = this.blocks.map((b) => b.number);
-        }
-        return snap;
-    }
-    /** 由快照還原版面。 */
-    restore(snapshot) {
-        this.blocks = snapshot.blocks.map(([r, c], i) => {
-            const b = new Block([r, c]);
-            b.number = snapshot.numbers?.[i] ?? null;
-            return b;
-        });
-        this.selected.clear();
-    }
-    /**
-     * 數字形態：按行主序把編號 1..m*n 寫進滑塊（對照 GUI.new_puzzle 的編號步驟）。
-     * 版面被打亂後編號仍跟著各自滑塊，玩家靠它判斷「這塊原本該在哪」。
-     */
-    assignNumbers(enabled) {
-        this.blocks.forEach((b, i) => {
-            b.number = enabled ? i + 1 : null;
-        });
-    }
-}
-
-return { SliderMatrix };
 } };
   var __cache = {};
   function __load(id) {
@@ -3855,17 +5555,21 @@ return { SliderMatrix };
   }
   var __resolve = { "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/main.js": "m0",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/BoardRenderer.js": "m1",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/io/SaveManager.js": "m10",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Timer.js": "m11",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Records.js": "m12",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/SliderMatrix.js": "m10",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/io/SaveManager.js": "m11",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Timer.js": "m12",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Records.js": "m13",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/tutorial.js": "m14",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/tutorial/tutorialData.js": "m15",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/create.js": "m16",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/theme.js": "m2",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/interaction/BoardController.js": "m3",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/CommandBus.js": "m4",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/GameHistory.js": "m5",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/Block.js": "m6",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/rules.js": "m7",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/store/GameStore.js": "m8",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/SliderMatrix.js": "m9" };
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/rules.js": "m3",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/arrowImage.js": "m4",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/interaction/BoardController.js": "m5",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/CommandBus.js": "m6",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/GameHistory.js": "m7",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/Block.js": "m8",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/store/GameStore.js": "m9" };
   function __resolvedId(fromId, spec) {
     var fromAbs = null;
     for (var k in __resolve) { if (__resolve[k] === fromId) { fromAbs = k; break; } }

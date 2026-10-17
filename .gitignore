@@ -7,3 +7,4 @@ save/*.json
 *.log
 *.err
 *.docx
+.workbuddy/
