@@ -12,7 +12,7 @@ const { COLORS, GEOMETRY, easeOut, FONT_FAMILY } = require("./render/theme.js");
 const { shuffle, reset, undo, redo } = require("./core/CommandBus.js");
 const { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } = require("./io/SaveManager.js");
 const { Timer, formatTime } = require("./feature/Timer.js");
-const { Records, stats } = require("./feature/Records.js");
+const { Records, stats, series, tpsOf, blocksToMap } = require("./feature/Records.js");
 const { TutorialController } = require("./feature/tutorial.js");
 const { CreativeController } = require("./feature/create.js");
 const app = document.querySelector('#app');
@@ -148,8 +148,8 @@ const recordsPanel = document.createElement('div');
 recordsPanel.style.position = 'fixed';
 recordsPanel.style.right = '12px';
 recordsPanel.style.top = '40px';
-recordsPanel.style.width = '260px';
-recordsPanel.style.maxHeight = '60vh';
+recordsPanel.style.width = '300px';
+recordsPanel.style.maxHeight = '70vh';
 recordsPanel.style.background = COLORS.dialog_bg;
 recordsPanel.style.border = `1px solid ${COLORS.dialog_border}`;
 recordsPanel.style.borderRadius = '6px';
@@ -179,7 +179,7 @@ recordsHeader.append(recordsTitle, recordsClose);
 recordsPanel.appendChild(recordsHeader);
 const recordsBody = document.createElement('div');
 recordsBody.style.padding = '10px';
-recordsBody.style.maxHeight = 'calc(60vh - 28px)';
+recordsBody.style.maxHeight = 'calc(70vh - 28px)';
 recordsBody.style.overflowY = 'auto';
 recordsPanel.appendChild(recordsBody);
 recordsClose.addEventListener('click', () => { recordsPanel.style.display = 'none'; });
@@ -413,7 +413,7 @@ const controller = new BoardController({
             if (store.solved && timer.state === 'running') {
                 timer.solve();
                 const ms = timer.elapsedMs;
-                records.add(store.currentM, store.currentN, store.currentStep, Math.round(ms), store.cmd.stepCount, false, store.numbered);
+                records.add(store.currentM, store.currentN, store.currentStep, Math.round(ms), store.cmd.stepCount, false, store.numbered, raceInitialBlocks());
                 showToast(`完成 ${formatTime(ms)}`);
             }
         }
@@ -634,12 +634,21 @@ canvas.addEventListener('wheel', (e) => {
     schedulePaint();
 }, { passive: false });
 ;
+/**
+ * 本局的開局局面（打亂後起了個頭的那個狀態）——歷史第 0 條快照就是它，
+ * 因為 CommandBus.shuffle / reset 都會重開歷史。成績記下來，日後才能在面板裡回看。
+ * 拿不到就回 undefined（舊記錄沒有 initial 欄位，面板已有對應的提示）。
+ */
+function raceInitialBlocks() {
+    const all = store.cmd.history.snapshotAll();
+    return all.length ? all[0].blocks : undefined;
+}
 // 供成績面板與 DNF
 function recordDnf() {
     if (gameMode !== 'timed' || timer.state !== 'running')
         return;
     timer.dnf();
-    records.add(store.currentM, store.currentN, store.currentStep, Math.round(timer.elapsedMs), store.cmd.stepCount, true, store.numbered);
+    records.add(store.currentM, store.currentN, store.currentStep, Math.round(timer.elapsedMs), store.cmd.stepCount, true, store.numbered, raceInitialBlocks());
     showToast('DNF');
     schedulePaint();
 }
@@ -886,36 +895,144 @@ function toggleVK() {
     showToast(vis ? '已開啟虛擬鍵盤' : '已關閉虛擬鍵盤');
 }
 // ---------- 成績面板 ----------
+/** 面板展開哪一條 / 哪一條正在等待「再點一次確認刪除」 */
+let recordsDetailId = null;
+let recordsPendingDeleteId = null;
+/** 換了謎題分組就收起展開與待確認狀態，免得殘留指向別組的 id */
+let recordsRenderedKey = null;
 function renderRecordsPanel() {
     const key = store.puzzleKey;
+    if (recordsRenderedKey !== key) {
+        recordsDetailId = null;
+        recordsPendingDeleteId = null;
+        recordsRenderedKey = key;
+    }
     const list = records.get(key);
     const s = stats(list);
+    const rows = series(list);
     recordsBody.innerHTML = '';
-    const t = document.createElement('div');
-    t.textContent = `成績：${key}`;
-    t.style.marginBottom = '6px';
-    t.style.color = COLORS.dialog_title;
-    recordsBody.appendChild(t);
-    const sum = document.createElement('div');
     const fmt = (v) => v === null ? '-' : v === 'DNF' ? 'DNF' : formatTime(v);
-    sum.textContent = `次數 ${s.count} ｜ 最佳 ${fmt(s.best)} ｜ 最差 ${fmt(s.worst)} ｜ DNF ${s.dnf_count} ｜ Ao5 ${fmt(s.ao5)} ｜ Ao12 ${fmt(s.ao12)}`;
+    const title = document.createElement('div');
+    title.textContent = `成績：${key}`;
+    title.style.marginBottom = '6px';
+    title.style.color = COLORS.dialog_title;
+    recordsBody.appendChild(title);
+    // 摘要：對照原版 panel 的顶部统计区（多了原版也有的 mean）
+    const sum = document.createElement('div');
+    sum.style.lineHeight = '1.6';
+    sum.textContent =
+        `次數 ${s.count} ｜ 最佳 ${fmt(s.best)} ｜ 最差 ${fmt(s.worst)} ｜ 平均 ${fmt(s.mean)} ｜ DNF ${s.dnf_count}`;
     recordsBody.appendChild(sum);
-    if (list.length === 0) {
+    const sum2 = document.createElement('div');
+    sum2.style.marginBottom = '6px';
+    sum2.textContent = `Ao5 ${fmt(s.ao5)} ｜ Ao12 ${fmt(s.ao12)}`;
+    recordsBody.appendChild(sum2);
+    if (rows.length === 0) {
         const empty = document.createElement('div');
         empty.style.color = '#888';
-        empty.style.marginTop = '6px';
         empty.textContent = '尚無成績記錄';
         recordsBody.appendChild(empty);
         return;
     }
-    list.slice().reverse().forEach((r) => {
-        const row = document.createElement('div');
-        row.style.padding = '2px 0';
-        row.style.borderBottom = `1px solid ${COLORS.separator}`;
-        row.textContent = `${r.dnf ? 'DNF' : formatTime(r.time_ms)}（${r.moves}步）`;
-        if (r.dnf)
-            row.style.color = '#cc6666';
-        recordsBody.appendChild(row);
+    // 表頭（原版是「序号 / 单次 / Ao5 / Ao12」三列）
+    const head = document.createElement('div');
+    head.style.display = 'flex';
+    head.style.fontSize = '11px';
+    head.style.color = '#888';
+    head.style.paddingBottom = '2px';
+    head.style.borderBottom = `1px solid ${COLORS.separator}`;
+    head.innerHTML =
+        '<span style="width:28px">#</span>'
+            + '<span style="width:74px">單次</span>'
+            + '<span style="width:74px">Ao5</span>'
+            + '<span style="width:74px">Ao12</span>'
+            + '<span style="flex:1"></span>';
+    recordsBody.appendChild(head);
+    rows
+        .map((row, i) => ({ row, i }))
+        .reverse()
+        .forEach(({ row, i }) => {
+        const line = document.createElement('div');
+        line.style.borderBottom = `1px solid ${COLORS.separator}`;
+        recordsBody.appendChild(line);
+        const main = document.createElement('div');
+        main.style.display = 'flex';
+        main.style.alignItems = 'center';
+        main.style.padding = '3px 0';
+        main.style.cursor = 'pointer';
+        main.innerHTML =
+            `<span style="width:28px;color:#888">${i + 1}</span>`
+                + `<span style="width:74px">${row.item.dnf ? 'DNF' : formatTime(row.item.time_ms)}</span>`
+                + `<span style="width:74px">${fmt(row.ao5)}</span>`
+                + `<span style="width:74px">${fmt(row.ao12)}</span>`;
+        if (row.item.dnf)
+            main.style.color = '#cc6666';
+        if (recordsDetailId === row.item.id)
+            main.style.color = '#7fb3ff';
+        recordsBody.appendChild(main);
+        // 展開詳情：對照原版「點擊行顯示初始局面 / 生成時間 / 步數 / TPS」
+        if (recordsDetailId === row.item.id) {
+            const detail = document.createElement('div');
+            detail.style.padding = '4px 0 6px 8px';
+            detail.style.fontSize = '11px';
+            detail.style.lineHeight = '1.7';
+            const t = new Date(row.item.ts);
+            const pad = (v) => String(v).padStart(2, '0');
+            const when = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())} `
+                + `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}`;
+            const meta = document.createElement('div');
+            meta.textContent =
+                `${when} ｜ ${row.item.moves} 步 ｜ TPS ${tpsOf(row.item).toFixed(2)}`;
+            detail.appendChild(meta);
+            if (row.item.initial && row.item.initial.length) {
+                const map = document.createElement('div');
+                map.style.fontFamily = 'Consolas, Menlo, monospace';
+                map.style.fontSize = '9px';
+                map.style.lineHeight = '1.05';
+                map.style.marginTop = '4px';
+                map.textContent = blocksToMap(row.item.initial).join('\n');
+                map.style.whiteSpace = 'pre';
+                detail.appendChild(map);
+            }
+            else {
+                const noInit = document.createElement('div');
+                noInit.style.color = '#777';
+                noInit.textContent = '（這筆沒有記到開局局面，舊版記錄才會這樣）';
+                detail.appendChild(noInit);
+            }
+            recordsBody.appendChild(detail);
+        }
+        // 操作區：刪除（二次確認，對照原版：不支持編輯，只支持刪除）
+        const ops = document.createElement('div');
+        ops.style.display = 'flex';
+        ops.style.gap = '8px';
+        ops.style.padding = '2px 0 6px 28px';
+        const del = document.createElement('span');
+        del.style.cursor = 'pointer';
+        del.style.fontSize = '11px';
+        const pending = recordsPendingDeleteId === row.item.id;
+        del.textContent = pending ? '再點一次確認刪除' : '刪除';
+        del.style.color = pending ? '#ff6b6b' : '#888';
+        del.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (recordsPendingDeleteId !== row.item.id) {
+                recordsPendingDeleteId = row.item.id;
+                renderRecordsPanel();
+                return;
+            }
+            records.delete(key, row.item.id);
+            if (recordsDetailId === row.item.id)
+                recordsDetailId = null;
+            recordsPendingDeleteId = null;
+            renderRecordsPanel();
+        });
+        ops.appendChild(del);
+        recordsBody.appendChild(ops);
+        main.addEventListener('click', () => {
+            recordsDetailId = recordsDetailId === row.item.id ? null : row.item.id;
+            recordsPendingDeleteId = null;
+            renderRecordsPanel();
+        });
     });
 }
 function toggleRecords() {
@@ -3152,10 +3269,52 @@ function stats(records) {
         count: records.length,
         best: valid.length ? Math.min(...valid) : null,
         worst: valid.length ? Math.max(...valid) : null,
+        mean: valid.length ? valid.reduce((s, v) => s + v, 0) / valid.length : null,
         dnf_count: times.length - valid.length,
         ao5: avgOf(times, 5),
         ao12: avgOf(times, 12),
     };
+}
+/**
+ * 逐行成績：每條都帶上「到那一條為止」的 Ao5/Ao12。
+ * 對照原版 records.py::series —— 列表是 csTimer 那種三列，不是只看最後一個平均值。
+ */
+function series(records) {
+    const times = records.map((r) => (r.dnf ? null : r.time_ms));
+    return records.map((item, i) => ({
+        item,
+        ao5: avgOf(times.slice(0, i + 1), 5),
+        ao12: avgOf(times.slice(0, i + 1), 12),
+    }));
+}
+/** TPS（每秒步數），與原版同口徑：moves / 秒。時間 0 或無步數時回 0。 */
+function tpsOf(item) {
+    if (!item.time_ms || item.time_ms <= 0)
+        return 0;
+    return item.moves / (item.time_ms / 1000);
+}
+/**
+ * 把一組方塊座標畫成等寬文字地圖（開局局面用）。
+ * 正常化到左上角為原點，每格兩個字寬（██ / ··），讓 HTML 裡對齊得像棋盤。
+ */
+function blocksToMap(blocks) {
+    if (!blocks || blocks.length === 0)
+        return [];
+    const rows = blocks.map((b) => b[0]);
+    const cols = blocks.map((b) => b[1]);
+    const minR = Math.min(...rows);
+    const maxR = Math.max(...rows);
+    const minC = Math.min(...cols);
+    const maxC = Math.max(...cols);
+    const set = new Set(blocks.map(([r, c]) => `${r}:${c}`));
+    const out = [];
+    for (let r = minR; r <= maxR; r++) {
+        let line = '';
+        for (let c = minC; c <= maxC; c++)
+            line += set.has(`${r}:${c}`) ? '██' : '··';
+        out.push(line);
+    }
+    return out;
 }
 function puzzleKey(m, n, step) {
     return `${step}~${m}*${n}`;
@@ -3183,7 +3342,7 @@ class Records {
         }
     }
     /** numbered：數字形態另算一組（對照原版 puzzle_key 的 #num 後綴）。 */
-    add(m, n, step, timeMs, moves, dnf, numbered = false) {
+    add(m, n, step, timeMs, moves, dnf, numbered = false, initial) {
         var _a;
         const item = {
             id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -3195,6 +3354,8 @@ class Records {
             moves,
             dnf,
         };
+        if (initial && initial.length)
+            item.initial = initial;
         const key = numbered ? `${puzzleKey(m, n, step)}#num` : puzzleKey(m, n, step);
         ((_a = this.data)[key] ?? (_a[key] = [])).push(item);
         this.save();
@@ -3221,7 +3382,7 @@ class Records {
     }
 }
 
-return { avgOf, stats, puzzleKey, Records };
+return { avgOf, stats, series, tpsOf, blocksToMap, puzzleKey, Records };
 },
     "m14": function (require) {
 /**
