@@ -10,6 +10,7 @@ import { cases as saveCases } from '../tests/save.test.mjs';
 import { cases as timerCases } from '../tests/timer.test.mjs';
 import { cases as recordCases } from '../tests/records.test.mjs';
 import { cases as numberedCases } from '../tests/numbered.test.mjs';
+import { cases as bundleCases } from '../tests/bundle.test.mjs';
 
 const suites = [
   { name: 'SliderMatrix/GameHistory', cases: matrixCases },
@@ -20,6 +21,7 @@ const suites = [
   { name: '計時器 (M5)', cases: timerCases },
   { name: '成績 (M6)', cases: recordCases },
   { name: '數字形態 / 引導局面 (M7)', cases: numberedCases },
+  { name: '打包器保險 (bundle)', cases: bundleCases },
 ];
 
 let passed = 0;
