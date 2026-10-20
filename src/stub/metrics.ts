@@ -6,5 +6,5 @@
  *       目標框與標記必須共用 find_best_window 的 region。
  */
 export function metricsNotImplemented(): never {
-  throw new Error('體驗版不含調試面板功能');
+  throw new Error('体验版不含调试面板功能');
 }

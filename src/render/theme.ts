@@ -70,15 +70,23 @@ export function easeOut(t: number): number {
 /**
  * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
  * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
+ *
+ * ⚠️ 為什麼要再掛一串 **TC（繁體）** 字型：介面文案歷史上是簡繁並存（見
+ * `docs/remediation-plan.md` 第 2 項）。只給 SC 字型的話，遇到「謎/擬/鍵」這類
+ * SC 字型沒收的字形，瀏覽器會跳出字型棧去系統預設字型裡找——**同一行文字裡
+ * 簡體是黑體、繁體是別的字型**，就是玩家說的「繁簡字體混用」。
+ * TC 字型排在 SC 之後：缺字時優先在黑體家族內補齊，而不是掉到系統預設。
  */
 export const FONT_FAMILY =
-  "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif";
+  "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', "
+  + "'PingFang TC', 'Noto Sans CJK TC', 'Microsoft JhengHei', 'Source Han Sans TC', "
+  + 'system-ui, sans-serif';
 
 export const TEXT = {
-  solved: '狀態：復原',
-  unsolved: '狀態：未復原',
-  stepPrefix: '步數：',
-  puzzlePrefix: '謎題：',
+  solved: '状态：复原',
+  unsolved: '状态：未复原',
+  stepPrefix: '步数：',
+  puzzlePrefix: '谜题：',
   // 原版選單列順序（GUI.py::self.menu_items）
   menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
 } as const;

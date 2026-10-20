@@ -105,7 +105,7 @@ export async function saveAs(store: GameStore): Promise<void> {
   const w = window as any;
   if (w && typeof w.showSaveFilePicker === 'function') {
     try {
-      const handle = await w.showSaveFilePicker({ suggestedName: name, types: [{ description: 'JSON 存檔', accept: { 'application/json': ['.json'] } }] });
+      const handle = await w.showSaveFilePicker({ suggestedName: name, types: [{ description: 'JSON 存档', accept: { 'application/json': ['.json'] } }] });
       const writable = await handle.createWritable();
       await writable.write(text);
       await writable.close();
@@ -120,20 +120,20 @@ export async function saveAs(store: GameStore): Promise<void> {
 /** 從 JSON 或 map 文本導入。回傳結果文案。 */
 export function importData(store: GameStore, text: string): { ok: boolean; message: string } {
   const t = text.trim();
-  if (!t) return { ok: false, message: '內容為空' };
+  if (!t) return { ok: false, message: '内容为空' };
 
   if (t[0] === '{') {
     try {
       const p = JSON.parse(t) as SavePayload;
-      if (store.deserialize(p)) return { ok: true, message: '已導入存檔' };
-      return { ok: false, message: '存檔內容不合法' };
+      if (store.deserialize(p)) return { ok: true, message: '已导入存档' };
+      return { ok: false, message: '存档内容不合法' };
     } catch {
       return { ok: false, message: 'JSON 解析失敗' };
     }
   }
 
   if (store.game.import_map(t)) {
-    return { ok: true, message: '已導入 map' };
+    return { ok: true, message: '已导入 map' };
   }
   return { ok: false, message: 'map 解析失敗' };
 }
@@ -171,7 +171,7 @@ export function saveSlot(name: string, store: GameStore): SaveSlot | null {
   const list = listSaves();
   const slot: SaveSlot = {
     id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
-    name: name.trim() || '未命名存檔',
+    name: name.trim() || '未命名存档',
     updated: Date.now(),
     payload: store.serialize(),
   };

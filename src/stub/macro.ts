@@ -5,5 +5,5 @@
  * 網頁版：留型別與語義註解，方便日後補齊。
  */
 export function macroNotImplemented(): never {
-  throw new Error('體驗版不含宏定義功能');
+  throw new Error('体验版不含宏定义功能');
 }

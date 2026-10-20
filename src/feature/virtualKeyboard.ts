@@ -157,13 +157,13 @@ export function resolveJumpTarget(raw: string, historyLen: number): JumpResoluti
   if (raw.trim() === '') return { ok: false, target: 0, clamped: false, message: '' };
   const n = Number(raw);
   if (!Number.isFinite(n) || !Number.isInteger(n)) {
-    return { ok: false, target: 0, clamped: false, message: '請輸入步數' };
+    return { ok: false, target: 0, clamped: false, message: '请输入步数' };
   }
-  if (historyLen <= 0) return { ok: false, target: 0, clamped: false, message: '尚無歷史步驟' };
-  if (n < 0) return { ok: false, target: 0, clamped: false, message: '步數不能為負' };
+  if (historyLen <= 0) return { ok: false, target: 0, clamped: false, message: '尚无歷史步骤' };
+  if (n < 0) return { ok: false, target: 0, clamped: false, message: '步数不能为負' };
   if (n < historyLen) return { ok: true, target: n, clamped: false, message: `跳到第 ${n} 步` };
   const target = historyLen - 1;
-  return { ok: true, target, clamped: true, message: `超出範圍，已跳到第 ${target} 步` };
+  return { ok: true, target, clamped: true, message: `超出范围，已跳到第 ${target} 步` };
 }
 
 /**

@@ -17,6 +17,7 @@ import { cases as solverCases } from '../tests/solver.test.mjs';
 import { cases as tutorialCases } from '../tests/tutorial.test.mjs';
 import { cases as vkCases } from '../tests/virtualKeyboard.test.mjs';
 import { cases as ctrlCases } from '../tests/controlModes.test.mjs';
+import { cases as changelogCases } from '../tests/changelog.test.mjs';
 
 const suites = [
   { name: 'SliderMatrix/GameHistory', cases: matrixCases },
@@ -34,6 +35,7 @@ const suites = [
   { name: '教程關卡資料完整性', cases: tutorialCases },
   { name: '虛擬鍵盤（佈局/夾邊/粘滯連播）', cases: vkCases },
   { name: '控制方式解耦（原版五開關）', cases: ctrlCases },
+  { name: '版本公告（更新預告）', cases: changelogCases },
 ];
 
 let passed = 0;

@@ -100,7 +100,7 @@ export const cases = [
         controller.keyboardMouseEnabled = true;
         controller.handleClick(BLOCK_X, GAP_Y);
         if (!store.cmd.selectedGap) throw new Error('可選中時應選上縫隙');
-        if (!status.some((m) => String(m).includes('選中'))) throw new Error('應提示已選中');
+        if (!status.some((m) => String(m).includes('选中'))) throw new Error('應提示已選中');
       }
       // 都關：不選中，但要提示為什麼（原版全關時只剩平移/縮放）
       {

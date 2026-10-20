@@ -107,7 +107,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     resp = await fetch(`${API_BASE}${path}`, { ...init, headers });
   } catch {
-    throw new ApiError(0, '網絡請求失敗（後端可能尚未部署或不可達）');
+    throw new ApiError(0, '网络请求失敗（后端可能尚未部署或不可達）');
   }
   if (resp.status === 204) return undefined as unknown as T;
 

@@ -219,8 +219,9 @@ try {
   const ctrlRow = setDd?.children.find((c) => (c.children[0]?.textContent ?? '') === '控制模式...');
   check(!!ctrlRow, '「设置」有「控制模式...」');
   fire(ctrlRow, 'click');
+  // 開關按鈕的開/關文字（UI 文案已統一為簡體）
   const swBtns = findAll((e) => e.tagName === 'BUTTON')
-    .filter((e) => e.textContent === '開' || e.textContent === '關');
+    .filter((e) => e.textContent === '开' || e.textContent === '关');
   check(swBtns.length >= 5, `控制模式有五個開關（實為 ${swBtns.length}）`);
   if (swBtns.length >= 5) {
     fire(swBtns[0], 'click');

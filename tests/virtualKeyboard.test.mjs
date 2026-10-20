@@ -148,7 +148,7 @@ export const cases = [
       eq(r.ok, true, '超出範圍仍可跳');
       eq(r.target, 9, '夾到最後一步');
       eq(r.clamped, true, '標記為已夾');
-      eq(r.message, '超出範圍，已跳到第 9 步', '夾後文案');
+      eq(r.message, '超出范围，已跳到第 9 步', '夾後文案');
 
       eq(resolveJumpTarget('0', 10).ok, true, '第 0 步合法');
       eq(resolveJumpTarget('-1', 10).ok, false, '負數不合法');

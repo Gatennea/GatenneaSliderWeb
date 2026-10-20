@@ -252,7 +252,7 @@ export class TutorialController {
     title.style.marginBottom = '4px';
     box.appendChild(title);
     const sub = document.createElement('div');
-    sub.textContent = '完成一關才會解鎖下一關；點擊已解鎖的關卡開始。';
+    sub.textContent = '完成一关才会解锁下一关；点击已解锁的关卡开始。';
     sub.style.opacity = '0.7';
     sub.style.marginBottom = '12px';
     box.appendChild(sub);

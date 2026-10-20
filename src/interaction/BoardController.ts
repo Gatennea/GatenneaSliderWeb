@@ -241,7 +241,7 @@ export class BoardController {
     c.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this.deselect();
-      this.notify('已取消選中');
+      this.notify('已取消选中');
     });
   }
 
@@ -347,7 +347,7 @@ export class BoardController {
           // 同樣不把邊界縫算作合法縫，這裡只是把該有的校驗補回手勢路徑。
           const gapReply = selectGap(store.cmd, gesture.gap.type, gesture.gap.line);
           if (!gapReply.ok) {
-            this.notify('這個方向沒有可推的縫隙（別拖整盤外沿）');
+            this.notify('这个方向没有可推的缝隙（別拖整盘外沿）');
             return;
           }
           const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
@@ -388,7 +388,7 @@ export class BoardController {
     // 原版 events.py：selectable = 兩次觸控 or 鼠標鍵盤。兩者都關時只能平移/縮放，
     // 點縫隙/滑塊不該有反應——但要說一句，不能默默無反應
     if ((gap !== null || block !== null) && !this.selectable) {
-      this.notify('兩次觸控與鼠標鍵盤都關閉：只能平移/縮放（到「設置 → 控制模式」開回來）');
+      this.notify('兩次触控与鼠标键盘都关闭：只能平移/缩放（到「设置 → 控制模式」开回来）');
       return;
     }
 
@@ -400,20 +400,20 @@ export class BoardController {
         store.cmd.selectedBlock = null;
         store.game.selected.clear();
         renderer.lastBlockClickWorld = null;
-        this.notify('已取消縫隙');
+        this.notify('已取消缝隙');
       } else {
         const reply = selectGap(store.cmd, gap.type, gap.line);
         renderer.lastBlockClickWorld = null;
-        this.notify(reply.ok ? `選中${gap.type === 'v' ? '縱' : '橫'}向縫隙` : reply.message);
+        this.notify(reply.ok ? `选中${gap.type === 'v' ? '纵' : '横'}向缝隙` : reply.message);
       }
     } else if (block !== null && store.cmd.selectedGap !== null) {
       const reply = selectBlock(store.cmd, block.row, block.col);
       if (reply.ok) renderer.lastBlockClickWorld = renderer.screenToWorld(x, y);
-      this.notify(reply.ok ? `選中滑塊組 共${store.game.selected.size}個` : reply.message);
+      this.notify(reply.ok ? `选中滑块组 共${store.game.selected.size}个` : reply.message);
     } else if (renderer.isBlankArea(x, y, store)) {
       this.deselect();
       renderer.lastBlockClickWorld = null;
-      this.notify('已取消選中');
+      this.notify('已取消选中');
     }
   }
 
@@ -464,24 +464,24 @@ export class BoardController {
     if (store.game.selected.size > 0 && store.game.selected.size === store.game.blocks.length) {
       this.clearSelectionAfterMove = false;
       this.flashInvalid();
-      this.notify('整盤平移沒有意義：過關只看形狀，不看絕對位置');
+      this.notify('整盘平移没有意义：过关只看形状，不看绝对位置');
       return;
     }
 
     if (!cmd.selectedGap) {
       this.clearSelectionAfterMove = false;
-      this.notify('請先選中縫隙');
+      this.notify('请先选中缝隙');
       return;
     }
     if (!cmd.selectedBlock) {
       this.clearSelectionAfterMove = false;
-      this.notify('請先選中滑塊');
+      this.notify('请先选中滑块');
       return;
     }
     if (!isValidDirectionForGap(cmd.selectedGap.type, direction)) {
       this.clearSelectionAfterMove = false;
       this.flashInvalid();
-      this.notify(`移動方向非法（${cmd.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）`);
+      this.notify(`移动方向非法（${cmd.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）`);
       return;
     }
 
@@ -489,7 +489,7 @@ export class BoardController {
     if (!finalPositions) {
       this.clearSelectionAfterMove = false;
       this.flashInvalid();
-      this.notify('移動不合法（碰撞或斷連）');
+      this.notify('移动不合法（碰撞或断连）');
       return;
     }
 
@@ -514,7 +514,7 @@ export class BoardController {
         gap_line: cmd.selectedGap?.line,
         moved_positions: movedPositions,
       });
-      this.notify(`移動 ${direction}`);
+      this.notify(`移动 ${direction}`);
       this.ui.onChanged?.();
       this.ui.requestPaint?.();
       return;
@@ -543,7 +543,7 @@ export class BoardController {
           gap_line: cmd.selectedGap?.line,
           moved_positions: movedPositions,
         });
-        this.notify(`移動 ${direction}`);
+        this.notify(`移动 ${direction}`);
         this.ui.onChanged?.();
         if (this.clearSelectionAfterMove) {
           store.game.selected.clear();

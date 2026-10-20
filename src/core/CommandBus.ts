@@ -49,50 +49,50 @@ export function selectGap(ctx: CommandContext, type: GapType, line: number): Rep
   const valid =
     type === 'h' ? ctx.game.is_valid_h_line(line) : ctx.game.is_valid_v_line(line);
   if (!valid) {
-    return { ok: false, message: `${type} 分割線 ${line} 不合法` };
+    return { ok: false, message: `${type} 分割线 ${line} 不合法` };
   }
   ctx.selectedGap = { type, line };
   ctx.game.selected.clear();
   ctx.selectedBlock = null;
-  return { ok: true, message: `已選中縫隙: ${type} ${line}` };
+  return { ok: true, message: `已选中缝隙: ${type} ${line}` };
 }
 
 export function selectBlock(ctx: CommandContext, row: number, col: number): Reply {
   if (!ctx.selectedGap) {
-    return { ok: false, message: '請先選中縫隙' };
+    return { ok: false, message: '请先选中缝隙' };
   }
   const block = ctx.game.blocks.find((b) => b.row === row && b.col === col);
   if (!block) {
-    return { ok: false, message: `位置 (${row}, ${col}) 沒有滑塊` };
+    return { ok: false, message: `位置 (${row}, ${col}) 没有滑块` };
   }
   ctx.game.opt(ctx.selectedGap.type, ctx.selectedGap.line, block);
   ctx.selectedBlock = [row, col];
   const n = ctx.game.selected.size;
-  return { ok: true, message: `選中滑塊組 共${n}個` };
+  return { ok: true, message: `选中滑块组 共${n}个` };
 }
 
 export function move(ctx: CommandContext, direction: Direction): Reply {
   if (!ctx.selectedGap) {
-    return { ok: false, message: '請先選中縫隙' };
+    return { ok: false, message: '请先选中缝隙' };
   }
   if (!ctx.selectedBlock) {
-    return { ok: false, message: '請先選中滑塊' };
+    return { ok: false, message: '请先选中滑块' };
   }
   if (!isValidDirectionForGap(ctx.selectedGap.type, direction)) {
     const g = ctx.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s';
-    return { ok: false, message: `移動方向非法（${g}）` };
+    return { ok: false, message: `移动方向非法（${g}）` };
   }
   // 禁止整體滑動：合法縫隙（is_valid_*_line）兩側必有方塊，選中組不可能等於全體；
   // 相等只可能是繞過 selectGap 校驗的邊界縫。整盤剛體平移不改變形狀，而判勝只看
   // 形狀——零進度的無意義操作，命令層直接拒絕。
   // （引擎層 try_move 對此放行，與原版一致；規則屬於「網站不給這麼玩」，不是遊戲規則。）
   if (ctx.game.selected.size > 0 && ctx.game.selected.size === ctx.game.blocks.length) {
-    return { ok: false, message: '整盤平移沒有意義：過關只看形狀，不看絕對位置' };
+    return { ok: false, message: '整盘平移没有意义：过关只看形状，不看绝对位置' };
   }
 
   const finalPositions = ctx.game.try_move(direction, ctx.step);
   if (!finalPositions) {
-    return { ok: false, message: '移動不合法（碰撞或斷連）' };
+    return { ok: false, message: '移动不合法（碰撞或断连）' };
   }
 
   const movedPositions = ctx.game.blocks
@@ -109,21 +109,21 @@ export function move(ctx: CommandContext, direction: Direction): Reply {
     gap_line: ctx.selectedGap?.line,
     moved_positions: movedPositions,
   });
-  return { ok: true, message: `移動 ${direction}` };
+  return { ok: true, message: `移动 ${direction}` };
 }
 
 export function undo(ctx: CommandContext): Reply {
   if (!ctx.history.canUndo) {
-    return { ok: false, message: '沒有可撤銷的步驟' };
+    return { ok: false, message: '没有可撤销的步骤' };
   }
   ctx.history.undo(ctx.game);
   ctx.stepCount = Math.max(0, ctx.stepCount - 1);
-  return { ok: true, message: '撤銷' };
+  return { ok: true, message: '撤销' };
 }
 
 export function redo(ctx: CommandContext): Reply {
   if (!ctx.history.canRedo) {
-    return { ok: false, message: '沒有可重做的步驟' };
+    return { ok: false, message: '没有可重做的步骤' };
   }
   ctx.history.redo(ctx.game);
   ctx.stepCount += 1;
@@ -165,7 +165,7 @@ export function shuffle(ctx: CommandContext, attempts = 100, opts: ShuffleOption
   ctx.history = new GameHistory();
   // 打亂後存快照，作為 undo 的基準（退回打亂後第一個狀態）
   ctx.history.save_snapshot(ctx.game);
-  return { ok: true, message: '已打亂' };
+  return { ok: true, message: '已打乱' };
 }
 
 /** reset = 回到復原狀態並清空歷史（對照原版 reset_puzzle → new_puzzle(current m/n/step)）。 */

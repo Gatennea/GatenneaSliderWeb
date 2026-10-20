@@ -16,6 +16,7 @@ const { Timer, formatTime } = require("./feature/Timer.js");
 const { Records, stats, series, tpsOf, blocksToMap } = require("./feature/Records.js");
 const { TutorialController } = require("./feature/tutorial.js");
 const { CreativeController } = require("./feature/create.js");
+const { APP_VERSION, entryFor, shouldShowChangelog } = require("./feature/changelog.js");
 const { VK, StickyPlayer, resolveJumpTarget, vkDefaultPosition, vkClampPosition, vkPanelSize, vkDirectionRows,  } = require("./feature/virtualKeyboard.js");
 const app = document.querySelector('#app');
 app.style.background = COLORS.background;
@@ -304,12 +305,12 @@ function showFullVersionDialog(feature) {
     box.appendChild(tagRow);
     const body = document.createElement('div');
     body.textContent =
-        '這個功能只有 Windows / Python 完整版才有。' +
-            '網頁體驗版保留的是核心玩法：隨機打亂與還原、計時與成績統計、著色與連鎖視覺輔助、' +
-            '本機存檔、三種控制模式。';
+        '这个功能只有 Windows / Python 完整版才有。' +
+            '网頁体验版保留的是核心玩法：随机打乱与还原、计时与成绩统计、着色与连锁视觉輔助、' +
+            '本机存档、三种控制模式。';
     box.appendChild(body);
     const hint = document.createElement('div');
-    hint.textContent = '完整版一樣免費開源，不用自己裝 Python，解壓後雙擊即可執行。';
+    hint.textContent = '完整版一样免費开源，不用自己装 Python，解压后双击即可执行。';
     hint.style.color = '#9a9a9a';
     hint.style.marginTop = '6px';
     box.appendChild(hint);
@@ -332,11 +333,11 @@ function showFullVersionDialog(feature) {
         b.addEventListener('click', onClick);
         return b;
     };
-    btnRow.appendChild(mkBtn('下載完整版', true, () => {
+    btnRow.appendChild(mkBtn('下载完整版', true, () => {
         window.open(FULL_VERSION_URL, '_blank', 'noopener');
         overlay.remove();
     }));
-    btnRow.appendChild(mkBtn('看功能對比', false, () => {
+    btnRow.appendChild(mkBtn('看功能对比', false, () => {
         window.open(`${HOME_URL}#compare`, '_blank', 'noopener');
         overlay.remove();
     }));
@@ -449,16 +450,16 @@ const controller = new BoardController({
     beforeMove: () => {
         if (gameMode === 'timed') {
             if (timer.state === 'idle')
-                return '競速模式：請先使用打亂功能';
+                return '竞速模式：请先使用打乱功能';
             if (timer.state === 'ready')
-                return '競速模式：按空白鍵開始計時後才能滑動';
+                return '竞速模式：按空白键开始计时后才能滑动';
         }
         return null;
     },
     // 復原懸浮窗的「按 Enter 保存」（對照原版提示）
     onPopupSave: () => {
         downloadSave(store);
-        showToast('已下載存檔');
+        showToast('已下载存档');
     },
     onChanged: () => {
         // 引導/章節/解法回放期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
@@ -525,7 +526,7 @@ const creative = new CreativeController({
     },
     enterCreative: () => {
         if (timer.state === 'running') {
-            showToast('計時中無法進入創造模式');
+            showToast('计时中无法进入创造模式');
             return;
         }
         gameMode = 'creative';
@@ -547,9 +548,9 @@ const creative = new CreativeController({
  */
 const TUTORIAL_DONE_KEY = 'gatennea-slider-web:tutorial-done';
 const TUTORIAL_STEPS = [
-    { text: '① 點第 3 行與第 4 行之間那條橫縫 —— 縫是一把刀，它決定切開哪一側', wait: 'gap' },
-    { text: '② 再點第 4 行（最下面一排）的任意一塊 —— 跟它連成一片的會整片一起走', cells: [[3, 1], [3, 2], [3, 3], [3, 4]], wait: 'block' },
-    { text: '③ 按 ← 鍵，或直接在方塊上往左拖 —— 把這一排推回原位', wait: 'move' },
+    { text: '① 点第 3 行与第 4 行之间那条横缝 —— 缝是一把刀，它决定切开哪一側', wait: 'gap' },
+    { text: '② 再点第 4 行（最下面一排）的任意一块 —— 跟它连成一片的会整片一起走', cells: [[3, 1], [3, 2], [3, 3], [3, 4]], wait: 'block' },
+    { text: '③ 按 ← 键，或直接在方块上往左拖 —— 把这一排推回原位', wait: 'move' },
 ];
 let tutorialStep = -1;
 /** 進入引導前的局面與模式，結束時原樣還原，避免引導過程覆蓋玩家原本的對局。 */
@@ -568,7 +569,7 @@ function tutorialSeen() {
 }
 function startTutorial() {
     if (gameMode === 'timed' && timer.state === 'running') {
-        showToast('計時中無法開始引導');
+        showToast('计时中无法开始引导');
         return;
     }
     // 記住進入引導前的局面（含模式），結束時原樣還原，不動用自動存檔
@@ -655,7 +656,7 @@ function tutorialOnMoved() {
     if (tutorialStep !== TUTORIAL_STEPS.length - 1)
         return;
     if (store.solved) {
-        showToast('就是這樣！剩下的交給你了');
+        showToast('就是这样！剩下的交给你了');
         endTutorial();
     }
     else {
@@ -743,9 +744,9 @@ const switchStates = [
     // 但標記屬於視覺強化，單獨可用。
     { key: 'board_marks_enabled', label: '标记', get: () => renderer.boardMarksEnabled, set: (v) => { renderer.boardMarksEnabled = v; schedulePaint(); } },
     { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') {
-            showToast('計時中無法切換模式');
+            showToast('计时中无法切换模式');
             return;
-        } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
+        } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '计时模式：打乱后需按空格开始' : '练习模式：可自由滑动，不计时'); schedulePaint(); } },
     // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
     // 網頁版多一個「箭頭」（復刻原版箭頭按鍵）；「成績」對應成績面板開關。
     { key: 'records_visible', label: '成绩', get: () => recordsVisible, set: (v) => { recordsVisible = v; recordsPanel.style.display = v ? '' : 'none'; if (v)
@@ -981,7 +982,7 @@ function buildVK() {
             showToast(res.message);
         }
         else
-            showToast('步數超出範圍');
+            showToast('步数超出范围');
     }, VK.jump_btn_w, VK.jump_h);
     jumpRow.append(jumpInput, jumpBtn);
     vkBody.append(pad, actionRow, jumpRow);
@@ -1104,6 +1105,116 @@ function syncQuickBarBottom() {
     const raised = tutorialBar.style.display !== 'none';
     quickBar.style.bottom = `${GEOMETRY.status_bar_height + (raised ? 62 : 12)}px`;
 }
+// ---------- 版本公告（更新預告，第 9 項） ----------
+const CHANGELOG_SEEN_KEY = 'gatennea.changelogSeen';
+/**
+ * 新版本第一次打開時彈一次這版改了什麼；看過就記起來，不再打擾。
+ * @param force true = 從選單主動點開（不論看過與否都顯示）
+ */
+function showChangelog(force = false) {
+    const entry = entryFor(APP_VERSION);
+    if (!entry) {
+        if (force)
+            showToast('这一版没有写更新要点');
+        return;
+    }
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0,0,0,0.55)';
+    overlay.style.zIndex = '2000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.addEventListener('click', () => overlay.remove());
+    const box = document.createElement('div');
+    box.style.background = COLORS.dialog_bg;
+    box.style.border = `1px solid ${COLORS.dialog_border}`;
+    box.style.borderRadius = '8px';
+    box.style.padding = '16px';
+    box.style.width = 'min(400px, 90vw)';
+    box.style.maxHeight = '80vh';
+    box.style.overflowY = 'auto';
+    box.style.color = COLORS.dialog_text;
+    box.style.fontSize = '13px';
+    box.addEventListener('click', (e) => e.stopPropagation());
+    const title = document.createElement('div');
+    title.textContent = `本次更新（${entry.date}）`;
+    title.style.fontWeight = 'bold';
+    title.style.color = COLORS.dialog_title;
+    title.style.marginBottom = '10px';
+    box.appendChild(title);
+    const list = document.createElement('div');
+    list.style.display = 'flex';
+    list.style.flexDirection = 'column';
+    list.style.gap = '6px';
+    list.style.lineHeight = '1.5';
+    for (const it of entry.items) {
+        const row = document.createElement('div');
+        row.textContent = `· ${it}`;
+        list.appendChild(row);
+    }
+    box.appendChild(list);
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.gap = '8px';
+    row.style.marginTop = '14px';
+    const full = document.createElement('button');
+    full.textContent = '查看完整更新日志';
+    full.style.background = COLORS.button_bg;
+    full.style.color = '#fff';
+    full.style.border = 'none';
+    full.style.borderRadius = '4px';
+    full.style.padding = '6px 12px';
+    full.style.cursor = 'pointer';
+    full.style.fontSize = '12px';
+    full.style.fontFamily = 'inherit';
+    full.addEventListener('click', () => { window.open('update_info.html', '_blank', 'noopener'); });
+    const ok = document.createElement('button');
+    ok.textContent = '知道了';
+    ok.style.background = COLORS.input_bg;
+    ok.style.color = '#fff';
+    ok.style.border = `1px solid ${COLORS.border}`;
+    ok.style.borderRadius = '4px';
+    ok.style.padding = '6px 12px';
+    ok.style.cursor = 'pointer';
+    ok.style.fontSize = '12px';
+    ok.style.fontFamily = 'inherit';
+    ok.style.marginLeft = 'auto';
+    ok.addEventListener('click', () => overlay.remove());
+    row.append(full, ok);
+    box.appendChild(row);
+    overlay.appendChild(box);
+    app.appendChild(overlay);
+    markChangelogSeen();
+}
+function markChangelogSeen() {
+    try {
+        localStorage.setItem(CHANGELOG_SEEN_KEY, APP_VERSION);
+    }
+    catch {
+        // 隱私模式寫不進：只影響「下次還會再彈一次」
+    }
+}
+/**
+ * 本次啟動是否壓掉更新公告：演示模式與「第一次來先看教程」都設它，
+ * 免得教程選關和公告兩個框疊在一起（公告仍算沒看過，下次再彈）。
+ */
+let suppressChangelogOnce = false;
+/** 啟動時檢查：這一版沒看過就彈一次 */
+function maybeShowChangelogOnBoot() {
+    if (suppressChangelogOnce)
+        return;
+    let seen = null;
+    try {
+        seen = localStorage.getItem(CHANGELOG_SEEN_KEY);
+    }
+    catch {
+        seen = null;
+    }
+    if (shouldShowChangelog(seen))
+        showChangelog();
+}
 // ---------- 介面偏好（虛擬鍵盤開關與位置） ----------
 const UI_PREFS_KEY = 'gatennea.ui.v1';
 function saveUiPrefs() {
@@ -1180,7 +1291,7 @@ function renderRecordsPanel() {
     recordsBody.innerHTML = '';
     const fmt = (v) => v === null ? '-' : v === 'DNF' ? 'DNF' : formatTime(v);
     const title = document.createElement('div');
-    title.textContent = `成績：${key}`;
+    title.textContent = `成绩：${key}`;
     title.style.marginBottom = '6px';
     title.style.color = COLORS.dialog_title;
     recordsBody.appendChild(title);
@@ -1188,7 +1299,7 @@ function renderRecordsPanel() {
     const sum = document.createElement('div');
     sum.style.lineHeight = '1.6';
     sum.textContent =
-        `次數 ${s.count} ｜ 最佳 ${fmt(s.best)} ｜ 最差 ${fmt(s.worst)} ｜ 平均 ${fmt(s.mean)} ｜ DNF ${s.dnf_count}`;
+        `次数 ${s.count} ｜ 最佳 ${fmt(s.best)} ｜ 最差 ${fmt(s.worst)} ｜ 平均 ${fmt(s.mean)} ｜ DNF ${s.dnf_count}`;
     recordsBody.appendChild(sum);
     const sum2 = document.createElement('div');
     sum2.style.marginBottom = '6px';
@@ -1197,7 +1308,7 @@ function renderRecordsPanel() {
     if (rows.length === 0) {
         const empty = document.createElement('div');
         empty.style.color = '#888';
-        empty.textContent = '尚無成績記錄';
+        empty.textContent = '尚无成绩记录';
         recordsBody.appendChild(empty);
         return;
     }
@@ -1210,7 +1321,7 @@ function renderRecordsPanel() {
     head.style.borderBottom = `1px solid ${COLORS.separator}`;
     head.innerHTML =
         '<span style="width:28px">#</span>'
-            + '<span style="width:74px">單次</span>'
+            + '<span style="width:74px">单次</span>'
             + '<span style="width:74px">Ao5</span>'
             + '<span style="width:74px">Ao12</span>'
             + '<span style="flex:1"></span>';
@@ -1264,7 +1375,7 @@ function renderRecordsPanel() {
             else {
                 const noInit = document.createElement('div');
                 noInit.style.color = '#777';
-                noInit.textContent = '（這筆沒有記到開局局面，舊版記錄才會這樣）';
+                noInit.textContent = '（这筆没有记到开局局面，旧版记录才会这样）';
                 detail.appendChild(noInit);
             }
             recordsBody.appendChild(detail);
@@ -1278,7 +1389,7 @@ function renderRecordsPanel() {
         del.style.cursor = 'pointer';
         del.style.fontSize = '11px';
         const pending = recordsPendingDeleteId === row.item.id;
-        del.textContent = pending ? '再點一次確認刪除' : '刪除';
+        del.textContent = pending ? '再点一次确认删除' : '删除';
         del.style.color = pending ? '#ff6b6b' : '#888';
         del.addEventListener('click', (ev) => {
             ev.stopPropagation();
@@ -1309,7 +1420,7 @@ function toggleRecords() {
     if (vis)
         renderRecordsPanel();
     syncSwitches();
-    showToast(vis ? '已開啟成績面板' : '已關閉成績面板');
+    showToast(vis ? '已开启成绩面板' : '已关闭成绩面板');
 }
 // ---------- 共用動作 ----------
 const DIR_DELTA_ANIM = { w: [-1, 0], s: [1, 0], a: [0, -1], d: [0, 1] };
@@ -1379,11 +1490,11 @@ let historyAnimBusy = false;
 function requestHistoryStep(kind) {
     const hist = store.cmd.history;
     if (kind === 'undo' && !hist.canUndo) {
-        showToast('沒有可撤銷的步驟');
+        showToast('没有可撤销的步骤');
         return;
     }
     if (kind === 'redo' && !hist.canRedo) {
-        showToast('沒有可重做的步驟');
+        showToast('没有可重做的步骤');
         return;
     }
     historyAnimQueue.push(kind);
@@ -1474,7 +1585,7 @@ function handleRedo() {
 }
 function handleShuffle() {
     if (gameMode === 'timed' && timer.state === 'running') {
-        showToast('計時中無法打亂');
+        showToast('计时中无法打乱');
         return;
     }
     const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
@@ -1492,7 +1603,7 @@ function handleShuffle() {
 }
 function handleReset() {
     if (gameMode === 'timed' && timer.state === 'running') {
-        showToast('計時中無法重置');
+        showToast('计时中无法重置');
         return;
     }
     const r = reset(store.cmd);
@@ -1507,7 +1618,7 @@ function handleReset() {
 }
 function handleCustomPuzzle() {
     if (gameMode === 'timed' && timer.state === 'running') {
-        showToast('計時中無法切換謎題');
+        showToast('计时中无法切换谜题');
         return;
     }
     // 用自訂頁面表單取代瀏覽器內建 prompt
@@ -1530,13 +1641,13 @@ function handleCustomPuzzle() {
     box.style.fontSize = '13px';
     box.addEventListener('click', (e) => e.stopPropagation());
     const title = document.createElement('div');
-    title.textContent = '自訂謎題';
+    title.textContent = '自订谜题';
     title.style.marginBottom = '12px';
     title.style.fontWeight = 'bold';
     box.appendChild(title);
     const fields = [
-        ['列數 m', String(store.currentM)],
-        ['行數 n', String(store.currentN)],
+        ['列数 m', String(store.currentM)],
+        ['行数 n', String(store.currentN)],
         ['步距 step', String(store.currentStep)],
     ];
     const inputs = [];
@@ -1567,7 +1678,7 @@ function handleCustomPuzzle() {
     btnRow.style.justifyContent = 'flex-end';
     btnRow.style.marginTop = '12px';
     const ok = document.createElement('button');
-    ok.textContent = '確定';
+    ok.textContent = '确定';
     ok.style.background = COLORS.button_bg;
     ok.style.color = '#fff';
     ok.style.border = 'none';
@@ -1588,7 +1699,7 @@ function handleCustomPuzzle() {
         const n = Number(inputs[1].value);
         const step = Number(inputs[2].value);
         if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step)) {
-            showToast('輸入需為整數');
+            showToast('输入需为整数');
             return;
         }
         if (step >= Math.max(m, n)) {
@@ -1601,7 +1712,7 @@ function handleCustomPuzzle() {
         autosave(store);
         timer.cancel();
         schedulePaint();
-        showToast(`切換謎題 ${step}~${m}*${n}`);
+        showToast(`切换谜题 ${step}~${m}*${n}`);
         overlay.remove();
     });
     btnRow.append(cancel, ok);
@@ -1615,7 +1726,7 @@ function handleCustomPuzzle() {
  */
 function handlePresetPuzzle(m, n, step, numbered = store.numbered) {
     if (gameMode === 'timed' && timer.state === 'running') {
-        showToast('計時中無法切換謎題');
+        showToast('计时中无法切换谜题');
         return;
     }
     store.newPuzzle(m, n, step, numbered);
@@ -1624,7 +1735,7 @@ function handlePresetPuzzle(m, n, step, numbered = store.numbered) {
     autosave(store);
     timer.cancel();
     schedulePaint();
-    showToast(`切換謎題 ${step}~${m}×${n}${numbered ? '（數字形態）' : ''}`);
+    showToast(`切换谜题 ${step}~${m}×${n}${numbered ? '（数字形态）' : ''}`);
 }
 /** 目前玩的檔位是不是這一個（選單上畫 ✓）。 */
 function isCurrentPreset(p) {
@@ -1636,7 +1747,7 @@ function currentPuzzleLabel() {
 }
 function setGameMode(mode) {
     if (mode !== 'practice' && timer.state === 'running') {
-        showToast('計時中無法切換模式');
+        showToast('计时中无法切换模式');
         return;
     }
     // 離開創造模式時收起其面板
@@ -1645,11 +1756,11 @@ function setGameMode(mode) {
     gameMode = mode;
     timer.cancel();
     if (mode === 'timed')
-        showToast('計時模式：打亂後需按空格開始');
+        showToast('计时模式：打乱后需按空格开始');
     else if (mode === 'creative')
-        showToast('創造模式：生成謎題後自由還原');
+        showToast('创造模式：生成谜题后自由还原');
     else
-        showToast('練習模式：可自由滑動，不計時');
+        showToast('练习模式：可自由滑动，不计时');
     schedulePaint();
 }
 /** 標成完整版專屬：體驗版保留選單位階，但明確告知做不到，引導去下載。 */
@@ -1657,8 +1768,8 @@ const pro = (text) => ({ text, pro: true });
 /** 開外部連結（官網各頁、源碼庫）。 */
 const link = (text, href) => ({ text, href });
 /** 數字形態選單項的兩種文字（開關式，寫法對照「模式:练习 / 模式:竞速」）。 */
-const NUMBERED_ITEM_OFF = '數字形態:关';
-const NUMBERED_ITEM_ON = '數字形態:开';
+const NUMBERED_ITEM_OFF = '数字形态:关';
+const NUMBERED_ITEM_ON = '数字形态:开';
 // ---------- 求解器（聚攏 + 填洞補缺）----------
 /**
  * 求解器是「盡力而為」：
@@ -1719,11 +1830,11 @@ async function autoSolve() {
         // 對齊原版 fill_partial 協議：沒能全解也把走得動的部分播出來——解成啥樣是啥樣。
         // solve() 只會回傳「回放後比初始局面好」的部分成果，所以這串步數走完必定有淨進展；
         // 播到斷點後玩家可以自己接手，也可以再點一次「自動求解」從新局面續算。
-        showToast(`没能完全解出，先把走得動的 ${res.steps} 步演示给你看`);
+        showToast(`没能完全解出，先把走得动的 ${res.steps} 步演示给你看`);
     }
     await playSolverActions(res.actions);
     if (!store.game.is_solved()) {
-        showToast('只能推進到這兒——求解器盡力而為，也可能踩到死局；可再點一次「自動求解」續算');
+        showToast('只能推进到这兒——求解器盡力而为，也可能踩到死局；可再点一次「自动求解」续算');
     }
 }
 /** 依序回放走法：每步都走選縫隙 → 點塊 → 推，與玩家手動操作完全一致。 */
@@ -1742,18 +1853,18 @@ async function playSolverActions(actions) {
         showToast('已还原');
 }
 const menus = [
-    { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...', '---', '存檔列表...'], handler: (item) => {
+    { label: '文件', items: ['打开 Ctrl+O', '保存 Ctrl+S', '另存为...', '---', '存档列表...'], handler: (item) => {
             if (item.includes('另存')) {
                 saveAs(store);
-                showToast('另存為...');
+                showToast('另存为...');
             }
             else if (item.includes('保存')) {
                 downloadSave(store);
-                showToast('已下載存檔');
+                showToast('已下载存档');
             }
             else if (item.includes('打开'))
                 fileInput.click();
-            else if (item.includes('存檔列表'))
+            else if (item.includes('存档列表'))
                 openSaveList();
         }
     },
@@ -1806,7 +1917,7 @@ const menus = [
                 hintOneStep();
             else if (item === '自动求解')
                 void autoSolve();
-            else if (item.startsWith('數字形態'))
+            else if (item.startsWith('数字形态'))
                 toggleNumbered();
         }
     },
@@ -1824,18 +1935,22 @@ const menus = [
     // 的直達入口。原版只有一條「命令面板 Ctrl+K」，網頁版照做：叫出可按關鍵字過濾全部
     // 選單命令的面板（手機上沒有 Ctrl+K，入口就靠這個選單項）。
     { label: '搜索', items: ['命令面板 Ctrl+K'], handler: () => openCommandPalette() },
-    { label: '帮助', items: ['关于', '新手引导', '---', link('玩法詳解', `${HOME_URL}guide.html`), link('更新日誌', `${HOME_URL}update_info.html`)], handler: (item) => {
-            if (item.includes('关于'))
-                showToast('貓九的滑塊遊戲 網頁體驗版 v0.1');
+    // 「更新日志」開本地那份（file:// 與官網目錄下都有），不必繞到官網；
+    // 「本次更新」直接彈公告。注意別用 link()——那會走 window.open。
+    { label: '帮助', items: ['关于', '新手引导', '本次更新', '---', link('玩法详解', `${HOME_URL}guide.html`), link('更新日志', 'update_info.html')], handler: (item) => {
+            if (item === '本次更新')
+                showChangelog(true);
+            else if (item.includes('关于'))
+                showToast('貓九的滑块遊戲 网頁体验版 v0.1');
             else if (item.includes('新手引导'))
                 startTutorial();
         }
     },
-    { label: '教程', items: ['新手教程', '教程关卡...', '---', link('玩法詳解（網頁）', `${HOME_URL}guide.html`)], handler: (item) => {
+    { label: '教程', items: ['新手教程', '教程关卡...', '---', link('玩法详解（网頁）', `${HOME_URL}guide.html`)], handler: (item) => {
             if (item.includes('新手教程') || item.includes('教程关卡'))
                 tutorial.openLevelSelect();
         } },
-    { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
+    { label: '官网', items: [link('首頁', HOME_URL), link('下载完整版', FULL_VERSION_URL), '---', link('GitHub 源码', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 /**
  * 謎題的二級子菜單（對照原版 GUI.puzzle_sub_presets）。
@@ -1880,7 +1995,7 @@ let ctaEl = null;
 function ensureCta() {
     if (!ctaEl) {
         const cta = document.createElement('a');
-        cta.textContent = '免費下載完整版';
+        cta.textContent = '免費下载完整版';
         cta.href = FULL_VERSION_URL;
         cta.target = '_blank';
         cta.rel = 'noopener';
@@ -1894,7 +2009,7 @@ function ensureCta() {
         cta.style.textDecoration = 'none';
         cta.style.whiteSpace = 'nowrap';
         // 求解器與新手教程已移植到網頁版，不再列進「只有完整版有」
-        cta.title = '三角／米字形態、宏定義都在完整版裡，一樣免費開源';
+        cta.title = '三角／米字形态、宏定义都在完整版里，一样免費开源';
         ctaEl = cta;
     }
     // 每次都重掛一次：appendChild 會把既有節點移到最後，
@@ -1905,17 +2020,17 @@ function ensureCta() {
 /** 讓選單文字跟著目前狀態走（切換後要重畫選單才看得到）。 */
 function refreshNumberedMenuItem() {
     const items = menus[2].items;
-    const at = items.findIndex((it) => typeof it === 'string' && it.startsWith('數字形態'));
+    const at = items.findIndex((it) => typeof it === 'string' && it.startsWith('数字形态'));
     if (at >= 0)
         items[at] = store.numbered ? NUMBERED_ITEM_ON : NUMBERED_ITEM_OFF;
 }
 function toggleNumbered() {
     if (gameMode === 'timed' && timer.state === 'running') {
-        showToast('計時中無法切換形態');
+        showToast('计时中无法切换形态');
         return;
     }
     store.setNumbered(!store.numbered);
-    showToast(store.numbered ? '數字形態：開（滑塊帶編號，照數字排回去）' : '數字形態：關');
+    showToast(store.numbered ? '数字形态：开（滑块带编号，照数字排回去）' : '数字形态：关');
     refreshNumberedMenuItem();
     buildMenu();
     updateStatus();
@@ -2232,7 +2347,7 @@ function openCommandPalette() {
     box.addEventListener('click', (e) => e.stopPropagation());
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = '輸入指令關鍵字（例：打乱、教程、存档、6×6）';
+    input.placeholder = '输入指令关键字（例：打乱、教程、存档、6×6）';
     input.style.background = COLORS.input_bg;
     input.style.border = 'none';
     input.style.borderBottom = `1px solid ${COLORS.dialog_border}`;
@@ -2252,7 +2367,7 @@ function openCommandPalette() {
         list.textContent = '';
         if (shown.length === 0) {
             const empty = document.createElement('div');
-            empty.textContent = '沒有符合的指令';
+            empty.textContent = '没有符合的指令';
             empty.style.padding = '12px';
             empty.style.color = COLORS.menu_text;
             list.appendChild(empty);
@@ -2344,18 +2459,18 @@ function openSettingsModal() {
     // 可任意組合、甚至全關（全關時只能平移/縮放）。網頁版原先只有前三個，
     // 虛擬鍵盤只能靠 F1、箭頭按鍵只跟右側面板開關走，都沒進這張表。
     const hint = document.createElement('div');
-    hint.textContent = '五種操作方式可任意組合（甚至全關）；全關時只能平移/縮放';
+    hint.textContent = '五种操作方式可任意组合（甚至全关）；全关时只能平移/缩放';
     hint.style.color = '#c8c878';
     hint.style.fontSize = '11px';
     hint.style.marginBottom = '10px';
     hint.style.lineHeight = '1.5';
     box.appendChild(hint);
     const modes = [
-        { key: 'singleTouch', label: '單次觸控', desc: '直接拖拽滑塊即滑動；完成後清空選中，下次拖拽是全新操作' },
-        { key: 'twoTouch', label: '兩次觸控', desc: '點縫隙 → 點方塊 → 再拖拽 / 鍵盤（原版操作習慣）' },
-        { key: 'keyboardMouse', label: '鼠標鍵盤', desc: '方向鍵 / W/A/S/D 移動滑塊（撤銷/重做等快捷鍵不受影響）' },
-        { key: 'virtualKeyboard', label: '虛擬鍵盤', desc: '屏幕上的方向鍵盤（F1 亦可開關）；手機沒有實體鍵盤，關了仍可用手勢' },
-        { key: 'arrows', label: '箭頭按鍵', desc: '選中縫隙後在切片兩端顯示可點的方向箭頭' },
+        { key: 'singleTouch', label: '单次触控', desc: '直接拖拽滑块即滑动；完成后清空选中，下次拖拽是全新操作' },
+        { key: 'twoTouch', label: '兩次触控', desc: '点缝隙 → 点方块 → 再拖拽 / 键盘（原版操作习慣）' },
+        { key: 'keyboardMouse', label: '鼠标键盘', desc: '方向键 / W/A/S/D 移动滑块（撤销/重做等快捷键不受影響）' },
+        { key: 'virtualKeyboard', label: '虛拟键盘', desc: '屏幕上的方向键盘（F1 亦可开关）；手机没有实体键盘，关了仍可用手勢' },
+        { key: 'arrows', label: '箭頭按键', desc: '选中缝隙后在切片兩端显示可点的方向箭頭' },
     ];
     const renderRow = (m) => {
         const row = document.createElement('div');
@@ -2393,7 +2508,7 @@ function openSettingsModal() {
                 return vkPanel.style.display !== 'none';
             return renderer.arrowEnabled;
         };
-        const refresh = () => { btn.textContent = state() ? '開' : '關'; btn.style.background = state() ? COLORS.button_bg : COLORS.input_bg; };
+        const refresh = () => { btn.textContent = state() ? '开' : '关'; btn.style.background = state() ? COLORS.button_bg : COLORS.input_bg; };
         refresh();
         btn.addEventListener('click', () => {
             const v = !state();
@@ -2420,7 +2535,7 @@ function openSettingsModal() {
     };
     modes.forEach((m) => box.appendChild(renderRow(m)));
     const close = document.createElement('button');
-    close.textContent = '關閉';
+    close.textContent = '关闭';
     close.style.background = COLORS.input_bg;
     close.style.color = '#fff';
     close.style.border = '1px solid ' + COLORS.border;
@@ -2458,7 +2573,7 @@ function openSaveList() {
     box.style.fontSize = '13px';
     box.addEventListener('click', (e) => e.stopPropagation());
     const title = document.createElement('div');
-    title.textContent = '存檔列表（本機瀏覽器）';
+    title.textContent = '存档列表（本机瀏览器）';
     title.style.fontWeight = 'bold';
     title.style.marginBottom = '4px';
     box.appendChild(title);
@@ -2466,7 +2581,7 @@ function openSaveList() {
     nameRow.style.display = 'flex';
     nameRow.style.gap = '6px';
     const nameInput = document.createElement('input');
-    nameInput.placeholder = '輸入存檔名稱';
+    nameInput.placeholder = '输入存档名稱';
     nameInput.style.flex = '1';
     nameInput.style.background = COLORS.input_bg;
     nameInput.style.color = COLORS.input_text;
@@ -2474,7 +2589,7 @@ function openSaveList() {
     nameInput.style.borderRadius = '4px';
     nameInput.style.padding = '6px';
     const addBtn = document.createElement('button');
-    addBtn.textContent = '新增存檔';
+    addBtn.textContent = '新增存档';
     addBtn.style.background = COLORS.button_bg;
     addBtn.style.color = '#fff';
     addBtn.style.border = 'none';
@@ -2482,11 +2597,11 @@ function openSaveList() {
     addBtn.style.padding = '6px 10px';
     addBtn.style.cursor = 'pointer';
     addBtn.addEventListener('click', () => {
-        const slot = saveSlot(nameInput.value || '未命名存檔', store);
+        const slot = saveSlot(nameInput.value || '未命名存档', store);
         if (slot) {
             nameInput.value = '';
             renderList();
-            showToast('已新增存檔');
+            showToast('已新增存档');
         }
     });
     nameRow.append(nameInput, addBtn);
@@ -2502,7 +2617,7 @@ function openSaveList() {
             const empty = document.createElement('div');
             empty.style.color = '#888';
             empty.style.padding = '12px';
-            empty.textContent = '尚無存檔';
+            empty.textContent = '尚无存档';
             listEl.appendChild(empty);
             return;
         }
@@ -2531,9 +2646,9 @@ function openSaveList() {
                 b.addEventListener('click', cb);
                 return b;
             };
-            btnRow.append(mk('讀取', () => {
+            btnRow.append(mk('读取', () => {
                 if (gameMode === 'timed') {
-                    showToast('競速模式中無法讀取存檔');
+                    showToast('竞速模式中无法读取存档');
                     return;
                 }
                 if (loadSlot(slot.id, store)) {
@@ -2541,19 +2656,19 @@ function openSaveList() {
                     centerCamera();
                     autosave(store);
                     schedulePaint();
-                    showToast('已讀取 ' + slot.name);
+                    showToast('已读取 ' + slot.name);
                 }
                 else
-                    showToast('讀取失敗');
-            }), mk('覆蓋', () => {
+                    showToast('读取失敗');
+            }), mk('覆盖', () => {
                 if (updateSlot(slot.id, store)) {
                     renderList();
-                    showToast('已覆蓋 ' + slot.name);
+                    showToast('已覆盖 ' + slot.name);
                 }
-            }), mk('刪除', () => {
+            }), mk('删除', () => {
                 deleteSlot(slot.id);
                 renderList();
-                showToast('已刪除');
+                showToast('已删除');
             }));
             row.append(info, btnRow);
             listEl.appendChild(row);
@@ -2561,7 +2676,7 @@ function openSaveList() {
     };
     renderList();
     const close = document.createElement('button');
-    close.textContent = '關閉';
+    close.textContent = '关闭';
     close.style.background = COLORS.input_bg;
     close.style.color = '#fff';
     close.style.border = '1px solid ' + COLORS.border;
@@ -2582,7 +2697,7 @@ fileInput.style.display = 'none';
 app.appendChild(fileInput);
 fileInput.addEventListener('change', () => {
     if (gameMode === 'timed') {
-        showToast('競速模式中無法打開存檔');
+        showToast('竞速模式中无法打开存档');
         fileInput.value = '';
         return;
     }
@@ -2638,7 +2753,7 @@ window.addEventListener('keydown', (e) => {
     if (ctrl && key === 's') {
         e.preventDefault();
         downloadSave(store);
-        showToast('已下載存檔');
+        showToast('已下载存档');
         return;
     }
     if (ctrl && key === 'o') {
@@ -2660,11 +2775,11 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (gameMode === 'timed') {
             if (timer.state === 'idle') {
-                showToast('請先使用打亂功能');
+                showToast('请先使用打乱功能');
             }
             else if (timer.state === 'ready') {
                 timer.start();
-                showToast('計時開始');
+                showToast('计时开始');
                 schedulePaint();
             }
             else if (timer.state === 'running') {
@@ -2790,9 +2905,11 @@ function demoTick() {
     }
 }
 if (demoFile) {
+    // 首頁演示模式：自動播放，別彈更新公告打斷演示
+    suppressChangelogOnce = true;
     const startDemo = (p) => {
         if (!store.deserialize(p)) {
-            showToast('演示存檔無法載入');
+            showToast('演示存档无法载入');
             return;
         }
         store.cmd.history.setIndex(0);
@@ -2813,21 +2930,25 @@ if (demoFile) {
         fetch(demoFile)
             .then((r) => r.json())
             .then(startDemo)
-            .catch(() => showToast('無法載入演示存檔'));
+            .catch(() => showToast('无法载入演示存档'));
     }
 }
 else if (autoload(store)) {
     centerCamera();
-    showToast('已恢復上次進度');
+    showToast('已恢复上次进度');
 }
 else if (!tutorialSeen()) {
     // 第一次來、又沒有舊進度：打開章節教程（新手教程）選關，帶著由淺入深地玩
     tutorial.openLevelSelect();
+    // 同一次啟動裡不要再疊一個更新公告——兩個框一起彈，新手會不知道先看哪個。
+    // 公告仍算「沒看過」，下次進來（教程已見過）再彈。
+    suppressChangelogOnce = true;
 }
 // 虛擬鍵盤的開關與位置：觸屏設備默認開著（手機沒有實體方向鍵，不開就沒法走）
 loadUiPrefs();
 syncQuickBarBottom();
 syncRotateHint();
+maybeShowChangelogOnBoot();
 schedulePaint();
 setInterval(() => {
     if (timer.isRunning) {
@@ -2836,7 +2957,7 @@ setInterval(() => {
     }
 }, 100);
 console.log('[web] 初始 solved =', store.solved);
-console.log('[web] 互動：點縫隙 → 點方塊 → W/S/A/D 或拖動');
+console.log('[web] 互动：点缝隙 → 点方块 → W/S/A/D 或拖动');
 
 return {};
 },
@@ -4784,7 +4905,7 @@ async function saveAs(store) {
     const w = window;
     if (w && typeof w.showSaveFilePicker === 'function') {
         try {
-            const handle = await w.showSaveFilePicker({ suggestedName: name, types: [{ description: 'JSON 存檔', accept: { 'application/json': ['.json'] } }] });
+            const handle = await w.showSaveFilePicker({ suggestedName: name, types: [{ description: 'JSON 存档', accept: { 'application/json': ['.json'] } }] });
             const writable = await handle.createWritable();
             await writable.write(text);
             await writable.close();
@@ -4800,20 +4921,20 @@ async function saveAs(store) {
 function importData(store, text) {
     const t = text.trim();
     if (!t)
-        return { ok: false, message: '內容為空' };
+        return { ok: false, message: '内容为空' };
     if (t[0] === '{') {
         try {
             const p = JSON.parse(t);
             if (store.deserialize(p))
-                return { ok: true, message: '已導入存檔' };
-            return { ok: false, message: '存檔內容不合法' };
+                return { ok: true, message: '已导入存档' };
+            return { ok: false, message: '存档内容不合法' };
         }
         catch {
             return { ok: false, message: 'JSON 解析失敗' };
         }
     }
     if (store.game.import_map(t)) {
-        return { ok: true, message: '已導入 map' };
+        return { ok: true, message: '已导入 map' };
     }
     return { ok: false, message: 'map 解析失敗' };
 }
@@ -4841,7 +4962,7 @@ function saveSlot(name, store) {
     const list = listSaves();
     const slot = {
         id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
-        name: name.trim() || '未命名存檔',
+        name: name.trim() || '未命名存档',
         updated: Date.now(),
         payload: store.serialize(),
     };
@@ -5251,7 +5372,7 @@ class TutorialController {
         title.style.marginBottom = '4px';
         box.appendChild(title);
         const sub = document.createElement('div');
-        sub.textContent = '完成一關才會解鎖下一關；點擊已解鎖的關卡開始。';
+        sub.textContent = '完成一关才会解锁下一关；点击已解锁的关卡开始。';
         sub.style.opacity = '0.7';
         sub.style.marginBottom = '12px';
         box.appendChild(sub);
@@ -6131,13 +6252,21 @@ function easeOut(t) {
 /**
  * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
  * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
+ *
+ * ⚠️ 為什麼要再掛一串 **TC（繁體）** 字型：介面文案歷史上是簡繁並存（見
+ * `docs/remediation-plan.md` 第 2 項）。只給 SC 字型的話，遇到「謎/擬/鍵」這類
+ * SC 字型沒收的字形，瀏覽器會跳出字型棧去系統預設字型裡找——**同一行文字裡
+ * 簡體是黑體、繁體是別的字型**，就是玩家說的「繁簡字體混用」。
+ * TC 字型排在 SC 之後：缺字時優先在黑體家族內補齊，而不是掉到系統預設。
  */
-const FONT_FAMILY = "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif";
+const FONT_FAMILY = "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', "
+    + "'PingFang TC', 'Noto Sans CJK TC', 'Microsoft JhengHei', 'Source Han Sans TC', "
+    + 'system-ui, sans-serif';
 const TEXT = {
-    solved: '狀態：復原',
-    unsolved: '狀態：未復原',
-    stepPrefix: '步數：',
-    puzzlePrefix: '謎題：',
+    solved: '状态：复原',
+    unsolved: '状态：未复原',
+    stepPrefix: '步数：',
+    puzzlePrefix: '谜题：',
     // 原版選單列順序（GUI.py::self.menu_items）
     menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
 };
@@ -6426,6 +6555,56 @@ return { CreativeController };
 },
     "m21": function (require) {
 /**
+ * 版本公告（更新預告）。
+ *
+ * 為什麼要有這份清單：玩家打開網頁不會知道「這次又改了什麼」，功能加了也等於沒加。
+ * 做法是——每次發版把這一版的要點寫進 `CHANGELOG` 最前面並把 `APP_VERSION` 改成
+ * 同一個值，玩家下一次打開時彈一次公告（看過就記進 localStorage，不再打擾）。
+ *
+ * 完整歷史仍寫在 `update_info.html`（官網的更新日誌頁），公告裡只放**要點**並給
+ * 一個「查看完整更新日誌」的入口，不要把整份歷史搬進 app.js 裡佔體積。
+ */
+/**
+ * 當前版本號。發版時：① 改這裡；② 在 `CHANGELOG` 最前面加一筆同版本號的條目。
+ * 只有版本號與上次記錄的不同、且該版本有條目時才會彈公告。
+ */
+const APP_VERSION = '2026-10-20';
+/** 最新的排在最前面 */
+const CHANGELOG = [
+    {
+        version: '2026-10-20',
+        date: '10月20日',
+        items: [
+            '复原成功会弹提示（竞速还附用时、步数与最佳成绩）',
+            '棋盘标记：可开关的目标框与洞/凸起记号（右侧「标记」）',
+            '菜单栏补齐「搜索」：Ctrl+K 叫出命令面板，找不到功能时先来这里',
+            '谜题菜单改二级子菜单，档位说人话（如「6×6 等级2」）',
+            '虚拟键盘对齐原版；底部常驻撤销/重做，手机上不用先调出键盘',
+            '五种操作方式可分别开关（设置 → 控制模式）',
+            '手机：竖屏不再把棋盘挤扁、底部栏不再被挡住、误触更少',
+        ],
+    },
+];
+/** 取某一版的公告；沒有就回 null（該版本不必彈） */
+function entryFor(version) {
+    return CHANGELOG.find((e) => e.version === version) ?? null;
+}
+/**
+ * 要不要彈公告：版本與上次看過的不同、且該版有條目才彈。
+ *
+ * 第一次來（lastSeen 為 null）也算「沒看過」——但只在**有條目**時才彈，
+ * 免得每次改版本號卻忘了寫條目，玩家就被一個空框打擾。
+ */
+function shouldShowChangelog(lastSeen, version = APP_VERSION) {
+    if (lastSeen === version)
+        return false;
+    return entryFor(version) !== null;
+}
+
+return { APP_VERSION, CHANGELOG, entryFor, shouldShowChangelog };
+},
+    "m22": function (require) {
+/**
  * 虛擬鍵盤：純邏輯部分（佈局計算 + 粘滯連續播放 + 跳到某步）。
  *
  * DOM 長什麼樣由 `main.ts` 決定，這裡只回答三個問題：
@@ -6540,16 +6719,16 @@ function resolveJumpTarget(raw, historyLen) {
         return { ok: false, target: 0, clamped: false, message: '' };
     const n = Number(raw);
     if (!Number.isFinite(n) || !Number.isInteger(n)) {
-        return { ok: false, target: 0, clamped: false, message: '請輸入步數' };
+        return { ok: false, target: 0, clamped: false, message: '请输入步数' };
     }
     if (historyLen <= 0)
-        return { ok: false, target: 0, clamped: false, message: '尚無歷史步驟' };
+        return { ok: false, target: 0, clamped: false, message: '尚无歷史步骤' };
     if (n < 0)
-        return { ok: false, target: 0, clamped: false, message: '步數不能為負' };
+        return { ok: false, target: 0, clamped: false, message: '步数不能为負' };
     if (n < historyLen)
         return { ok: true, target: n, clamped: false, message: `跳到第 ${n} 步` };
     const target = historyLen - 1;
-    return { ok: true, target, clamped: true, message: `超出範圍，已跳到第 ${target} 步` };
+    return { ok: true, target, clamped: true, message: `超出范围，已跳到第 ${target} 步` };
 }
 /**
  * 粘滯模式下的連續撤銷/重做（原版 `_toggle_continuous` + `_stop_continuous_undo_redo`）。
@@ -7563,7 +7742,7 @@ class BoardController {
         c.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             this.deselect();
-            this.notify('已取消選中');
+            this.notify('已取消选中');
         });
     }
     updateHover(x, y) {
@@ -7670,7 +7849,7 @@ class BoardController {
                     // 同樣不把邊界縫算作合法縫，這裡只是把該有的校驗補回手勢路徑。
                     const gapReply = selectGap(store.cmd, gesture.gap.type, gesture.gap.line);
                     if (!gapReply.ok) {
-                        this.notify('這個方向沒有可推的縫隙（別拖整盤外沿）');
+                        this.notify('这个方向没有可推的缝隙（別拖整盘外沿）');
                         return;
                     }
                     const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
@@ -7708,7 +7887,7 @@ class BoardController {
         // 原版 events.py：selectable = 兩次觸控 or 鼠標鍵盤。兩者都關時只能平移/縮放，
         // 點縫隙/滑塊不該有反應——但要說一句，不能默默無反應
         if ((gap !== null || block !== null) && !this.selectable) {
-            this.notify('兩次觸控與鼠標鍵盤都關閉：只能平移/縮放（到「設置 → 控制模式」開回來）');
+            this.notify('兩次触控与鼠标键盘都关闭：只能平移/缩放（到「设置 → 控制模式」开回来）');
             return;
         }
         if (gap !== null) {
@@ -7719,24 +7898,24 @@ class BoardController {
                 store.cmd.selectedBlock = null;
                 store.game.selected.clear();
                 renderer.lastBlockClickWorld = null;
-                this.notify('已取消縫隙');
+                this.notify('已取消缝隙');
             }
             else {
                 const reply = selectGap(store.cmd, gap.type, gap.line);
                 renderer.lastBlockClickWorld = null;
-                this.notify(reply.ok ? `選中${gap.type === 'v' ? '縱' : '橫'}向縫隙` : reply.message);
+                this.notify(reply.ok ? `选中${gap.type === 'v' ? '纵' : '横'}向缝隙` : reply.message);
             }
         }
         else if (block !== null && store.cmd.selectedGap !== null) {
             const reply = selectBlock(store.cmd, block.row, block.col);
             if (reply.ok)
                 renderer.lastBlockClickWorld = renderer.screenToWorld(x, y);
-            this.notify(reply.ok ? `選中滑塊組 共${store.game.selected.size}個` : reply.message);
+            this.notify(reply.ok ? `选中滑块组 共${store.game.selected.size}个` : reply.message);
         }
         else if (renderer.isBlankArea(x, y, store)) {
             this.deselect();
             renderer.lastBlockClickWorld = null;
-            this.notify('已取消選中');
+            this.notify('已取消选中');
         }
     }
     onKeyDown(e) {
@@ -7786,30 +7965,30 @@ class BoardController {
         if (store.game.selected.size > 0 && store.game.selected.size === store.game.blocks.length) {
             this.clearSelectionAfterMove = false;
             this.flashInvalid();
-            this.notify('整盤平移沒有意義：過關只看形狀，不看絕對位置');
+            this.notify('整盘平移没有意义：过关只看形状，不看绝对位置');
             return;
         }
         if (!cmd.selectedGap) {
             this.clearSelectionAfterMove = false;
-            this.notify('請先選中縫隙');
+            this.notify('请先选中缝隙');
             return;
         }
         if (!cmd.selectedBlock) {
             this.clearSelectionAfterMove = false;
-            this.notify('請先選中滑塊');
+            this.notify('请先选中滑块');
             return;
         }
         if (!isValidDirectionForGap(cmd.selectedGap.type, direction)) {
             this.clearSelectionAfterMove = false;
             this.flashInvalid();
-            this.notify(`移動方向非法（${cmd.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）`);
+            this.notify(`移动方向非法（${cmd.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）`);
             return;
         }
         const finalPositions = store.game.try_move(direction, store.currentStep);
         if (!finalPositions) {
             this.clearSelectionAfterMove = false;
             this.flashInvalid();
-            this.notify('移動不合法（碰撞或斷連）');
+            this.notify('移动不合法（碰撞或断连）');
             return;
         }
         // 建立全量 block 的起點/終點（選中組終點用 finalPositions，其餘原地）
@@ -7832,7 +8011,7 @@ class BoardController {
                 gap_line: cmd.selectedGap?.line,
                 moved_positions: movedPositions,
             });
-            this.notify(`移動 ${direction}`);
+            this.notify(`移动 ${direction}`);
             this.ui.onChanged?.();
             this.ui.requestPaint?.();
             return;
@@ -7861,7 +8040,7 @@ class BoardController {
                     gap_line: cmd.selectedGap?.line,
                     moved_positions: movedPositions,
                 });
-                this.notify(`移動 ${direction}`);
+                this.notify(`移动 ${direction}`);
                 this.ui.onChanged?.();
                 if (this.clearSelectionAfterMove) {
                     store.game.selected.clear();
@@ -7911,47 +8090,47 @@ function createContext(game, step) {
 function selectGap(ctx, type, line) {
     const valid = type === 'h' ? ctx.game.is_valid_h_line(line) : ctx.game.is_valid_v_line(line);
     if (!valid) {
-        return { ok: false, message: `${type} 分割線 ${line} 不合法` };
+        return { ok: false, message: `${type} 分割线 ${line} 不合法` };
     }
     ctx.selectedGap = { type, line };
     ctx.game.selected.clear();
     ctx.selectedBlock = null;
-    return { ok: true, message: `已選中縫隙: ${type} ${line}` };
+    return { ok: true, message: `已选中缝隙: ${type} ${line}` };
 }
 function selectBlock(ctx, row, col) {
     if (!ctx.selectedGap) {
-        return { ok: false, message: '請先選中縫隙' };
+        return { ok: false, message: '请先选中缝隙' };
     }
     const block = ctx.game.blocks.find((b) => b.row === row && b.col === col);
     if (!block) {
-        return { ok: false, message: `位置 (${row}, ${col}) 沒有滑塊` };
+        return { ok: false, message: `位置 (${row}, ${col}) 没有滑块` };
     }
     ctx.game.opt(ctx.selectedGap.type, ctx.selectedGap.line, block);
     ctx.selectedBlock = [row, col];
     const n = ctx.game.selected.size;
-    return { ok: true, message: `選中滑塊組 共${n}個` };
+    return { ok: true, message: `选中滑块组 共${n}个` };
 }
 function move(ctx, direction) {
     if (!ctx.selectedGap) {
-        return { ok: false, message: '請先選中縫隙' };
+        return { ok: false, message: '请先选中缝隙' };
     }
     if (!ctx.selectedBlock) {
-        return { ok: false, message: '請先選中滑塊' };
+        return { ok: false, message: '请先选中滑块' };
     }
     if (!isValidDirectionForGap(ctx.selectedGap.type, direction)) {
         const g = ctx.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s';
-        return { ok: false, message: `移動方向非法（${g}）` };
+        return { ok: false, message: `移动方向非法（${g}）` };
     }
     // 禁止整體滑動：合法縫隙（is_valid_*_line）兩側必有方塊，選中組不可能等於全體；
     // 相等只可能是繞過 selectGap 校驗的邊界縫。整盤剛體平移不改變形狀，而判勝只看
     // 形狀——零進度的無意義操作，命令層直接拒絕。
     // （引擎層 try_move 對此放行，與原版一致；規則屬於「網站不給這麼玩」，不是遊戲規則。）
     if (ctx.game.selected.size > 0 && ctx.game.selected.size === ctx.game.blocks.length) {
-        return { ok: false, message: '整盤平移沒有意義：過關只看形狀，不看絕對位置' };
+        return { ok: false, message: '整盘平移没有意义：过关只看形状，不看绝对位置' };
     }
     const finalPositions = ctx.game.try_move(direction, ctx.step);
     if (!finalPositions) {
-        return { ok: false, message: '移動不合法（碰撞或斷連）' };
+        return { ok: false, message: '移动不合法（碰撞或断连）' };
     }
     const movedPositions = ctx.game.blocks
         .filter((b) => ctx.game.selected.has(b))
@@ -7966,19 +8145,19 @@ function move(ctx, direction) {
         gap_line: ctx.selectedGap?.line,
         moved_positions: movedPositions,
     });
-    return { ok: true, message: `移動 ${direction}` };
+    return { ok: true, message: `移动 ${direction}` };
 }
 function undo(ctx) {
     if (!ctx.history.canUndo) {
-        return { ok: false, message: '沒有可撤銷的步驟' };
+        return { ok: false, message: '没有可撤销的步骤' };
     }
     ctx.history.undo(ctx.game);
     ctx.stepCount = Math.max(0, ctx.stepCount - 1);
-    return { ok: true, message: '撤銷' };
+    return { ok: true, message: '撤销' };
 }
 function redo(ctx) {
     if (!ctx.history.canRedo) {
-        return { ok: false, message: '沒有可重做的步驟' };
+        return { ok: false, message: '没有可重做的步骤' };
     }
     ctx.history.redo(ctx.game);
     ctx.stepCount += 1;
@@ -8009,7 +8188,7 @@ function shuffle(ctx, attempts = 100, opts = {}) {
     ctx.history = new GameHistory();
     // 打亂後存快照，作為 undo 的基準（退回打亂後第一個狀態）
     ctx.history.save_snapshot(ctx.game);
-    return { ok: true, message: '已打亂' };
+    return { ok: true, message: '已打乱' };
 }
 /** reset = 回到復原狀態並清空歷史（對照原版 reset_puzzle → new_puzzle(current m/n/step)）。 */
 function reset(ctx) {
@@ -8049,7 +8228,8 @@ return { createContext, selectGap, selectBlock, move, undo, redo, shuffle, reset
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/tutorial/tutorialData.js": "m19",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/theme.js": "m2",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/create.js": "m20",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/virtualKeyboard.js": "m21",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/changelog.js": "m21",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/virtualKeyboard.js": "m22",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/rules.js": "m3",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/arrowImage.js": "m4",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/gather.js": "m5",
