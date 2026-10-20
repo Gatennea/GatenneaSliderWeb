@@ -82,7 +82,7 @@
 
 ### 17. 更新预告（同 9，合并）
 
-### 18. 缺少拖拽跟随动画（一边拖一边动）+ 越界判定 *（2026-10-20 新增，待定顺序）
+### 18. 缺少拖拽跟随动画（一边拖一边动）+ 越界判定 *（2026-10-20 新增，2026-10-21 完成）
 - 现象：按住滑块拖动时画面零反馈，松手才播动画；且拖动过程中不提示"这一方向最多能推多远"。
 - 网页版现状：`BoardController.onPointerMove` 只处理相机平移（`drag.pan`），
   手势与滑动全部压在 `onPointerUp`：`directGestureFromDrag()`（8 区映射）→ `selectGap` →
@@ -105,8 +105,19 @@
   5. **越界松手回弹**：未移动且 `drag_follow_invalid` → `_shake_blocks` + `_shake_offset()`
      （约 200ms，|sin|×线性衰减包络，振幅 6px×zoom，仅增强模式）。
   6. 单次触控发起的跟随结束自动取消选中；两次触控保留缝隙选中以便继续操作。
-- 方案（待排期）：`onPointerMove` 增加 `dragFollow` 状态（缝/方向/起点/maxCells/offset/invalid），
-  渲染层把选中组画在 `start + offset`。
+- 方案（已实现，`18648a4`）：
+  - `src/feature/dragFollow.ts`（纯逻辑，可单测）：`probeMaxCells`（递增 `try_move` 探可达
+    上限、向下取整到 step 倍数、全选按 0 格）/ `followFrame`（屏幕位移→格位移→投影前进
+    轴→夹紧 `[0,max]`，0.05 格容差）/ `quantizeCells` / `continuationRatio` / `shakeAmpCells`。
+  - `BoardController`：`onPointerMove` 跟随中每帧更新（不受阈值限制）；进入时定缝并走
+    `selectGap` 校验（边界缝 toast 拒绝，与第 1 项同源）；松手 `commitFollow` 量化提交 +
+    拖拽接续（动画起点前移、时长按剩余比例缩短）；越界且未移动 → 闪红 + toast + 回弹。
+  - `BoardRenderer`：`dragFollow` 实时偏移（动画优先、跟随让位）+ `followShake`（松手那刻
+    选中组的拷贝，沿越界方向本身抖）。
+  - `main.ts`：shuffle/reset/历史步进前 `cancelFollow()`；教程回放中锁住棋盤。
+  - ⚠️ 与原版的两处**有意不一致**：① 回弹方向按意图实现（原版 `_shake_offset` 把行符号加到
+    屏幕 x 上是笔误，横向拖拽会竖直抖）；② `try_move` 对全员选中放行是刻意保留的引擎语义，
+    探测前按 0 格处理（对应原版 `all_selected`），不在引擎层加护栏。
 - **引擎侧已经够用，不必先改引擎**（实测核对，别误判）：网页版 `SliderMatrix.try_move(direction, n)`
   本就是「逐格验证、任一步不合法返回 null」，n 可以大于 current_step，所以 `_probe_max_cells`
   用现有 `try_move` 递增试 n 即可；原版多了 `try_move_ex` 的 reason（collision/disconnected/
@@ -118,12 +129,11 @@
 
 ## 执行顺序（用户已认可）
 教程 bug 止血(0) → 相机专项(1+8) → 棋盘反馈(3+4) → 菜单栏(6) → 虚拟键盘(7，兼解 13) →
-控制解耦(5) → 手机专项(10–16) → 繁简统一(2) → 更新预告(9)；第 18 项（拖拽跟随）待用户定顺序，
-因其与"控制解耦(5)"共用手势分发，倾向排在 5 之后或与其合并做。
+控制解耦(5) → 手机专项(10–16) → 繁简统一(2) → 更新预告(9) → 拖拽跟随(18)。
 
-## 执行结果（2026-10-21 收口）
+## 执行结果（2026-10-21 收口，全部 18 项完成）
 
-除第 18 项外全部完成。每条一行：缺陷项 → 提交 → 一句话结果。
+每条一行：缺陷项 → 提交 → 一句话结果。
 
 | 缺陷项 | 提交 | 结果 |
 | --- | --- | --- |
@@ -145,10 +155,16 @@
 | 15 顶部被遮挡 | `d5b6985` | 同上；下拉定位改跟菜单栏实际底边（写死 32px 会偏） |
 | 16 存档时机 | `d5b6985` | visibilitychange 与 pagehide 也存（手机切后台常无 beforeunload） |
 | 17 更新日志页 | `00d8276` | update_info.html 补本轮全部条目 |
-| 18 拖拽跟随 | `3568324` | **仅记录待排期**：原版机制已查明（14px 阈值/探上限/每帧夹紧/松手接续/撞墙回弹），方案见上 |
+| 18 拖拽跟随 | `18648a4` | 纯逻辑 `dragFollow.ts` + 控制器级移植：定缝/探上限/每帧夹紧/松手量化/拖拽接续/越界回弹；`tests/dragFollow.test.mjs` 15 例 |
 
-验证口径：每站 `npm test`（现 114 例）+ `npm run smoke`（DOM stub 真跑 app.js，
+验证口径：每站 `npm test`（现 129 例，全量连跑 11 次全绿）+ `npm run smoke`（DOM stub 真跑 app.js，
 抓 TDZ/事件接线）；构建 `npm run build`。构建产物巨量 diff 的成因见 `docs/build.md`。
+排查 flaky 的教训（本次实测）：测试助手 `findMovableSetup` 曾硬编码扫缝隙 line 0..4，
+而安全打乱是随机游走（最多 80 步×±2 格），28% 的局面前 0..4 内一条合法缝都不剩
+（外框漂到如 rows -14..-8 × cols 9..14）→ 偶发「打乱后应至少存在一步可走」失败。
+**枚举合法步必须按 `get_boundaries()` 推范围**（全范围扫 500/500 非空；不变式：安全打乱
+最后一步的反向步必然合法）。该失败与跨套件污染无关——flaky 先怀疑测试自己的假设。
+另：`scripts/run-tests.mjs` 的「只跑指定檔」参数此前从未实现（`88fa780` 补上）。
 
 遗留（用户明确暂缓，不是遗漏）：
 - 求解器宏接口移植（`solver/ml/gap_solver.py` + `fill_macro.py`）：入口已按用户要求改回
