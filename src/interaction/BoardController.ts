@@ -113,6 +113,17 @@ export class BoardController {
   singleTouchEnabled = true;
   twoTouchEnabled = true;
   keyboardMouseEnabled = true;
+
+  /**
+   * 能不能「選中」縫隙/滑塊（原版 events.py 的 selectable）。
+   *
+   * 原版是 `two_touch_on or mouse_kb_on`——兩次觸控與鼠標鍵盤**任一**開著就能選，
+   * 因為鼠標也是靠點縫隙/點方塊來選中的（關掉兩者就沒有任何選中手段了）。
+   * 單次觸控不在條件裡：它的拖拽自帶定縫，不需要先選。
+   */
+  get selectable(): boolean {
+    return this.twoTouchEnabled || this.keyboardMouseEnabled;
+  }
   /** 單次觸控完成後是否清空選中，確保下次拖拽是全新的單次操作 */
   clearSelectionAfterMove = false;
   private pinchDist = 0;
@@ -244,8 +255,11 @@ export class BoardController {
     this.downButton = button;
     if (button === 0) this.ui.renderer.spawnClickFeedback(x, y);
 
-    // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移
+    // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移。
+    // 但原版 events.py 記拖拽起點的條件是「單次 or 兩次觸控」——兩者都關時
+    // 按在滑塊上也只是平移（全關就該只剩平移/縮放），否則會留下起點卻不給滑。
     const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
+    const draggable = this.singleTouchEnabled || this.twoTouchEnabled;
     this.drag = {
       active: true,
       startX: x,
@@ -255,7 +269,7 @@ export class BoardController {
       moved: false,
       ax: 0,
       ay: 0,
-      pan: !onBlock,
+      pan: !onBlock || !draggable,
     };
   }
 
@@ -346,15 +360,25 @@ export class BoardController {
       return;
     }
 
-    // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）
-    const arrowDir = renderer.hitArrowButton(x, y);
-    if (arrowDir) {
-      this.animateMove(arrowDir);
-      return;
+    // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）。
+    // 它是五種操作方式之一，有自己的開關：關掉時按鍵不畫、也不該還能點中。
+    if (renderer.arrowEnabled) {
+      const arrowDir = renderer.hitArrowButton(x, y);
+      if (arrowDir) {
+        this.animateMove(arrowDir);
+        return;
+      }
     }
 
     const gap = renderer.getGapAtPos(x, y, store);
     const block = renderer.getBlockAtPos(x, y, store);
+
+    // 原版 events.py：selectable = 兩次觸控 or 鼠標鍵盤。兩者都關時只能平移/縮放，
+    // 點縫隙/滑塊不該有反應——但要說一句，不能默默無反應
+    if ((gap !== null || block !== null) && !this.selectable) {
+      this.notify('兩次觸控與鼠標鍵盤都關閉：只能平移/縮放（到「設置 → 控制模式」開回來）');
+      return;
+    }
 
     if (gap !== null) {
       // 再點同一縫隙 = 取消

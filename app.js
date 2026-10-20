@@ -1027,6 +1027,10 @@ function saveUiPrefs() {
         localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
             vk: vkPanel.style.display !== 'none',
             vkPos: { x: vkPanel.offsetLeft, y: vkPanel.offsetTop },
+            // 控制方式開關也一起記：玩家關掉某種操作方式，通常是不想再見到它
+            ctrl: {
+                single: singleTouch, two: twoTouch, kb: keyboardMouse, arrows: renderer.arrowEnabled,
+            },
         }));
     }
     catch {
@@ -1046,6 +1050,21 @@ function loadUiPrefs() {
     }
     catch {
         saved = null;
+    }
+    const c = saved?.ctrl;
+    if (c) {
+        if (typeof c.single === 'boolean')
+            singleTouch = c.single;
+        if (typeof c.two === 'boolean')
+            twoTouch = c.two;
+        if (typeof c.kb === 'boolean')
+            keyboardMouse = c.kb;
+        controller.singleTouchEnabled = singleTouch;
+        controller.twoTouchEnabled = twoTouch;
+        controller.keyboardMouseEnabled = keyboardMouse;
+        if (typeof c.arrows === 'boolean')
+            renderer.arrowEnabled = c.arrows;
+        syncSwitches();
     }
     if (saved?.vkPos) {
         vkPanel.style.left = `${saved.vkPos.x}px`;
@@ -2206,10 +2225,22 @@ function openSettingsModal() {
     title.style.fontWeight = 'bold';
     title.style.marginBottom = '12px';
     box.appendChild(title);
+    // 原版「控制」頁是**五種操作方式各自獨立**的開關（renderer.py:_draw_settings_control），
+    // 可任意組合、甚至全關（全關時只能平移/縮放）。網頁版原先只有前三個，
+    // 虛擬鍵盤只能靠 F1、箭頭按鍵只跟右側面板開關走，都沒進這張表。
+    const hint = document.createElement('div');
+    hint.textContent = '五種操作方式可任意組合（甚至全關）；全關時只能平移/縮放';
+    hint.style.color = '#c8c878';
+    hint.style.fontSize = '11px';
+    hint.style.marginBottom = '10px';
+    hint.style.lineHeight = '1.5';
+    box.appendChild(hint);
     const modes = [
-        { key: 'singleTouch', label: '單次觸控', desc: '直接拖拽滑塊即滑動，完成後清空選中' },
-        { key: 'twoTouch', label: '兩次觸控', desc: '點縫隙 → 點方塊 → 再拖拽/鍵盤' },
-        { key: 'keyboardMouse', label: '鼠標鍵盤控制', desc: '鍵盤 W/A/S/D、方向鍵、點選' },
+        { key: 'singleTouch', label: '單次觸控', desc: '直接拖拽滑塊即滑動；完成後清空選中，下次拖拽是全新操作' },
+        { key: 'twoTouch', label: '兩次觸控', desc: '點縫隙 → 點方塊 → 再拖拽 / 鍵盤（原版操作習慣）' },
+        { key: 'keyboardMouse', label: '鼠標鍵盤', desc: '方向鍵 / W/A/S/D 移動滑塊（撤銷/重做等快捷鍵不受影響）' },
+        { key: 'virtualKeyboard', label: '虛擬鍵盤', desc: '屏幕上的方向鍵盤（F1 亦可開關）；手機沒有實體鍵盤，關了仍可用手勢' },
+        { key: 'arrows', label: '箭頭按鍵', desc: '選中縫隙後在切片兩端顯示可點的方向箭頭' },
     ];
     const renderRow = (m) => {
         const row = document.createElement('div');
@@ -2236,7 +2267,17 @@ function openSettingsModal() {
         btn.style.borderRadius = '4px';
         btn.style.padding = '6px 14px';
         btn.style.cursor = 'pointer';
-        const state = () => m.key === 'singleTouch' ? singleTouch : m.key === 'twoTouch' ? twoTouch : keyboardMouse;
+        const state = () => {
+            if (m.key === 'singleTouch')
+                return singleTouch;
+            if (m.key === 'twoTouch')
+                return twoTouch;
+            if (m.key === 'keyboardMouse')
+                return keyboardMouse;
+            if (m.key === 'virtualKeyboard')
+                return vkPanel.style.display !== 'none';
+            return renderer.arrowEnabled;
+        };
         const refresh = () => { btn.textContent = state() ? '開' : '關'; btn.style.background = state() ? COLORS.button_bg : COLORS.input_bg; };
         refresh();
         btn.addEventListener('click', () => {
@@ -2245,11 +2286,18 @@ function openSettingsModal() {
                 singleTouch = v;
             else if (m.key === 'twoTouch')
                 twoTouch = v;
-            else
+            else if (m.key === 'keyboardMouse')
                 keyboardMouse = v;
+            else if (m.key === 'virtualKeyboard')
+                toggleVK(v); // 與 F1 同一個開關，狀態互通
+            else {
+                renderer.arrowEnabled = v;
+                syncSwitches();
+            }
             controller.singleTouchEnabled = singleTouch;
             controller.twoTouchEnabled = twoTouch;
             controller.keyboardMouseEnabled = keyboardMouse;
+            saveUiPrefs();
             refresh();
         });
         row.append(info, btn);
@@ -7261,6 +7309,16 @@ function directGestureFromDrag(row, col, dx, dy) {
     return { gap, direction };
 }
 class BoardController {
+    /**
+     * 能不能「選中」縫隙/滑塊（原版 events.py 的 selectable）。
+     *
+     * 原版是 `two_touch_on or mouse_kb_on`——兩次觸控與鼠標鍵盤**任一**開著就能選，
+     * 因為鼠標也是靠點縫隙/點方塊來選中的（關掉兩者就沒有任何選中手段了）。
+     * 單次觸控不在條件裡：它的拖拽自帶定縫，不需要先選。
+     */
+    get selectable() {
+        return this.twoTouchEnabled || this.keyboardMouseEnabled;
+    }
     constructor(ui) {
         /** 右側面板「滑動動畫」開關；關閉時移動瞬間完成 */
         this.animationEnabled = true;
@@ -7393,8 +7451,11 @@ class BoardController {
         this.downButton = button;
         if (button === 0)
             this.ui.renderer.spawnClickFeedback(x, y);
-        // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移
+        // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移。
+        // 但原版 events.py 記拖拽起點的條件是「單次 or 兩次觸控」——兩者都關時
+        // 按在滑塊上也只是平移（全關就該只剩平移/縮放），否則會留下起點卻不給滑。
         const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
+        const draggable = this.singleTouchEnabled || this.twoTouchEnabled;
         this.drag = {
             active: true,
             startX: x,
@@ -7404,7 +7465,7 @@ class BoardController {
             moved: false,
             ax: 0,
             ay: 0,
-            pan: !onBlock,
+            pan: !onBlock || !draggable,
         };
     }
     onPointerMove(x, y) {
@@ -7493,14 +7554,23 @@ class BoardController {
             renderer.closeSolvedPopup();
             return;
         }
-        // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）
-        const arrowDir = renderer.hitArrowButton(x, y);
-        if (arrowDir) {
-            this.animateMove(arrowDir);
-            return;
+        // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）。
+        // 它是五種操作方式之一，有自己的開關：關掉時按鍵不畫、也不該還能點中。
+        if (renderer.arrowEnabled) {
+            const arrowDir = renderer.hitArrowButton(x, y);
+            if (arrowDir) {
+                this.animateMove(arrowDir);
+                return;
+            }
         }
         const gap = renderer.getGapAtPos(x, y, store);
         const block = renderer.getBlockAtPos(x, y, store);
+        // 原版 events.py：selectable = 兩次觸控 or 鼠標鍵盤。兩者都關時只能平移/縮放，
+        // 點縫隙/滑塊不該有反應——但要說一句，不能默默無反應
+        if ((gap !== null || block !== null) && !this.selectable) {
+            this.notify('兩次觸控與鼠標鍵盤都關閉：只能平移/縮放（到「設置 → 控制模式」開回來）');
+            return;
+        }
         if (gap !== null) {
             // 再點同一縫隙 = 取消
             const cur = store.cmd.selectedGap;

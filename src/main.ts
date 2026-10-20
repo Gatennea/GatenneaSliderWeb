@@ -1091,6 +1091,10 @@ function saveUiPrefs(): void {
     localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
       vk: vkPanel.style.display !== 'none',
       vkPos: { x: vkPanel.offsetLeft, y: vkPanel.offsetTop },
+      // 控制方式開關也一起記：玩家關掉某種操作方式，通常是不想再見到它
+      ctrl: {
+        single: singleTouch, two: twoTouch, kb: keyboardMouse, arrows: renderer.arrowEnabled,
+      },
     }));
   } catch {
     // 隱私模式寫不進 localStorage：只影響「下次還開著」，不影響遊戲
@@ -1104,11 +1108,26 @@ function saveUiPrefs(): void {
  * 且手機沒有實體方向鍵，不開就沒法走）；桌面默認關，免得一上來就擋住棋盤。
  */
 function loadUiPrefs(): void {
-  let saved: { vk?: boolean; vkPos?: { x: number; y: number } } | null = null;
+  let saved: {
+    vk?: boolean;
+    vkPos?: { x: number; y: number };
+    ctrl?: { single?: boolean; two?: boolean; kb?: boolean; arrows?: boolean };
+  } | null = null;
   try {
     saved = JSON.parse(localStorage.getItem(UI_PREFS_KEY) ?? 'null');
   } catch {
     saved = null;
+  }
+  const c = saved?.ctrl;
+  if (c) {
+    if (typeof c.single === 'boolean') singleTouch = c.single;
+    if (typeof c.two === 'boolean') twoTouch = c.two;
+    if (typeof c.kb === 'boolean') keyboardMouse = c.kb;
+    controller.singleTouchEnabled = singleTouch;
+    controller.twoTouchEnabled = twoTouch;
+    controller.keyboardMouseEnabled = keyboardMouse;
+    if (typeof c.arrows === 'boolean') renderer.arrowEnabled = c.arrows;
+    syncSwitches();
   }
   if (saved?.vkPos) {
     vkPanel.style.left = `${saved.vkPos.x}px`;
@@ -2263,13 +2282,27 @@ function openSettingsModal(): void {
   title.style.marginBottom = '12px';
   box.appendChild(title);
 
-  const modes: { key: 'singleTouch' | 'twoTouch' | 'keyboardMouse'; label: string; desc: string }[] = [
-    { key: 'singleTouch', label: '單次觸控', desc: '直接拖拽滑塊即滑動，完成後清空選中' },
-    { key: 'twoTouch', label: '兩次觸控', desc: '點縫隙 → 點方塊 → 再拖拽/鍵盤' },
-    { key: 'keyboardMouse', label: '鼠標鍵盤控制', desc: '鍵盤 W/A/S/D、方向鍵、點選' },
+  // 原版「控制」頁是**五種操作方式各自獨立**的開關（renderer.py:_draw_settings_control），
+  // 可任意組合、甚至全關（全關時只能平移/縮放）。網頁版原先只有前三個，
+  // 虛擬鍵盤只能靠 F1、箭頭按鍵只跟右側面板開關走，都沒進這張表。
+  const hint = document.createElement('div');
+  hint.textContent = '五種操作方式可任意組合（甚至全關）；全關時只能平移/縮放';
+  hint.style.color = '#c8c878';
+  hint.style.fontSize = '11px';
+  hint.style.marginBottom = '10px';
+  hint.style.lineHeight = '1.5';
+  box.appendChild(hint);
+
+  type ControlKey = 'singleTouch' | 'twoTouch' | 'keyboardMouse' | 'virtualKeyboard' | 'arrows';
+  const modes: { key: ControlKey; label: string; desc: string }[] = [
+    { key: 'singleTouch', label: '單次觸控', desc: '直接拖拽滑塊即滑動；完成後清空選中，下次拖拽是全新操作' },
+    { key: 'twoTouch', label: '兩次觸控', desc: '點縫隙 → 點方塊 → 再拖拽 / 鍵盤（原版操作習慣）' },
+    { key: 'keyboardMouse', label: '鼠標鍵盤', desc: '方向鍵 / W/A/S/D 移動滑塊（撤銷/重做等快捷鍵不受影響）' },
+    { key: 'virtualKeyboard', label: '虛擬鍵盤', desc: '屏幕上的方向鍵盤（F1 亦可開關）；手機沒有實體鍵盤，關了仍可用手勢' },
+    { key: 'arrows', label: '箭頭按鍵', desc: '選中縫隙後在切片兩端顯示可點的方向箭頭' },
   ];
 
-  const renderRow = (m: { key: 'singleTouch' | 'twoTouch' | 'keyboardMouse'; label: string; desc: string }) => {
+  const renderRow = (m: { key: ControlKey; label: string; desc: string }) => {
     const row = document.createElement('div');
     row.style.display = 'flex';
     row.style.alignItems = 'center';
@@ -2294,17 +2327,26 @@ function openSettingsModal(): void {
     btn.style.borderRadius = '4px';
     btn.style.padding = '6px 14px';
     btn.style.cursor = 'pointer';
-    const state = () => m.key === 'singleTouch' ? singleTouch : m.key === 'twoTouch' ? twoTouch : keyboardMouse;
+    const state = (): boolean => {
+      if (m.key === 'singleTouch') return singleTouch;
+      if (m.key === 'twoTouch') return twoTouch;
+      if (m.key === 'keyboardMouse') return keyboardMouse;
+      if (m.key === 'virtualKeyboard') return vkPanel.style.display !== 'none';
+      return renderer.arrowEnabled;
+    };
     const refresh = () => { btn.textContent = state() ? '開' : '關'; btn.style.background = state() ? COLORS.button_bg : COLORS.input_bg; };
     refresh();
     btn.addEventListener('click', () => {
       const v = !state();
       if (m.key === 'singleTouch') singleTouch = v;
       else if (m.key === 'twoTouch') twoTouch = v;
-      else keyboardMouse = v;
+      else if (m.key === 'keyboardMouse') keyboardMouse = v;
+      else if (m.key === 'virtualKeyboard') toggleVK(v); // 與 F1 同一個開關，狀態互通
+      else { renderer.arrowEnabled = v; syncSwitches(); }
       controller.singleTouchEnabled = singleTouch;
       controller.twoTouchEnabled = twoTouch;
       controller.keyboardMouseEnabled = keyboardMouse;
+      saveUiPrefs();
       refresh();
     });
     row.append(info, btn);

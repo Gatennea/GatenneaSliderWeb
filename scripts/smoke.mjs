@@ -211,6 +211,21 @@ try {
     fire(quickUndo, 'click');
     check(true, '點常駐撤销未拋錯');
   }
+
+  // ---- 控制模式對話框：原版五個開關 ----
+  const setItem = menuItems.find((e) => e.textContent === '设置');
+  fire(setItem, 'click');
+  const setDd = findAll((e) => e.dataset?.dropdown === '1').at(-1);
+  const ctrlRow = setDd?.children.find((c) => (c.children[0]?.textContent ?? '') === '控制模式...');
+  check(!!ctrlRow, '「设置」有「控制模式...」');
+  fire(ctrlRow, 'click');
+  const swBtns = findAll((e) => e.tagName === 'BUTTON')
+    .filter((e) => e.textContent === '開' || e.textContent === '關');
+  check(swBtns.length >= 5, `控制模式有五個開關（實為 ${swBtns.length}）`);
+  if (swBtns.length >= 5) {
+    fire(swBtns[0], 'click');
+    check(true, '切換控制開關未拋錯');
+  }
 } catch (e) {
   console.error('✘ 拋錯：', e && e.stack ? e.stack.split('\n').slice(0, 6).join('\n') : e);
   process.exitCode = 1;
