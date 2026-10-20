@@ -1427,12 +1427,23 @@ async function autoSolve() {
     finally {
         solving = false;
     }
-    if (!res.solved || res.actions.length === 0) {
+    if (res.actions.length === 0) {
         showToast('没能解出来（求解器尽力而为；也可能是真踩到死局）');
         return;
     }
-    showToast(`找到 ${res.steps} 步解法，开始演示`);
+    if (res.solved) {
+        showToast(`找到 ${res.steps} 步解法，开始演示`);
+    }
+    else {
+        // 對齊原版 fill_partial 協議：沒能全解也把走得動的部分播出來——解成啥樣是啥樣。
+        // solve() 只會回傳「回放後比初始局面好」的部分成果，所以這串步數走完必定有淨進展；
+        // 播到斷點後玩家可以自己接手，也可以再點一次「自動求解」從新局面續算。
+        showToast(`没能完全解出，先把走得動的 ${res.steps} 步演示给你看`);
+    }
     await playSolverActions(res.actions);
+    if (!store.game.is_solved()) {
+        showToast('只能推進到這兒——求解器盡力而為，也可能踩到死局；可再點一次「自動求解」續算');
+    }
 }
 /** 依序回放走法：每步都走選縫隙 → 點塊 → 推，與玩家手動操作完全一致。 */
 async function playSolverActions(actions) {
@@ -3193,15 +3204,23 @@ return { SliderMatrix };
  *
  * 語義對照原版 solver 協定：
  *   solve(game, step, max_steps, cancel_check?, progress_callback?) -> list[action] | null
+ *
+ * 回傳協定對齊原版 auto_solve 的三態（solver/auto_solver.py）：
+ *   solved=true                      全解，actions 是完整解法；
+ *   solved=false 且 actions 非空     部分成果（fill_partial）：沒能全解，但這串走法
+ *                                   回放後聚攏度嚴格高於初始局面——GUI 照樣播到斷點，
+ *                                   「解成啥樣是啥樣」，玩家看斷點再自己接手；
+ *   solved=false 且 actions 為空     全敗（fill_fail）：如實告知，不假裝有解。
  */
 // 注意：本專案的打包器 scripts/bundle.mjs **不支援** `export { X } from './y.js'`
 // 這種再導出寫法（它的正則只認以 `};` 結尾的 `export { X };`），寫了會讓 export
 // 語句原樣殘留在 IIFE 產物裡 → app.js 直接 SyntaxError。
 // 這裡一律改成「先 import，再 export { }」。
 const { applyAction, enc, decRow, decCol, stateFromBlocks, blocksOf, enumerateMoves, isSolvedState, isInverseAction,  } = require("./model.js");
-const { solveByGather, trimPath, findTargetWindow, detectHoles, overlapWith, bestMove, outsideDistance,  } = require("./gather.js");
+const { solveByGather, trimPath, findTargetWindow, detectHoles, overlapWith, bestMove, outsideDistance, stateScore, scoreBetter,  } = require("./gather.js");
 // 再一個打包器坑：export 列表不能有尾隨逗號，否則 bundle.mjs 會切出空名字，
 // 生成 `return { a, b, , c }` → SyntaxError。故以下一律不寫尾隨逗號。
+
 
 
 /** 可重現的亂數（mulberry32），讓重試之間彼此不同、且測試可預測。 */
@@ -3218,13 +3237,19 @@ function mulberry32(seed) {
 /**
  * 求解。回傳的 actions 可直接回放（見 main.ts 的 playSolverActions）。
  *
+ * 全敗時不把手上的成果扔掉：對照原版 partial_better 規則（聚攏度高者勝、
+ * 字典序 overlap→outside→holeCells→area→h），在多次重試裡擇優保留「回放後
+ * 確實比初始局面好」的部分成果；沒有任何重試能改善局面時才如實回空。
+ *
  * 注意：本遊戲存在「合法但無法還原」的死局，且爬山法不保證最優、也不保證成功；
- * solved=false 時請如實告訴玩家，不要假裝有解。
+ * 失敗時如實告訴玩家，不假裝有解，也不把亂踢出來的更差局面當成果。
  */
 function solve(blocks, m, n, step, opts = {}) {
     const restarts = opts.restarts ?? 3;
     const initial = stateFromBlocks(blocks);
-    let best = { actions: [], solved: false, steps: 0, attempts: 0 };
+    const initialScore = stateScore(initial, m, n, step);
+    /** 全敗時擇優保留的部分成果（fill_partial） */
+    let bestPartial = null;
     for (let attempt = 0; attempt < restarts; attempt++) {
         const res = solveByGather(initial, m, n, step, {
             ...opts,
@@ -3232,31 +3257,45 @@ function solve(blocks, m, n, step, opts = {}) {
         });
         const trimmed = trimPath(res.actions);
         const solved = res.solved || (trimmed.length > 0 && endsSolved(initial, trimmed, m, n, step));
-        const candidate = {
-            actions: trimmed,
-            solved,
-            steps: trimmed.length,
-            attempts: attempt + 1,
-        };
         if (solved)
-            return candidate; // 先求有解，不在此比較步數優劣
-        if (!best.solved && candidate.steps > 0)
-            best = candidate;
-        else if (best.attempts === 0)
-            best = candidate;
+            return { actions: trimmed, solved: true, steps: trimmed.length, attempts: attempt + 1 };
+        // 未全解：只保留「回放後確實比初始局面好」的部分成果，
+        // 否則寧可回空——把局面搞得更差的走法沒有任何播放價值。
+        if (trimmed.length > 0) {
+            const end = replayEnd(initial, trimmed, step);
+            if (end) {
+                const sc = stateScore(end, m, n, step);
+                if (scoreBetter(sc, initialScore) && (!bestPartial || scoreBetter(sc, bestPartial.score))) {
+                    bestPartial = { actions: trimmed, score: sc };
+                }
+            }
+        }
     }
-    return best;
+    if (bestPartial) {
+        return {
+            actions: bestPartial.actions,
+            solved: false,
+            steps: bestPartial.actions.length,
+            attempts: restarts,
+        };
+    }
+    return { actions: [], solved: false, steps: 0, attempts: restarts };
 }
-/** 回放一遍確認結局真的還原（trimPath 之後重新驗證，避免剪出假解）。 */
-function endsSolved(initial, actions, m, n, step) {
+/** 回放一遍；回傳終態，任一走法被拒回 null。 */
+function replayEnd(initial, actions, step) {
     let cur = new Set(initial);
     for (const a of actions) {
         const next = applyAction(cur, a, step);
         if (!next)
-            return false;
+            return null;
         cur = next;
     }
-    return isSolvedState(cur, m, n);
+    return cur;
+}
+/** 回放一遍確認結局真的還原（trimPath 之後重新驗證，避免剪出假解）。 */
+function endsSolved(initial, actions, m, n, step) {
+    const end = replayEnd(initial, actions, step);
+    return end !== null && isSolvedState(end, m, n);
 }
 /** 求解結果的人話摘要（給 toast / 狀態列用）。 */
 function describeAction(a) {
@@ -3265,7 +3304,7 @@ function describeAction(a) {
     return `${gap}${a.line} · 往${dirText[a.dir]}推`;
 }
 
-return { solve, describeAction, findTargetWindow, detectHoles, overlapWith, solveByGather, bestMove, outsideDistance, enc, decRow, decCol, stateFromBlocks, blocksOf, enumerateMoves, applyAction, isSolvedState, isInverseAction };
+return { solve, describeAction, findTargetWindow, detectHoles, overlapWith, solveByGather, bestMove, outsideDistance, stateScore, scoreBetter, enc, decRow, decCol, stateFromBlocks, blocksOf, enumerateMoves, applyAction, isSolvedState, isInverseAction };
 },
     "m12": function (require) {
 /**
@@ -3762,6 +3801,17 @@ function scoreState(state, win, step, m, n) {
     };
 }
 /**
+ * 給任意局面打分（自選目標窗口）。原版 `gather_metrics(cs, m, n)['score']` 的
+ * 等價物，專門給「部分成果擇優」用：全敗時按這個分數挑聚攏度最高的部分成果
+ * （原版 fill_partial 協議，見 solver/auto_solver.py 的 partial_better）。
+ */
+function stateScore(state, m, n, step) {
+    const win = findTargetWindow(state, m, n);
+    return scoreState(state, win, step, m, n);
+}
+/** 比分數優劣（字典序：聚攏度 → 窗外距離 → 洞 → 面積 → h）。匯出給部分成果擇優用。 */
+const scoreBetter = better;
+/**
  * 聚攏求解：貪心爬山 + 卡死時隨機踢一步。
  *
  * 每一步：枚舉全部合法走法 → 用「與目標窗口的重疊數」評分 → 走最好的一步；
@@ -3899,7 +3949,7 @@ function stateOf(blocks) {
     return s;
 }
 
-return { findTargetWindow, overlapWith, detectHoles, outsideDistance, solveByGather, bestMove, trimPath, stateOf };
+return { findTargetWindow, overlapWith, detectHoles, outsideDistance, stateScore, scoreBetter, solveByGather, bestMove, trimPath, stateOf };
 },
     "m14": function (require) {
 /**

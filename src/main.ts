@@ -1456,12 +1456,22 @@ async function autoSolve(): Promise<void> {
   } finally {
     solving = false;
   }
-  if (!res.solved || res.actions.length === 0) {
+  if (res.actions.length === 0) {
     showToast('没能解出来（求解器尽力而为；也可能是真踩到死局）');
     return;
   }
-  showToast(`找到 ${res.steps} 步解法，开始演示`);
+  if (res.solved) {
+    showToast(`找到 ${res.steps} 步解法，开始演示`);
+  } else {
+    // 對齊原版 fill_partial 協議：沒能全解也把走得動的部分播出來——解成啥樣是啥樣。
+    // solve() 只會回傳「回放後比初始局面好」的部分成果，所以這串步數走完必定有淨進展；
+    // 播到斷點後玩家可以自己接手，也可以再點一次「自動求解」從新局面續算。
+    showToast(`没能完全解出，先把走得動的 ${res.steps} 步演示给你看`);
+  }
   await playSolverActions(res.actions);
+  if (!store.game.is_solved()) {
+    showToast('只能推進到這兒——求解器盡力而為，也可能踩到死局；可再點一次「自動求解」續算');
+  }
 }
 
 /** 依序回放走法：每步都走選縫隙 → 點塊 → 推，與玩家手動操作完全一致。 */

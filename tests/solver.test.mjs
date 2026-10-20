@@ -13,7 +13,7 @@ import {
   isSolvedState,
 } from '../dist/solver/model.js';
 import { findTargetWindow, detectHoles, solveByGather } from '../dist/solver/gather.js';
-import { solve } from '../dist/solver/index.js';
+import { solve, stateScore, scoreBetter } from '../dist/solver/index.js';
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -204,6 +204,55 @@ export const cases = [
         if (ok < Math.ceil(total * 0.6)) {
           throw new Error(`${m}×${n} step${step} 成功率過低：${ok}/${total}`);
         }
+      }
+    },
+  },
+
+  {
+    name: 'fill_partial 協議：全敗時的部分成果必須比初始局面好（解成啥樣是啥樣）',
+    run() {
+      const m = 5;
+      const n = 5;
+      const step = 2;
+      let nonSolved = 0;
+      let withPartial = 0;
+      for (let i = 0; i < 12; i++) {
+        const blocks = scramble(m, n, step, 40, 3000 + i * 17);
+        const st = stateFromBlocks(blocks);
+        if (isSolvedState(st, m, n)) continue;
+        // 步數預算砍到 5：40 次重亂的 5×5 不可能在 5 步內全解 → 必定走全敗路徑
+        const res = solve(blocks, m, n, step, { restarts: 1, maxSteps: 5, timeBudgetMs: 800 });
+        if (res.solved) continue; // 個別種子碰巧解得出的，跳過（不影響協議檢驗）
+        nonSolved++;
+        if (res.actions.length === 0) continue; // 如實全敗（fill_fail），合法
+        withPartial++;
+        // 用遊戲核心回放：走法必須合法，且終局不能已經還原（協議自相矛盾）
+        const g = new SliderMatrix(m, n);
+        g.restore({ blocks: blocks.map(([r, c]) => [r, c]) });
+        for (const a of res.actions) {
+          const blk = g.blocks.find((b) => b.row === a.seed[0] && b.col === a.seed[1]);
+          if (!blk) throw new Error('回放時找不到代表塊');
+          g.opt(a.gapType, a.line, blk);
+          const fp = g.try_move(a.dir, step);
+          if (!fp) throw new Error('部分成果回放被核心拒絕');
+          g.commit_move(fp);
+        }
+        if (g.is_solved()) throw new Error('標記為未全解卻還原了（協議自相矛盾）');
+        // 關鍵不變式：部分成果回放後，聚攏度評分必須嚴格高於初始局面
+        const before = stateScore(stateFromBlocks(blocks), m, n, step);
+        const after = stateScore(
+          stateFromBlocks(g.blocks.map((b) => [b.row, b.col])),
+          m,
+          n,
+          step,
+        );
+        if (!scoreBetter(after, before)) {
+          throw new Error('部分成果沒有讓局面變好：解不窮也別把局面搞更差');
+        }
+      }
+      if (nonSolved === 0) throw new Error('未取到全敗樣本，測試無效');
+      if (withPartial < 3) {
+        throw new Error(`${nonSolved} 個全敗樣本裡只有 ${withPartial} 個給出部分成果，功能形同虛設`);
       }
     },
   },

@@ -186,7 +186,7 @@ export function outsideDistance(state: State, win: TargetWindow): number {
 }
 
 // ---------- 爬山評分 ----------
-interface Score {
+export interface Score {
   /** 窗口內方塊數：越大越好（聚攏 + 填洞補缺 的主目標） */
   overlap: number;
   /** 窗口外方塊到窗口的距離和：越小越好（連續梯度，防止卡在平原） */
@@ -219,6 +219,19 @@ function scoreState(state: State, win: TargetWindow, step: number, m: number, n:
     h: heuristic(state, m, n),
   };
 }
+
+/**
+ * 給任意局面打分（自選目標窗口）。原版 `gather_metrics(cs, m, n)['score']` 的
+ * 等價物，專門給「部分成果擇優」用：全敗時按這個分數挑聚攏度最高的部分成果
+ * （原版 fill_partial 協議，見 solver/auto_solver.py 的 partial_better）。
+ */
+export function stateScore(state: State, m: number, n: number, step: number): Score {
+  const win = findTargetWindow(state, m, n);
+  return scoreState(state, win, step, m, n);
+}
+
+/** 比分數優劣（字典序：聚攏度 → 窗外距離 → 洞 → 面積 → h）。匯出給部分成果擇優用。 */
+export const scoreBetter = better;
 
 export interface GatherOptions {
   /** 最多走幾步（含踢步） */
