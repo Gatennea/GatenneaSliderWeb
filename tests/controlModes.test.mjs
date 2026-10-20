@@ -6,6 +6,7 @@
  *   拖拽起點 需 單次觸控 or 兩次觸控（兩者都關時，按在滑塊上也只是平移）
  *
  * BoardRenderer 的命中方法不碰 ctx，可用假 canvas 實例化（同 hit.test.mjs）。
+ * 文件末尾另測雙指縮放的錨點行為（起始兩指中點為錨，對照原版 Ctrl+滾輪）。
  */
 // BoardController.attach() 會綁 window 事件，Node 沒有 window，先塞個 stub
 globalThis.window = globalThis.window ?? { addEventListener: () => {}, removeEventListener: () => {} };
@@ -24,13 +25,28 @@ const FAR_Y = 470; // 棋盤外的空白
 function makeController() {
   const store = new GameStore(4, 4, 2);
   const renderer = new BoardRenderer({ canvas: { width: 800, height: 500 } }, 1);
-  const canvas = { addEventListener: () => {}, width: 800, height: 500 };
+  const handlers = {};
+  const canvas = {
+    width: 800, height: 500, style: {},
+    addEventListener: (type, fn) => { (handlers[type] ??= []).push(fn); },
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+  };
   const status = [];
   const controller = new BoardController({
     canvas, renderer, store,
     onStatus: (m) => status.push(m),
   });
-  return { controller, store, renderer, status };
+  return { controller, store, renderer, status, canvas, handlers };
+}
+
+/** 構造一個 touch 事件（只需 touches 與 preventDefault） */
+function touchEvt(points) {
+  return { touches: points.map(([x, y]) => ({ clientX: x, clientY: y })), preventDefault: () => {} };
+}
+
+/** 派發到 canvas 上指定類型的所有監聽器（attach() 註冊的） */
+function fire(handlers, type, evt) {
+  for (const fn of handlers[type] ?? []) fn(evt);
 }
 
 export const cases = [
@@ -130,6 +146,80 @@ export const cases = [
       renderer.arrowEnabled = false;
       controller.handleClick(BLOCK_X, BLOCK_Y);
       if (renderer.arrowEnabled !== false) throw new Error('箭頭開關關掉後不該被改回');
+    },
+  },
+  {
+    name: '雙指縮放以起始兩指中點為錨：錨點處的世界座標縮放後不動',
+    run() {
+      const { controller, renderer, handlers } = makeController();
+      // 模擬「已經平移過」的相機（非零 camera），錨點數學必須能處理任意相機
+      renderer.cameraX = 137.5;
+      renderer.cameraY = -62.25;
+      const ax = 300, ay = 200; // pinch 起始中點（canvas 座標）
+      const [wx, wy] = renderer.screenToWorld(ax, ay);
+
+      fire(handlers, 'touchstart', touchEvt([[ax - 50, ay], [ax + 50, ay]]));
+      const zoom0 = renderer.zoom;
+      fire(handlers, 'touchmove', touchEvt([[ax - 100, ay], [ax + 100, ay]]));
+      const zoom1 = renderer.zoom;
+      if (Math.abs(zoom1 - zoom0 * 2) > 1e-9) {
+        throw new Error(`間距翻倍 zoom 應翻倍：${zoom0} → ${zoom1}`);
+      }
+      const [sx, sy] = renderer.worldToScreen(wx, wy);
+      if (Math.abs(sx - ax) > 1e-6 || Math.abs(sy - ay) > 1e-6) {
+        throw new Error(`錨點世界座標應留在原地，實飄到 (${sx.toFixed(2)}, ${sy.toFixed(2)})`);
+      }
+
+      // 縮小同理：繼續收到更小間距，錨點依然不漂
+      fire(handlers, 'touchmove', touchEvt([[ax - 25, ay], [ax + 25, ay]]));
+      const [sx2, sy2] = renderer.worldToScreen(wx, wy);
+      if (Math.abs(sx2 - ax) > 1e-6 || Math.abs(sy2 - ay) > 1e-6) {
+        throw new Error(`縮小後錨點也不該漂，實飄到 (${sx2.toFixed(2)}, ${sy2.toFixed(2)})`);
+      }
+    },
+  },
+  {
+    name: '雙指縮放錨點固定為起始中點：中途平移兩指不換錨',
+    run() {
+      const { controller, renderer, handlers } = makeController();
+      const ax = 300, ay = 200;
+      const [wx, wy] = renderer.screenToWorld(ax, ay);
+      fire(handlers, 'touchstart', touchEvt([[ax - 50, ay], [ax + 50, ay]]));
+      // 兩指整體移到 (500,400) 但間距不變 → factor=1，zoom/camera 都不該動
+      const camX = renderer.cameraX, camY = renderer.cameraY, zoom = renderer.zoom;
+      fire(handlers, 'touchmove', touchEvt([[450, 400], [550, 400]]));
+      if (renderer.zoom !== zoom || renderer.cameraX !== camX || renderer.cameraY !== camY) {
+        throw new Error('間距不變時不該改 zoom/camera');
+      }
+      // 之後再拉開間距：錨點仍是起始中點 (300,200)，不是當前中點 (500,400)
+      fire(handlers, 'touchmove', touchEvt([[350, 400], [650, 400]]));
+      const [sx, sy] = renderer.worldToScreen(wx, wy);
+      if (Math.abs(sx - ax) > 1e-6 || Math.abs(sy - ay) > 1e-6) {
+        throw new Error(`錨點應為起始中點，實以 (${sx.toFixed(2)}, ${sy.toFixed(2)}) 為錨`);
+      }
+    },
+  },
+  {
+    name: 'pinch 結束後清錨點：下一次 pinch 以新中點為錨',
+    run() {
+      const { controller, renderer, handlers } = makeController();
+      fire(handlers, 'touchstart', touchEvt([[250, 150], [350, 150]]));
+      fire(handlers, 'touchmove', touchEvt([[150, 150], [450, 150]]));
+      fire(handlers, 'touchend', touchEvt([[300, 150]])); // 抬起一根 → pinch 結束
+      const zoomAfterFirst = renderer.zoom;
+
+      // 第二次 pinch 在新中點 (600,300)
+      const bx = 600, by = 300;
+      const [wx, wy] = renderer.screenToWorld(bx, by);
+      fire(handlers, 'touchstart', touchEvt([[bx - 50, by], [bx + 50, by]]));
+      fire(handlers, 'touchmove', touchEvt([[bx - 150, by], [bx + 150, by]]));
+      const [sx, sy] = renderer.worldToScreen(wx, wy);
+      if (Math.abs(sx - bx) > 1e-6 || Math.abs(sy - by) > 1e-6) {
+        throw new Error(`第二次 pinch 應以新中點為錨，實飄到 (${sx.toFixed(2)}, ${sy.toFixed(2)})`);
+      }
+      if (renderer.zoom <= zoomAfterFirst) {
+        throw new Error('第二次 pinch 應在第一次基礎上繼續放大');
+      }
     },
   },
 ];

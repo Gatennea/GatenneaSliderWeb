@@ -157,6 +157,8 @@ export class BoardController {
   private downButton = 0;
   private pinchZoom = 1;
   private pinchActive = false;
+  /** pinch 起始時兩指中點（canvas 座標）：錨點縮放的原點，見 touchmove 雙指分支 */
+  private pinchMid: { x: number; y: number } | null = null;
   /** 拖拽跟隨狀態（缺陷 18）；null = 不在跟隨中 */
   private follow: FollowState | null = null;
   /** 觸點越過可達上限（容差 0.05 格）：光標變禁止圖標、鬆手撞牆回彈 */
@@ -233,7 +235,14 @@ export class BoardController {
         // 顯示，且這期間不會再收到 touchmove 更新（缺陷 18）
         this.drag.active = false;
         this.clearFollow();
+        const rect = c.getBoundingClientRect?.() ?? { left: 0, top: 0 };
         this.pinchDist = dist(e.touches[0], e.touches[1]);
+        // 錨點 = 起始時兩指中點（canvas 座標）。整段 pinch 保持不動，
+        // 對照原版 Ctrl+滾輪以鼠標位置為錨點（events.py 滾輪分支）
+        this.pinchMid = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top,
+        };
         this.pinchZoom = this.ui.renderer.zoom;
         this.pinchActive = true;
         return;
@@ -247,7 +256,23 @@ export class BoardController {
       if (e.touches.length >= 2 && this.pinchActive && this.pinchDist > 0) {
         const d = dist(e.touches[0], e.touches[1]);
         const factor = d / this.pinchDist;
-        this.ui.renderer.zoom = Math.max(0.1, Math.min(4, this.pinchZoom * factor));
+        const r = this.ui.renderer;
+        const newZoom = Math.max(0.1, Math.min(4, this.pinchZoom * factor));
+        // 錨點縮放：記下 pinch 起點中點對應的世界座標，換 zoom 後反推 camera，
+        // 使同一個世界點仍留在屏幕上同一位置（對照原版 events.py 的
+        // world=(anchor-camera)/zoom; camera=anchor-world*zoom，Ctrl+滾輪與
+        // 兩個縮放滑條共用這一套）。不調整 camera 等效於以世界原點為錨，
+        // 中點處的內容會隨縮放漂走——手機上表現為「雙指縮放時畫面往角上跑」。
+        // 原版無 camera 夾緊（縮放後棋盤可拖出視野，玩家自己拖回），這裡也不加。
+        if (this.pinchMid) {
+          const wx = (this.pinchMid.x - r.cameraX) / r.zoom;
+          const wy = (this.pinchMid.y - r.cameraY) / r.zoom;
+          r.zoom = newZoom;
+          r.cameraX = this.pinchMid.x - wx * newZoom;
+          r.cameraY = this.pinchMid.y - wy * newZoom;
+        } else {
+          r.zoom = newZoom;
+        }
         this.ui.onZoomChange?.();
         this.ui.requestPaint?.();
         return;
@@ -262,6 +287,7 @@ export class BoardController {
         if (e.touches.length < 2) {
           // 縮放結束：剩下的那根手指不接續舊拖拽（起手時已被放棄），重新按過才有效
           this.pinchActive = false;
+          this.pinchMid = null;
           this.drag.active = false;
           this.clearFollow();
         }
