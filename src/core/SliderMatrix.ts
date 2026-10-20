@@ -290,6 +290,140 @@ export class SliderMatrix {
     this.selected.clear();
   }
 
+  /**
+   * 安全打亂（保證打亂出來的局面一定有解）。
+   *
+   * 背景與**效力邊界**（2026-10-18 實測校正，別再照舊文案理解）：
+   *   · 本遊戲確實存在「走得到卻回不去」的局面，但**極稀少**：完整版 C++ 引擎全圖
+   *     復現 (4,4,2) 得可達局面 558,286 個、其中死局僅 **9 個**（≈0.0016%），
+   *     踏入死局的入口弧只有 7 條；(3,3,1) 則是 0 個（本倉庫 scripts/probe-deadends.mjs
+   *     獨立窮盡 9,908 個局面亦為 0，與原版引擎的 1,284 個 D4 形狀類、上帝之數 10 對上）。
+   *   · 「單步不可逆」**不等於**死局：原版測得 (4,4,2) 有約 14% 的邊原路反推不合法
+   *     （推完就黏住了），但其中絕大多數繞路仍走得回來 —— 用不可逆邊的數量來論證
+   *     「打亂會把人送進死局」是過度推論，本站先前的文案就是這樣寫錯的。
+   *   · 所以本改動的價值**不在**「避開那 0.0016%」（雖然確實也避掉了），而在：
+   *     打亂出來的開局**自帶一條已知解法**（就是這條路徑反過來），於是指示一步、
+   *     自動求解、關卡生成永遠有答案，不必仰賴求解器碰運氣。
+   *
+   * 做法：與 shuffle() 完全相同的隨機走法，但**每一步都多一道可逆性校驗** ——
+   * 推完之後立刻試著用同一條縫、反方向推回去，能精確回到移動前的局面才採用，
+   * 否則還原再挑。這樣整條打亂路徑反過來就是一條合法解法，必定可以還原。
+   *
+   * @param path 可選：逐步記下經過的每個局面（長度 = 成功步數 + 1）。
+   *   因為每一步都可逆，這串局面**反過來就是一條合法解法**，Debug 與驗證用。
+   *   scripts/certify-shuffle.mjs 會把這條解法**真的逐step走一遍**（每一步都由
+   *   opt/try_move/commit_move 判定為合法走法，末端由 is_solved() 判定為已還原），
+   *   交出可獨立覆核的見證，而不只是邏輯推論。
+   * @returns 真正走成功的步數（可能少於 attempts：某些局面找不到任何可逆走法）
+   */
+  shuffle_safe(
+    attempts: number,
+    step: number,
+    rng: () => number = Math.random,
+    path?: Snapshot[],
+  ): number {
+    let done = 0;
+    if (path) path.push(this.snapshot());
+    for (let i = 0; i < attempts; i++) {
+      if (this.shuffleStepSafe(step, rng)) {
+        done++;
+        if (path) path.push(this.snapshot());
+      }
+    }
+    this.selected.clear();
+    return done;
+  }
+
+  /** 打亂一步（必須可逆）。回傳是否真的走了一步。 */
+  private shuffleStepSafe(step: number, rng: () => number, tries = 40): boolean {
+    const gaps = this.candidateGaps();
+    if (gaps.length === 0) return false;
+
+    for (let t = 0; t < tries; t++) {
+      const gap = gaps[Math.floor(rng() * gaps.length) % gaps.length];
+      const direction: Direction =
+        gap.type === 'h' ? (rng() < 0.5 ? 'a' : 'd') : rng() < 0.5 ? 'w' : 's';
+      const block = this.blocks[Math.floor(rng() * this.blocks.length) % this.blocks.length];
+
+      // 輕量快照：只記座標。刻意不用 snapshot()/restore() —— 那會重建整個
+      // Block 陣列，而失敗嘗試很常見（8×8 實測佔用大量時間），純屬浪費。
+      const beforeLoc = this.blocks.map((b) => [b.row, b.col] as [number, number]);
+      const beforeKey = new Set(beforeLoc.map(([r, c]) => `${r}:${c}`));
+
+      this.opt(gap.type, gap.line, block);
+      const moved = [...this.selected];
+      if (moved.length === 0) {
+        this.selected.clear();
+        continue;
+      }
+      const finalPositions = this.try_move(direction, step);
+      if (!finalPositions) {
+        this.selected.clear();
+        continue;
+      }
+      this.commit_move(finalPositions);
+
+      // 可逆性：同一條縫、反方向推，能否精確回到移動前的局面
+      const reversible = this.canUndoWith(
+        gap.type, gap.line, moved[0], oppositeOf(direction), step, beforeKey,
+      );
+      this.selected.clear();
+      if (reversible) return true;
+
+      // 輕量回滾：直接把座標改回去（也保留了 Block.number，比 restore 更省）
+      this.blocks.forEach((b, i) => {
+        b.location = beforeLoc[i];
+      });
+    }
+    return false;
+  }
+
+  /** shuffle() 用的候選縫隙清單（刻意不含邊界縫，與原版一致）。 */
+  private candidateGaps(): { type: GapType; line: number }[] {
+    const { min_row, max_row, min_col, max_col } = this.get_boundaries();
+    const gaps: { type: GapType; line: number }[] = [];
+    for (let line = min_row + 1; line < max_row; line++) {
+      if (this.is_valid_h_line(line)) gaps.push({ type: 'h', line });
+    }
+    for (let line = min_col + 1; line < max_col; line++) {
+      if (this.is_valid_v_line(line)) gaps.push({ type: 'v', line });
+    }
+    return gaps;
+  }
+
+  /**
+   * 從當前局面用同一條縫、反方向推，能否精確回到 targetKey 描述的局面。
+   *
+   * 只有在 opt 選中的分量與當初推動的那組完全一致時才成立 —— 若移動後該分量
+   * 與別的方塊黏成更大一坨，玩家也沒辦法只推回原來那部分，故判定為不可逆。
+   * （保守但安全：寧可少走一步，也不放行任何可能回不去的操作。）
+   */
+  private canUndoWith(
+    gapType: GapType,
+    line: number,
+    representative: Block,
+    backDirection: Direction,
+    step: number,
+    targetKey: Set<string>,
+  ): boolean {
+    this.opt(gapType, line, representative);
+    const selectedNow = [...this.selected];
+    if (selectedNow.length === 0) return false;
+    const back = this.try_move(backDirection, step);
+    if (!back) return false;
+
+    const selectedKey = new Set(selectedNow.map((b) => `${b.row}:${b.col}`));
+    const union = new Set<string>();
+    for (let i = 0; i < selectedNow.length; i++) union.add(`${back[i][0]}:${back[i][1]}`);
+    for (const b of this.blocks) {
+      const key = `${b.row}:${b.col}`;
+      if (!selectedKey.has(key)) union.add(key);
+    }
+    if (union.size !== targetKey.size) return false;
+    for (const key of union) if (!targetKey.has(key)) return false;
+    return true;
+  }
+
   /** 導出 map 文本（#=方塊、_=空白）。對照 game.py::export_map。 */
   export_map(): string {
     const { min_row, max_row, min_col, max_col } = this.get_boundaries();
@@ -370,5 +504,15 @@ export class SliderMatrix {
     this.blocks.forEach((b, i) => {
       b.number = enabled ? i + 1 : null;
     });
+  }
+}
+
+/** 反方向（可逆性校验用）。刻意不放在 rules.ts —— 只打亂用得到，避免污染公共 API。 */
+function oppositeOf(direction: Direction): Direction {
+  switch (direction) {
+    case 'w': return 's';
+    case 's': return 'w';
+    case 'a': return 'd';
+    default: return 'a';
   }
 }

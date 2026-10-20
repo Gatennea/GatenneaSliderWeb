@@ -266,10 +266,12 @@ export class CreativeController {
         const step = clampInt(sInp.value, 1, 10, 2);
         const tmp = new SliderMatrix(1, 1);
         tmp.restore({ blocks: shape });
-        // 打亂幾步，避免一開始就是還原態；仍保證可還原（反向即回原狀）
+        // 打亂幾步，避免一開始就是還原態。
+        // 用「安全打亂」而非 shuffle()：每一步都驗證可逆，所以真的保證能還原
+        // （原本這裡寫 shuffle() 並註解「反向即回原狀」，但普通打亂並不保證這點）。
         let attempts = 0;
         do {
-          tmp.shuffle(8, step);
+          tmp.shuffle_safe(8, step);
           attempts++;
         } while (tmp.is_solved() && attempts < 6);
         const scrambled = tmp.blocks.map((b) => [b.row, b.col] as [number, number]);

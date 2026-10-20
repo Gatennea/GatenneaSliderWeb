@@ -415,6 +415,10 @@
             <div class="timeline-date">10月18日</div>
             <div class="timeline-desc"><span class="tag tag-web">web版</span>教程存档数据原本是带缩进的对象字面量，光它就占了整个 app.js 的九成；改成紧凑 JSON 字符串存放，并去掉两个没有任何代码读取的字段，app.js 从 1.8MB 瘦到 286KB（约六分之一），启动加载快了很多；所有关卡的解法数据已与完整版存档逐字段比对，确认一字未改</div>
           </div>
+          <div class="timeline-item" data-date="20261018" data-ver="web">
+            <div class="timeline-date">10月18日</div>
+            <div class="timeline-desc"><span class="tag tag-web">web版</span>打乱出来的开局现在自带一条已知解法：打乱时每一步都会先验「能不能推得回去」，验不过就换一组重抖，于是整条路径反过来就是一条解法，「指示一步 / 自动求解 / 关卡生成」因此永远有答案，不必再靠求解器碰运气（scripts/certify-shuffle.mjs 会把这条解法真的逐步走一遍，末端由游戏自己判定已还原）。顺带也避开了死局——那种局面确实存在，但比先前以为的稀少得多：完整版引擎全图复现 4×4 的 55.8 万个可达局面里只有 9 个、入口只有 7 条弧，3×3 则是 0 个。注意这说的是开局，自己上手之后走错仍可能走到回不去的地方，那是这个游戏本身的性质</div>
+          </div>
           <div class="timeline-item" data-date="20261019" data-ver="web">
             <div class="timeline-date">10月19日</div>
             <div class="timeline-desc"><span class="tag tag-web">web版</span>给打包流程加了保险：这个网站的构建脚本是自写的，遇到某种它认不得的模块写法时，以前会照样报「构建成功」，但产出的 app.js 一打开就白屏报错，只能靠事后手动检查才抓得到。现在这类情况会在写文件之前就中止，并指出是哪一行的哪种写法该怎么改；缺文件、循环依赖等也会一并拦住，绝不用坏产物覆盖掉能用的那份。核对过三次：加保险前后打包出来的文件一字节都没变</div>
