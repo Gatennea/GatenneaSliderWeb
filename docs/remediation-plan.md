@@ -82,6 +82,41 @@
 
 ### 17. 更新预告（同 9，合并）
 
+### 18. 缺少拖拽跟随动画（一边拖一边动）+ 越界判定 *（2026-10-20 新增，待定顺序）
+- 现象：按住滑块拖动时画面零反馈，松手才播动画；且拖动过程中不提示"这一方向最多能推多远"。
+- 网页版现状：`BoardController.onPointerMove` 只处理相机平移（`drag.pan`），
+  手势与滑动全部压在 `onPointerUp`：`directGestureFromDrag()`（8 区映射）→ `selectGap` →
+  `selectBlock` → `animateMove()`。即"拖的过程只是空拖，松手才结算"。
+- 原版实现（`gui/drag.py` 的 `DragMixin` + `gui/events.py` 的 MOUSEMOTION 分发）：
+  1. **进入跟随**：按住左键移动累计位移超阈值（14px）→ `_init_drag_follow(block, dx, dy)`。
+     定缝：单次触控按 8 区角度（`GAP_SEQ`/`DIR_SEQ`），两次触控沿已选缝的主方向轴；
+     缝必须过 `is_valid_h_line/v_line`（棋形内部，边界缝拒绝）→ 否则提示
+     "缝隙在棋形外沿：整体移动所有滑块没有意义"；随后 `game.opt()` 选连通组。
+  2. **探可达上限**（本项要的"越界判定"）：`_probe_max_cells(direction)` —— 从 1 开始递增调
+     `try_move_ex(direction, n)`，遇到 `reason != ''`（**重叠或断开**）即止，结果向下取整到
+     `current_step` 的整数倍。跟随期间棋盘状态不变，故只在进入跟随时探一次。
+  3. **每帧更新偏移**：屏幕位移 → 格位移 → 投影到锁定方向的"前进"轴 → 夹到 `[0, max_cells]`
+     （反向拖回停在原位）；`drag_follow_invalid = forward > max_cells + 0.05`（容差 0.05 格覆盖
+     像素取整误差，恰好贴边不误报）。invalid 时鼠标光标变 `SYSTEM_CURSOR_NO`（禁止图标）。
+  4. **松手提交** `_commit_drag_move()`：偏移取整（`int(x+0.5)`，规避 round 银行家舍入）并量化到
+     step 整数倍，从最大步长递减找第一个可接受的（兜底）。**拖拽接续**：
+     `_drag_anim_origin = (dr, dc)` 交给 `animation.py::_apply_drag_origin()` —— 动画起点接到
+     松手那刻的跟随位置，否则整组会跳回原位再滑一次。
+  5. **越界松手回弹**：未移动且 `drag_follow_invalid` → `_shake_blocks` + `_shake_offset()`
+     （约 200ms，|sin|×线性衰减包络，振幅 6px×zoom，仅增强模式）。
+  6. 单次触控发起的跟随结束自动取消选中；两次触控保留缝隙选中以便继续操作。
+- 方案（待排期）：`onPointerMove` 增加 `dragFollow` 状态（缝/方向/起点/maxCells/offset/invalid），
+  渲染层把选中组画在 `start + offset`。
+- **引擎侧已经够用，不必先改引擎**（实测核对，别误判）：网页版 `SliderMatrix.try_move(direction, n)`
+  本就是「逐格验证、任一步不合法返回 null」，n 可以大于 current_step，所以 `_probe_max_cells`
+  用现有 `try_move` 递增试 n 即可；原版多了 `try_move_ex` 的 reason（collision/disconnected/
+  all_selected…），探上限只看「能不能走」，null/非 null 已足够，失败原因只有要做文案提示时才需要补。
+  ⚠️ 唯一要补的引擎侧细节：`try_move` 对「全员选中」不拒绝（这是之前刻意保留的原版行为，
+  护栏在命令层/UI 层），探测时若整盘被选中会一路试到安全上限 → 探测前先判
+  `selected.size === blocks.length` 直接按 0 格处理（对应原版的 `all_selected`）。
+- 与第 1 项（禁止整体滑动）同源：跟随期间的缝校验/上限探测同样要拒绝边界缝，不得整盘刚体平移。
+
 ## 执行顺序（用户已认可）
 教程 bug 止血(0) → 相机专项(1+8) → 棋盘反馈(3+4) → 菜单栏(6) → 虚拟键盘(7，兼解 13) →
-控制解耦(5) → 手机专项(10–16) → 繁简统一(2) → 更新预告(9)。
+控制解耦(5) → 手机专项(10–16) → 繁简统一(2) → 更新预告(9)；第 18 项（拖拽跟随）待用户定顺序，
+因其与"控制解耦(5)"共用手势分发，倾向排在 5 之后或与其合并做。
