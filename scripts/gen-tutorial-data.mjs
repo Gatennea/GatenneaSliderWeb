@@ -40,6 +40,22 @@ for (const f of fs.readdirSync(archiveDir).sort()) {
   archives[id] = json;
 }
 
+/**
+ * 合併第 6 章：原版 beginner_archive 只有 1~5 章，第 6 章在原版也是空的
+ * （標題、引導都還停在省略號）。本章由 scripts/gen-ch6-levels.mjs 生成 ——
+ * 從還原態做 K 次「每一步都可逆」的隨機走法再把路徑反過來，因此解法一定存在。
+ * 該 JSON 已提交進倉庫，這裡只是合併，不需要重跑求解相關邏輯。
+ */
+const ch6Path = path.join(root, 'scripts', 'ch6-levels.json');
+let ch6 = null;
+if (fs.existsSync(ch6Path)) {
+  ch6 = JSON.parse(fs.readFileSync(ch6Path, 'utf8'));
+  Object.assign(archives, ch6.archives);
+  console.log(`[gen] 已併入第 6 章自製關卡：${ch6.chapters.join(', ')}`);
+} else {
+  console.warn('[gen] 找不到 scripts/ch6-levels.json，第 6 章將維持佔位（跑 gen-ch6-levels.mjs 可生成）');
+}
+
 /** 構建關卡層級：levels[] 內含 sublevels[]，每個 sublevel 指向一個 archiveId。 */
 const levelIds = ['1', '2', '3', '4', '5', '6'];
 const levels = [];
@@ -77,6 +93,21 @@ for (const lid of levelIds) {
     solve_tail: L.solve_tail ?? '',
     sublevels,
   });
+}
+
+// 第 6 章的標題/引導在原版 tutorial_texts.json 裡是省略號佔位，改用自製關卡的文案填上。
+if (ch6) {
+  let filled = 0;
+  for (const lv of levels) {
+    for (const sub of lv.sublevels) {
+      const meta = ch6.metas?.[sub.id];
+      if (!meta) continue;
+      sub.title = meta.title;
+      sub.guidance = meta.guidance;
+      filled++;
+    }
+  }
+  if (filled) console.log(`[gen] 已填補第 6 章 ${filled} 個 sublevel 的標題/引導`);
 }
 
 // 攤平成有序序列（用於解鎖鏈：後一個 sublevel 依賴前一個完成）
