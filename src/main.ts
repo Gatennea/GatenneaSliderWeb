@@ -11,7 +11,7 @@ import { solve, describeAction, bestMove, stateFromBlocks } from './solver/index
 import type { SolverAction } from './solver/index.js';
 import { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } from './io/SaveManager.js';
 import { Timer, formatTime } from './feature/Timer.js';
-import { Records, stats, series, tpsOf, blocksToMap } from './feature/Records.js';
+import { Records, stats, series, tpsOf, blocksToMap, type RecordItem } from './feature/Records.js';
 import { TutorialController } from './feature/tutorial.js';
 import { CreativeController } from './feature/create.js';
 import { APP_VERSION, entryFor, shouldShowChangelog } from './feature/changelog.js';
@@ -201,7 +201,7 @@ recordsHeader.style.padding = '4px 8px';
 recordsHeader.style.cursor = 'move';
 recordsHeader.style.userSelect = 'none';
 const recordsTitle = document.createElement('span');
-recordsTitle.textContent = '成绩';
+recordsTitle.textContent = '成绩记录';
 recordsTitle.style.color = '#fff';
 recordsTitle.style.fontSize = '13px';
 const recordsClose = document.createElement('span');
@@ -791,7 +791,9 @@ function recordDnf(): void {
 
 // 右側開關狀態
 let selectionAnimationEnabled = true;
-let recordsVisible = false;
+// 對照原版 show_records_panel = True（默認顯示）：桌面端（>=640px）默認展開成績面板，
+// 手機/窄屏默認收起避免擋住棋盤（與右欄堆叠同閾值 innerWidth<640）。已存偏好優先。
+let recordsVisible = typeof window !== 'undefined' && window.innerWidth >= 640;
 // 控制模式
 let singleTouch = true;
 let twoTouch = true;
@@ -815,7 +817,7 @@ const switchStates: SwitchState[] = [
   { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('计时中无法切换模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '计时模式：打乱后需按空格开始' : '练习模式：可自由滑动，不计时'); schedulePaint(); } },
   // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
   // 網頁版多一個「箭頭」（復刻原版箭頭按鍵）；「成績」對應成績面板開關。
-  { key: 'records_visible', label: '成绩', get: () => recordsVisible, set: (v) => { recordsVisible = v; recordsPanel.style.display = v ? '' : 'none'; if (v) renderRecordsPanel(); syncSwitches(); } },
+  { key: 'records_visible', label: '成绩', get: () => recordsVisible, set: (v) => { recordsVisible = v; recordsPanel.style.display = v ? '' : 'none'; if (v) renderRecordsPanel(); syncSwitches(); saveUiPrefs(); } },
 ];
 
 function renderSwitch(s: SwitchState): void {
@@ -1294,6 +1296,8 @@ function saveUiPrefs(): void {
     localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
       vk: vkPanel.style.display !== 'none',
       vkPos: { x: vkPanel.offsetLeft, y: vkPanel.offsetTop },
+      // 成績面板顯隱也記：玩家關掉就別下次又彈出來
+      records: recordsVisible,
       // 控制方式開關也一起記：玩家關掉某種操作方式，通常是不想再見到它
       ctrl: {
         single: singleTouch, two: twoTouch, kb: keyboardMouse, arrows: renderer.arrowEnabled,
@@ -1314,6 +1318,7 @@ function loadUiPrefs(): void {
   let saved: {
     vk?: boolean;
     vkPos?: { x: number; y: number };
+    records?: boolean;
     ctrl?: { single?: boolean; two?: boolean; kb?: boolean; arrows?: boolean };
   } | null = null;
   try {
@@ -1322,6 +1327,8 @@ function loadUiPrefs(): void {
     saved = null;
   }
   const c = saved?.ctrl;
+  // 成績面板顯隱：已存過就尊重上次（否則用桌面/手機的默認判斷）
+  if (typeof saved?.records === 'boolean') recordsVisible = saved.records;
   if (c) {
     if (typeof c.single === 'boolean') singleTouch = c.single;
     if (typeof c.two === 'boolean') twoTouch = c.two;
@@ -1364,34 +1371,57 @@ function renderRecordsPanel(): void {
 
   const fmt = (v: number | 'DNF' | null) => v === null ? '-' : v === 'DNF' ? 'DNF' : formatTime(v);
 
+  // 各列「最好/最差」：原版 _rp_value_style——最好標綠、最差標紅（DNF 按最差計）。
+  const validTimes = rows.filter((r) => !r.item.dnf).map((r) => r.item.time_ms);
+  const bestT = validTimes.length ? Math.min(...validTimes) : null;
+  const worstT = validTimes.length ? Math.max(...validTimes) : null;
+  const a5nums = rows.map((r) => r.ao5).filter((v): v is number => typeof v === 'number');
+  const bestA5 = a5nums.length ? Math.min(...a5nums) : null;
+  const worstA5 = a5nums.length ? Math.max(...a5nums) : null;
+  const a12nums = rows.map((r) => r.ao12).filter((v): v is number => typeof v === 'number');
+  const bestA12 = a12nums.length ? Math.min(...a12nums) : null;
+  const worstA12 = a12nums.length ? Math.max(...a12nums) : null;
+  const bestAo5Overall = bestA5; // 摘要「平均最好」= 整組 Ao5 最小值（同原版）
+
+  function cellColor(val: number | 'DNF' | null, best: number | null, worst: number | null, dnf: boolean): string {
+    if (val === 'DNF' || dnf) return '#cc6666';
+    if (typeof val === 'number') {
+      if (best !== null && val === best) return '#78d878';
+      if (worst !== null && val === worst) return '#ff6b6b';
+    }
+    return '#d2d2d2';
+  }
+
   const title = document.createElement('div');
-  title.textContent = `成绩：${key}`;
-  title.style.marginBottom = '6px';
+  title.textContent = key;
+  title.style.fontSize = '13px';
   title.style.color = COLORS.dialog_title;
+  title.style.marginBottom = '4px';
   recordsBody.appendChild(title);
 
-  // 摘要：對照原版 panel 的顶部统计区（多了原版也有的 mean）
+  // 摘要（對照原版 records_panel.py）：第一行「共 N 次」，第二行 單次最好(綠)/平均最好(綠)/總平均
   const sum = document.createElement('div');
-  sum.style.lineHeight = '1.6';
-  sum.textContent =
-    `次数 ${s.count} ｜ 最佳 ${fmt(s.best)} ｜ 最差 ${fmt(s.worst)} ｜ 平均 ${fmt(s.mean)} ｜ DNF ${s.dnf_count}`;
+  sum.style.lineHeight = '1.7';
+  sum.style.marginBottom = '6px';
+  sum.innerHTML =
+    `<span style="color:#aac8ff">共 ${s.count} 次</span><br>`
+    + `<span style="color:#78d878">单次最好 ${fmt(s.best)}</span>　`
+    + `<span style="color:#78d878">平均最好 ${fmt(bestAo5Overall)}</span>　`
+    + `<span style="color:#d2d2d2">总平均 ${fmt(s.mean)}</span>`;
   recordsBody.appendChild(sum);
-  const sum2 = document.createElement('div');
-  sum2.style.marginBottom = '6px';
-  sum2.textContent = `Ao5 ${fmt(s.ao5)} ｜ Ao12 ${fmt(s.ao12)}`;
-  recordsBody.appendChild(sum2);
 
   if (rows.length === 0) {
     const empty = document.createElement('div');
     empty.style.color = '#888';
-    empty.textContent = '尚无成绩记录';
+    empty.textContent = '暂无成绩';
     recordsBody.appendChild(empty);
     return;
   }
 
-  // 表頭（原版是「序号 / 单次 / Ao5 / Ao12」三列）
+  // 表頭（原版「序号 / 单次 / Ao5 / Ao12」，右側留刪除列）
   const head = document.createElement('div');
   head.style.display = 'flex';
+  head.style.alignItems = 'center';
   head.style.fontSize = '11px';
   head.style.color = '#888';
   head.style.paddingBottom = '2px';
@@ -1401,7 +1431,8 @@ function renderRecordsPanel(): void {
     + '<span style="width:74px">单次</span>'
     + '<span style="width:74px">Ao5</span>'
     + '<span style="width:74px">Ao12</span>'
-    + '<span style="flex:1"></span>';
+    + '<span style="flex:1"></span>'
+    + '<span style="width:24px"></span>';
   recordsBody.appendChild(head);
 
   rows
@@ -1421,15 +1452,19 @@ function renderRecordsPanel(): void {
         `<span style="width:28px;color:#888">${i + 1}</span>`
         + `<span style="width:74px">${row.item.dnf ? 'DNF' : formatTime(row.item.time_ms)}</span>`
         + `<span style="width:74px">${fmt(row.ao5)}</span>`
-        + `<span style="width:74px">${fmt(row.ao12)}</span>`;
-      if (row.item.dnf) main.style.color = '#cc6666';
-      if (recordsDetailId === row.item.id) main.style.color = '#7fb3ff';
+        + `<span style="width:74px">${fmt(row.ao12)}</span>`
+        + '<span style="flex:1"></span>';
+      const spans = main.querySelectorAll('span');
+      spans[1].style.color = cellColor(row.item.dnf ? 'DNF' : row.item.time_ms, bestT, worstT, row.item.dnf);
+      spans[2].style.color = cellColor(row.ao5, bestA5, worstA5, row.item.dnf);
+      spans[3].style.color = cellColor(row.ao12, bestA12, worstA12, row.item.dnf);
+      if (recordsDetailId === row.item.id) main.style.background = 'rgba(62,82,118,0.55)';
       recordsBody.appendChild(main);
 
-      // 展開詳情：對照原版「點擊行顯示初始局面 / 生成時間 / 步數 / TPS」
+      // 展開詳情：對照原版「點擊行顯示初始局面 / 生成時間 / 步數 / TPS」+ 初始局面矩陣操作菜單
       if (recordsDetailId === row.item.id) {
         const detail = document.createElement('div');
-        detail.style.padding = '4px 0 6px 8px';
+        detail.style.padding = '6px 0 8px 8px';
         detail.style.fontSize = '11px';
         detail.style.lineHeight = '1.7';
         const t = new Date(row.item.ts);
@@ -1438,8 +1473,30 @@ function renderRecordsPanel(): void {
           + `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}`;
         const meta = document.createElement('div');
         meta.textContent =
-          `${when} ｜ ${row.item.moves} 步 ｜ TPS ${tpsOf(row.item).toFixed(2)}`;
+          `时间 ${formatTime(row.item.time_ms)} ｜ ${row.item.moves} 步 ｜ TPS ${tpsOf(row.item).toFixed(2)}`;
         detail.appendChild(meta);
+        const whenRow = document.createElement('div');
+        whenRow.textContent = `成绩生成时间 ${when}`;
+        whenRow.style.color = '#9a9a9a';
+        detail.appendChild(whenRow);
+        // 操作按鈕：對照原版「點擊初始局面矩陣」彈出的 複製/另存為存檔/載入練習；
+        // 網頁版做得到的是 複製初始局面 / 載入練習（另存為存檔屬檔案系統差異，暫不移植）。
+        const btnRow = document.createElement('div');
+        btnRow.style.display = 'flex';
+        btnRow.style.gap = '10px';
+        btnRow.style.marginTop = '4px';
+        const copyBtn = document.createElement('span');
+        copyBtn.textContent = '复制初始局面';
+        copyBtn.style.cursor = 'pointer';
+        copyBtn.style.color = '#7fb3ff';
+        copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyInitial(row.item); });
+        const loadBtn = document.createElement('span');
+        loadBtn.textContent = '载入练习';
+        loadBtn.style.cursor = 'pointer';
+        loadBtn.style.color = '#7fb3ff';
+        loadBtn.addEventListener('click', (e) => { e.stopPropagation(); loadPractice(row.item); });
+        btnRow.append(copyBtn, loadBtn);
+        detail.appendChild(btnRow);
         if (row.item.initial && row.item.initial.length) {
           const map = document.createElement('div');
           map.style.fontFamily = 'Consolas, Menlo, monospace';
@@ -1458,16 +1515,14 @@ function renderRecordsPanel(): void {
         recordsBody.appendChild(detail);
       }
 
-      // 操作區：刪除（二次確認，對照原版：不支持編輯，只支持刪除）
-      const ops = document.createElement('div');
-      ops.style.display = 'flex';
-      ops.style.gap = '8px';
-      ops.style.padding = '2px 0 6px 28px';
+      // 行內刪除按鈕（× → 確認?，對照原版行尾的 × / 確認?）
       const del = document.createElement('span');
       del.style.cursor = 'pointer';
-      del.style.fontSize = '11px';
+      del.style.width = '24px';
+      del.style.textAlign = 'center';
+      del.style.fontSize = '14px';
       const pending = recordsPendingDeleteId === row.item.id;
-      del.textContent = pending ? '再点一次确认删除' : '删除';
+      del.textContent = pending ? '确认?' : '×';
       del.style.color = pending ? '#ff6b6b' : '#888';
       del.addEventListener('click', (ev) => {
         ev.stopPropagation();
@@ -1481,8 +1536,7 @@ function renderRecordsPanel(): void {
         recordsPendingDeleteId = null;
         renderRecordsPanel();
       });
-      ops.appendChild(del);
-      recordsBody.appendChild(ops);
+      main.appendChild(del);
 
       main.addEventListener('click', () => {
         recordsDetailId = recordsDetailId === row.item.id ? null : row.item.id;
@@ -1498,7 +1552,35 @@ function toggleRecords(): void {
   recordsPanel.style.display = vis ? '' : 'none';
   if (vis) renderRecordsPanel();
   syncSwitches();
+  saveUiPrefs();
   showToast(vis ? '已开启成绩面板' : '已关闭成绩面板');
+}
+
+/** 詳情操作：複製該筆開局局面為文本（對照原版「複製到剪貼板」）。 */
+function copyInitial(item: RecordItem): void {
+  const text = blocksToMap(item.initial ?? []).join('\n');
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => showToast('已复制初始局面'),
+      () => showToast('复制失败（剪贴板不可用）'),
+    );
+  } else {
+    showToast('当前环境不支持复制');
+  }
+}
+
+/** 詳情操作：把該筆開局局面載入為練習謎題（對照原版「載入練習模式」）。 */
+function loadPractice(item: RecordItem): void {
+  if (timer.state === 'running') { showToast('计时中无法载入'); return; }
+  if (!item.initial || !item.initial.length) { showToast('这筆没有记到开局局面'); return; }
+  store.applyPuzzle(item.m, item.n, item.step, item.initial);
+  setGameMode('practice');
+  renderer.animation = null;
+  centerCamera();
+  autosave(store);
+  schedulePaint();
+  showToast('已载入练习模式，可开始复原');
+  renderRecordsPanel();
 }
 
 // ---------- 共用動作 ----------
@@ -1941,7 +2023,7 @@ const menus: MenuDef[] = [
       else if (item.includes('存档列表')) openSaveList();
     }
   },
-  { label: '编辑', items: ['撤销 Ctrl+Z', '重做 Ctrl+X', '打乱 Alt+S', '重置 Ctrl+R'], handler: (item) => {
+  { label: '编辑', items: ['撤销 Ctrl+Z', '重做 Ctrl+X', '打乱 Alt+S', '重置 Ctrl+R', '---', pro('自动求解 Ctrl+Alt+S')], handler: (item) => {
       if (item.startsWith('撤销')) handleUndo();
       else if (item.startsWith('重做')) handleRedo();
       else if (item.startsWith('打乱')) handleShuffle();
@@ -1950,23 +2032,24 @@ const menus: MenuDef[] = [
   },
   // 數字形態是方形底板加編號，規則與方形完全相同，體驗版也能做；
   // 三角 / 米字要另一套座標與畫法，仍留在完整版。
-  // 求解器（提示一步 / 自動求解）2026-10-20 起重新標成完整版專屬：網頁版只有聚攏一條
-  // 路線、沒有宏接口，動作序列經常亂選（詳見 src/solver/index.ts 頂部關鍵判斷）。
-  // 入口暫時置灰；handler 裡的分支保留不刪，日後移植補缺宏時把 pro() 摘掉即恢復。
+  // 求解器（自動求解）網頁版只有聚攏一條路線、沒有宏接口，動作序列經常亂選，
+  // 故仍標成完整版專屬（見 编辑 菜單的 pro('自動求解')，詳見 src/solver/index.ts 頂部判斷）。
+  // 提示一步是網頁版原創、完整版並無此功能，故不進此菜單，避免與完整版結構差異。
   // 二級子菜單（對照原版 puzzle_sub_presets）：矩形按等級分組，異形按形態分組。
   // 網頁版只有矩形與數字形態可玩，三角／米字仍留完整版，故標成 pro 但保留位階。
+  // 高级选项... 對照原版 puzzle_presets（自定義... 之後），網頁版未實作 → 標 pro。
+  // 模式切換原版移到主窗右下角常用區，網頁版無該控件故留在菜單；数字形态 亦為網頁便利入口。
   { label: '谜题', items: [
       { text: '快速开始：6×6 等级2', preset: [6, 6, 2] },
       { text: '矩形谜题', sub: 'rect' },
       { text: '异形谜题', sub: 'exotic' },
       '---',
       '自定义...',
+      pro('高级选项...'),
       '---',
       '模式:练习', '模式:竞速', '模式:创造',
       '---',
       NUMBERED_ITEM_OFF,
-      '---',
-      pro('提示一步'), pro('自动求解'),
       '---',
       { current: true },
     ], handler: (item, entry) => {
@@ -1978,12 +2061,10 @@ const menus: MenuDef[] = [
       else if (item === '模式:练习') setGameMode('practice');
       else if (item === '模式:竞速') setGameMode('timed');
       else if (item === '模式:创造') creative.enter();
-      else if (item === '提示一步') hintOneStep();
-      else if (item === '自动求解') void autoSolve();
       else if (item.startsWith('数字形态')) toggleNumbered();
     }
   },
-  { label: '宏定义', items: [pro('开始录制 Ctrl+M'), pro('停止录制 Ctrl+M'), '---', pro('宏列表...'), pro('播放宏...'), pro('逆序播放...')] },
+  { label: '宏定义', items: [pro('管理宏...'), pro('录制宏 Ctrl+M'), pro('逆序播放'), '---', pro('（宏名）')] },
   { label: '设置', items: ['虚拟键盘', '成绩面板', '控制模式...', '---', pro('求解器...'), pro('快捷键设置...')], handler: (item) => {
       if (item.includes('虚拟键盘')) toggleVK();
       else if (item.includes('成绩')) toggleRecords();
@@ -2357,6 +2438,22 @@ function applyChromeDensity(): void {
   for (const wrap of sliderWraps) {
     wrap.style.width = stacked ? '40px' : 'auto';
     wrap.style.flex = stacked ? '0 0 40px' : '1 1 auto';
+  }
+  // 成績面板定位（對照原版 records_panel.py：screen_width - 右欄寬 - 320 - 10，
+  // 放在右欄**左側**不擋右欄）。網頁版原本寫死 right:12px 會與右欄（132px）重疊遮擋，
+  // 這裡改到右欄左側；堆叠（手機底部條）時改到底部條上方。
+  if (recordsPanel.style.display !== 'none') {
+    if (stacked) {
+      recordsPanel.style.left = 'auto';
+      recordsPanel.style.top = 'auto';
+      recordsPanel.style.bottom = `${GEOMETRY.status_bar_height + 64}px`;
+      recordsPanel.style.right = '12px';
+    } else {
+      recordsPanel.style.left = 'auto';
+      recordsPanel.style.top = `${GEOMETRY.menu_bar_height + 8}px`;
+      recordsPanel.style.bottom = 'auto';
+      recordsPanel.style.right = `${GEOMETRY.right_panel_width + 12}px`;
+    }
   }
   layoutCanvas();
 }
@@ -2950,6 +3047,10 @@ if (demoFile) {
 }
 // 虛擬鍵盤的開關與位置：觸屏設備默認開著（手機沒有實體方向鍵，不開就沒法走）
 loadUiPrefs();
+// 成績面板：桌面端默認展開（對照原版 show_records_panel=True）；手機/窄屏收起。
+// 定位在 applyChromeDensity 裡按右欄寬調整（不擋右欄）；這裡只管顯隱與首次渲染。
+recordsPanel.style.display = recordsVisible ? '' : 'none';
+if (recordsVisible) renderRecordsPanel();
 syncQuickBarBottom();
 syncRotateHint();
 maybeShowChangelogOnBoot();
