@@ -17,6 +17,7 @@ import { ARROW_IMAGE_DATA_URI } from './arrowImage.js';
 import { findTargetWindow, detectHoles } from '../solver/gather.js';
 import { stateFromBlocks } from '../solver/model.js';
 import { formatTime } from '../feature/Timer.js';
+import { shakeAmpCells } from '../feature/dragFollow.js';
 
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
@@ -92,6 +93,17 @@ export class BoardRenderer {
   private solvedPopupRect: { x: number; y: number; w: number; h: number } | null = null;
   private solvedPopupRaf = 0;
   private solvedPopupT0 = 0;
+  /**
+   * 拖拽跟隨（缺陷 18）：選中組畫在「實時拖到的位置」，單位=小數格（dr=行, dc=列）。
+   * 對照原版 renderer 的 follow_map：只作用於選中（be_opted）的塊，且**動畫播放
+   * 期間讓位給動畫**（原版是 anim_map.get(id) or follow_map.get(id)）。
+   */
+  dragFollow: { dr: number; dc: number } | null = null;
+  /**
+   * 越界鬆手的撞牆回彈（原版 S1-3 _shake_blocks/_shake_offset，約 200ms）。
+   * blocks 是鬆手那刻選中組的快照（拷貝）——單次觸控隨後會清空選中，抖動不能跟著消失。
+   */
+  followShake: { blocks: Set<Block>; dr: number; dc: number; t0: number } | null = null;
   private lastBounds: { min_row: number; max_row: number; min_col: number; max_col: number } | null = null;
 
   // ---- 箭頭按鍵（復刻原版 S1-4：選中縫隙 + 選中組後，切片兩端各一個可點箭頭）----
@@ -306,6 +318,20 @@ export class BoardRenderer {
         const ec = this.animation.end[idx][1];
         r = sr + (er - sr) * t;
         c = sc + (ec - sc) * t;
+      } else if (this.dragFollow && store.game.selected.has(block)) {
+        // 拖拽跟隨（缺陷 18）：一邊拖一邊動的實時預覽。動畫期間讓位（見欄位註釋）；
+        // 偏移已在 events 側夾緊到 [0, maxCells]，這裡直接當單一數據源使用。
+        r += this.dragFollow.dr;
+        c += this.dragFollow.dc;
+      }
+      // 越界鬆手的撞牆回彈：與跟隨/動畫疊加（原版也是疊在 map 位置之上再偏移屏幕座標）
+      const shake = this.followShake;
+      if (shake && shake.blocks.has(block)) {
+        const amp = shakeAmpCells(performance.now() - shake.t0, this.zoom, this.stepPx);
+        // ⚠️ 原版這裡把「行符號」加到了屏幕 x 上（_shake_offset 返回 (dr,dc) 卻按
+        // (x,y) 消費），橫向拖拽會豎直抖——明顯是筆誤。按意圖實現：沿越界方向本身抖。
+        r += shake.dr * amp;
+        c += shake.dc * amp;
       }
       const [x, y] = this.worldToScreen(c * this.step, r * this.step);
       const key = `${Math.round(r)}:${Math.round(c)}`;
@@ -483,6 +509,31 @@ export class BoardRenderer {
     this.solvedPopupT0 = performance.now();
     if (typeof requestAnimationFrame === 'undefined') return; // Node 測試環境：只置位不動畫
     if (!this.solvedPopupRaf) this.solvedPopupRaf = requestAnimationFrame(this.popupFrame);
+  }
+
+  /**
+   * 越界鬆手的撞牆回彈（缺陷 18，對照原版 S1-3）：把鬆手那刻的選中組沿越界方向
+   * 抖約 200ms。blocks 會拷一份——單次觸控隨後清空選中，抖動不該跟著消失。
+   * dr/dc 傳跟隨偏移（行,列），內部取符號。
+   */
+  spawnFollowShake(blocks: Set<Block>, dr: number, dc: number): void {
+    const sdr = Math.sign(dr);
+    const sdc = Math.sign(dc);
+    if (blocks.size === 0 || (sdr === 0 && sdc === 0)) return;
+    this.followShake = { blocks: new Set(blocks), dr: sdr, dc: sdc, t0: performance.now() };
+    if (typeof requestAnimationFrame === 'undefined') return; // Node 測試環境：只置位不動畫
+    const tick = (): void => {
+      const shake = this.followShake;
+      if (!shake) return;
+      if (performance.now() - shake.t0 >= 200) {
+        this.followShake = null;
+        this.repaint?.();
+        return;
+      }
+      this.repaint?.();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   private popupFrame = (now: number): void => {

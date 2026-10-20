@@ -14,8 +14,10 @@
 
 import { BoardRenderer } from '../render/BoardRenderer.js';
 import { GameStore } from '../store/GameStore.js';
+import type { Block } from '../core/Block.js';
 import { selectBlock, selectGap } from '../core/CommandBus.js';
 import { isValidDirectionForGap, type Direction } from '../core/rules.js';
+import { probeMaxCells, followFrame, quantizeCells, continuationRatio } from '../feature/dragFollow.js';
 
 export interface BoardControllerUI {
   canvas: HTMLCanvasElement;
@@ -58,6 +60,22 @@ interface DragState {
   pan: boolean;
   /** 這次是手指還是滑鼠（影響拖動門檻與點擊判定） */
   touch: boolean;
+  /** 按下處的滑塊（拖拽跟隨的起點；對照原版 st['block']，按下時記住） */
+  block: Block | null;
+}
+
+/** 拖拽跟隨狀態（缺陷 18）。對照原版 drag_follow_* 一族欄位。 */
+interface FollowState {
+  /** 鎖定的移動方向（進入時定，之後不再變） */
+  direction: Direction;
+  /** 鎖定的縫隙（h/v + line） */
+  gap: { type: 'h' | 'v'; line: number };
+  /** 沿 direction 可推進的最大格數（進入時探一次，期間棋盤不變） */
+  maxCells: number;
+  /** 按下時的屏幕位置：偏移從這裡算起（對照原版 drag_follow_start_screen） */
+  startScreen: [number, number];
+  /** 單次觸控發起（無預選縫隙）→ 結束自動取消選中（原版 drag_follow_auto_deselect） */
+  autoDeselect: boolean;
 }
 
 const DIRECTION_KEYS: Record<string, Direction> = {
@@ -139,15 +157,23 @@ export class BoardController {
   private downButton = 0;
   private pinchZoom = 1;
   private pinchActive = false;
+  /** 拖拽跟隨狀態（缺陷 18）；null = 不在跟隨中 */
+  private follow: FollowState | null = null;
+  /** 觸點越過可達上限（容差 0.05 格）：光標變禁止圖標、鬆手撞牆回彈 */
+  private followInvalid = false;
+  /** 上一次跟隨進入失敗的提示（同一條不重複彈，避免拖動中瘋狂刷 toast） */
+  private lastFollowFail = '';
 
   constructor(ui: BoardControllerUI) {
     this.ui = ui;
-    this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true, touch: false };
+    this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true, touch: false, block: null };
     this.attach();
   }
 
   /** 播放一段過場動畫（undo/redo 用）：從 from 到 to 平滑過渡後停在 to。 */
   playTransition(from: [number, number][], to: [number, number][], durationMs = this.moveDurationMs): void {
+    // 過場動畫與拖拽跟隨互斥（對照原版 anim_map 優先於 follow_map）
+    this.clearFollow();
     const renderer = this.ui.renderer;
     renderer.animation = { start: from, end: to, progress: 0, durationMs };
     const t0 = performance.now();
@@ -203,6 +229,10 @@ export class BoardController {
     c.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (e.touches.length >= 2) {
+        // 第二根手指 = 縮放：放棄當前的拖拽與跟隨。否則跟隨偏移會凍結在舊值一直
+        // 顯示，且這期間不會再收到 touchmove 更新（缺陷 18）
+        this.drag.active = false;
+        this.clearFollow();
         this.pinchDist = dist(e.touches[0], e.touches[1]);
         this.pinchZoom = this.ui.renderer.zoom;
         this.pinchActive = true;
@@ -229,7 +259,12 @@ export class BoardController {
     c.addEventListener('touchend', (e) => {
       e.preventDefault();
       if (this.pinchActive) {
-        if (e.touches.length < 2) this.pinchActive = false;
+        if (e.touches.length < 2) {
+          // 縮放結束：剩下的那根手指不接續舊拖拽（起手時已被放棄），重新按過才有效
+          this.pinchActive = false;
+          this.drag.active = false;
+          this.clearFollow();
+        }
         return;
       }
       this.onPointerUp();
@@ -266,7 +301,8 @@ export class BoardController {
     // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移。
     // 但原版 events.py 記拖拽起點的條件是「單次 or 兩次觸控」——兩者都關時
     // 按在滑塊上也只是平移（全關就該只剩平移/縮放），否則會留下起點卻不給滑。
-    const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
+    const startBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store);
+    const onBlock = startBlock !== null;
     const draggable = this.singleTouchEnabled || this.twoTouchEnabled;
     this.drag = {
       active: true,
@@ -279,6 +315,7 @@ export class BoardController {
       ay: 0,
       pan: !onBlock || !draggable,
       touch,
+      block: startBlock,
     };
   }
 
@@ -291,12 +328,30 @@ export class BoardController {
     if (Math.abs(dx) + Math.abs(dy) > slop) this.drag.moved = true;
     this.drag.ax = dx;
     this.drag.ay = dy;
+
+    // 拖拽跟隨中（缺陷 18）：每帧更新偏移。**不受閾值限制**——拖回起點附近時位移
+    // 會小於閾值，若受門控偏移會凍結在舊值，鬆手後仍按舊偏移移動（對照原版註解）
+    if (this.follow) {
+      this.updateFollow(x, y);
+      return;
+    }
+
     // 拖拽期間即時平移鏡頭（不等到 mouseup）；只有「空白/縫隙按下」才允許平移
     if (this.drag.pan) {
       const r = this.ui.renderer;
       r.cameraX = this.drag.camX + dx;
       r.cameraY = this.drag.camY + dy;
       this.ui.requestPaint?.();
+      return;
+    }
+
+    // 超過拖動門檻、且按在滑塊上：嘗試進入跟隨（一邊拖一邊動的實時預覽）。
+    // 與松手時的手勢判定共用同一套閾值——兩條路只會走一條。
+    const threshold = this.drag.touch ? DRAG_MOVE_THRESHOLD_TOUCH : DRAG_MOVE_THRESHOLD;
+    if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
+      // 進入成功後立刻按「這一次」的位移算偏移：原版在同一事件裡先 _init_drag_follow
+      // 再走每帧更新，漏掉這步會表現為「第一拖沒有跟手，要再動一下才動」
+      if (this.tryEnterFollow(dx, dy)) this.updateFollow(x, y);
     }
   }
 
@@ -313,8 +368,11 @@ export class BoardController {
 
     this.drag.active = false;
 
-    // 非左鍵鬆開：平移已在 move 期間跟手生效，這裡不再觸發點擊/滑動
-    if (downButton !== 0) return;
+    // 非左鍵鬆開：平移已在 move 期間跟手生效，這裡不再觸發點擊/滑動；跟隨也一併取消
+    if (downButton !== 0) { this.clearFollow(); return; }
+
+    // 拖拽跟隨中（缺陷 18）：松手提交（含量化 + 拖拽接續），不再走下面的手勢路徑
+    if (this.follow) { this.commitFollow(); return; }
 
     if (!moved) {
       // 視為點擊
@@ -360,6 +418,160 @@ export class BoardController {
       r.cameraY = this.drag.camY + dy;
       this.ui.requestPaint?.();
     }
+  }
+
+  // ---------- 拖拽跟隨（缺陷 18：一邊拖一邊動 + 越界判定） ----------
+  // 對照原版 gui/drag.py 的 DragMixin + gui/events.py 的 MOUSEMOTION 分發。
+
+  /**
+   * 嘗試進入拖拽跟隨。對照原版 drag.py::_init_drag_follow：
+   * 定縫（單次觸控 8 區 / 兩次觸控沿已選縫主軸）→ 縫須在棋形內部（邊界縫拒絕）
+   * → 選中連通組 → 探可達上限。回傳 true 表示已進入跟隨。
+   *
+   * 與松手路徑的關係：進入失敗就退回舊路徑（松手時的手勢判定），
+   * 對照原版「跟隨初始化失敗：回退到舊路徑」。
+   */
+  private tryEnterFollow(dx: number, dy: number): boolean {
+    const block = this.drag.block;
+    if (!block) return false;
+    const { store, renderer } = this.ui;
+    // 動畫播放中不進入（對照原版 animating 拒絕）：按住左鍵時另一只手按了方向鍵
+    if (renderer.animation) return false;
+
+    const gap = store.cmd.selectedGap;
+    let gapType: 'h' | 'v';
+    let line: number;
+    let direction: Direction;
+    if (gap) {
+      // 兩次觸控：沿已有縫隙的主方向軸
+      if (!this.twoTouchEnabled) return false;
+      gapType = gap.type;
+      line = gap.line;
+      direction = gap.type === 'h' ? (dx > 0 ? 'd' : 'a') : (dy > 0 ? 's' : 'w');
+      if (!store.cmd.selectedBlock) {
+        const reply = selectBlock(store.cmd, block.row, block.col);
+        if (!reply.ok) return false;
+      }
+    } else {
+      // 單次觸控：8 區角度直接判定
+      if (!this.singleTouchEnabled) return false;
+      const gesture = directGestureFromDrag(block.row, block.col, dx, dy);
+      if (!gesture) return false;
+      // 手勢算出的縫隙必須過 selectGap 校驗：起點方塊在整盤外沿時 8 區映射會算出
+      // 「邊界縫」（所有方塊都在縫的同一側），整盤剛體平移是零進度操作——與第 1 項
+      // 「禁止整體滑動」同源，這裡在跟隨入口再攔一次。
+      const gapReply = selectGap(store.cmd, gesture.gap.type, gesture.gap.line);
+      if (!gapReply.ok) {
+        if (this.lastFollowFail !== gapReply.message) {
+          this.lastFollowFail = gapReply.message;
+          this.notify('这个方向没有可推的缝隙（別拖整盘外沿）');
+        }
+        return false;
+      }
+      const reply = selectBlock(store.cmd, block.row, block.col);
+      if (!reply.ok) return false;
+      gapType = gesture.gap.type;
+      line = gesture.gap.line;
+      direction = gesture.direction;
+    }
+
+    const maxCells = probeMaxCells(store.game, direction, store.currentStep);
+    this.follow = {
+      direction,
+      gap: { type: gapType, line },
+      maxCells,
+      startScreen: [this.drag.startX, this.drag.startY],
+      autoDeselect: gap === null,
+    };
+    this.followInvalid = false;
+    this.lastFollowFail = '';
+    renderer.dragFollow = { dr: 0, dc: 0 };
+    this.ui.requestPaint?.();
+    return true;
+  }
+
+  /** 跟隨中：把指針位移投影到鎖定方向，夾到 [0, maxCells]（對照 events.py 每帧更新）。 */
+  private updateFollow(x: number, y: number): void {
+    const f = this.follow;
+    if (!f) return;
+    const { renderer } = this.ui;
+    // 每格像素數用「格+間隙」的間距（renderer.stepPx）而不是 scaledCell：少了間隙會把
+    // 位移低估約一成，拖一格間距的距離卻讀出 >1 格（對照原版 cell_size + gap_width）
+    const frame = followFrame(
+      f.direction,
+      x - f.startScreen[0],
+      y - f.startScreen[1],
+      renderer.stepPx,
+      f.maxCells,
+    );
+    renderer.dragFollow = { dr: frame.dr, dc: frame.dc };
+    if (frame.invalid !== this.followInvalid) {
+      this.followInvalid = frame.invalid;
+      // 越過可達上限：光標變禁止圖標（對照原版 SYSTEM_CURSOR_NO）
+      this.canvas.style.cursor = frame.invalid ? 'not-allowed' : '';
+    }
+    this.ui.requestPaint?.();
+  }
+
+  /** 離開跟隨：清偏移與光標。選中狀態不動，由呼叫方決定去留。 */
+  private clearFollow(): void {
+    this.follow = null;
+    this.followInvalid = false;
+    if (this.ui.renderer.dragFollow) {
+      this.ui.renderer.dragFollow = null;
+      this.canvas.style.cursor = '';
+      this.ui.requestPaint?.();
+    }
+  }
+
+  /**
+   * 松手提交。對照原版 drag.py::_commit_drag_move：
+   * 偏移量化到 step 整數倍，從大步長遞減找第一個可接受的（兜底）；
+   * 拖拽接續——動畫起點接到松手那刻的跟隨位置，否則整組會跳回原位再滑一次。
+   */
+  private commitFollow(): void {
+    const f = this.follow;
+    if (!f) return;
+    const { store, renderer } = this.ui;
+    const dr = renderer.dragFollow?.dr ?? 0;
+    const dc = renderer.dragFollow?.dc ?? 0;
+    const invalid = this.followInvalid;
+    const autoDeselect = f.autoDeselect;
+    this.clearFollow();
+
+    // 跟隨期間若已經有一步在播（按住左鍵時另一只手按了方向鍵）：只收尾，不移動
+    if (renderer.animation) {
+      if (autoDeselect) this.deselect();
+      return;
+    }
+
+    const step = Math.max(1, store.currentStep);
+    // 取 max 而非 abs 之和：方形四向必然只有一個分量非零（兩者等價）
+    const cells = Math.max(0, Math.abs(dr), Math.abs(dc));
+    let n = quantizeCells(cells, step);
+    // 循環遞減兜底：從最大合法步長開始，逐次減少 step，找到第一個可接受的值
+    while (n > 0 && !store.game.try_move(f.direction, n)) n -= step;
+
+    if (n > 0) {
+      this.animateMove(f.direction, autoDeselect, n, [dr, dc]);
+      return;
+    }
+    // 沒走成：越界松手 → 撞牆回彈 + 明說上限（玩家要的就是「最多能推多遠」的反饋）
+    if (invalid) {
+      this.flashInvalid();
+      this.notify(f.maxCells > 0 ? `这个方向最多能推 ${f.maxCells} 格` : '这个方向已经推不动了');
+      renderer.spawnFollowShake(store.game.selected, dr, dc);
+    }
+    if (autoDeselect) this.deselect();
+  }
+
+  /**
+   * 對外：打斷跟隨（撤销/重做/打乱/重置等換了整局或整步的操作前呼叫）。
+   * 不清選中——那些操作自己會重建局面；只撤掉實時預覽偏移，避免動畫與偏移疊加、
+   * 以及松手時按陳舊偏移誤提交。
+   */
+  cancelFollow(): void {
+    this.clearFollow();
   }
 
   private handleClick(x: number, y: number): void {
@@ -438,16 +650,29 @@ export class BoardController {
     const dir = DIRECTION_KEYS[e.key];
     if (!dir) return;
     e.preventDefault();
+    // 鍵盤移動會打斷跟隨：先撤掉實時預覽，否則動畫與跟隨偏移疊加（缺陷 18）
+    this.clearFollow();
     this.animateMove(dir);
   }
 
   /** 對外：虛擬鍵盤/程式化移動入口。 */
   move(direction: Direction): void {
+    this.clearFollow();
     this.animateMove(direction);
   }
 
-  /** 帶動畫的移動：預測 → 動畫插值 → 提交。 */
-  private animateMove(direction: Direction, clearAfter = false): void {
+  /**
+   * 帶動畫的移動：預測 → 動畫插值 → 提交。
+   * @param cells 推進格數（拖拽跟隨可一次提交多格；鍵盤/箭頭恆為 currentStep）
+   * @param origin 拖拽接續的松手偏移（行,列，小數格）：動畫起點接到松手那刻的跟隨
+   *   位置，否則整組會先跳回原位再完整滑一遍（對照原版 _apply_drag_origin）
+   */
+  private animateMove(
+    direction: Direction,
+    clearAfter = false,
+    cells = this.ui.store.currentStep,
+    origin: [number, number] | null = null,
+  ): void {
     const { store, renderer } = this.ui;
     const cmd = store.cmd;
     const blocked = this.ui.beforeMove?.();
@@ -485,7 +710,7 @@ export class BoardController {
       return;
     }
 
-    const finalPositions = store.game.try_move(direction, store.currentStep);
+    const finalPositions = store.game.try_move(direction, cells);
     if (!finalPositions) {
       this.clearSelectionAfterMove = false;
       this.flashInvalid();
@@ -502,6 +727,31 @@ export class BoardController {
       const e = endBySelected.get(b);
       return e ? ([e[0], e[1]] as [number, number]) : ([b.row, b.col] as [number, number]);
     });
+    // 快照記「實際推進格數」而非謎題 step：撤銷/重做動畫按 post = pre + delta*step
+    // 重建位置（buildHistoryAnim），多格提交若記 step 會整步錯位
+    const moveStep = cells;
+
+    // 拖拽接續（缺陷 18，對照原版 animation.py::_apply_drag_origin）：起點接到松手
+    // 那刻的跟隨位置。跟隨是實時預覽——松手時整組已經被畫到近乎落點；若仍從原點播
+    // 起，松手瞬間整組會先跳回原位、再完整滑一遍。時長按剩餘比例縮短，保證速度不變
+    // （不會變成最後一點點慢慢挪）。s 夾緊：跟過頭時起點停在落點，退化為一幀落位。
+    let durationMs = this.moveDurationMs;
+    if (origin) {
+      const refIdx = start.findIndex((_, i) => store.game.selected.has(store.game.blocks[i]));
+      if (refIdx >= 0) {
+        const tr = end[refIdx][0] - start[refIdx][0];
+        const tc = end[refIdx][1] - start[refIdx][1];
+        const s = continuationRatio(origin[0], origin[1], tr, tc);
+        if (s > 0) {
+          for (let i = 0; i < start.length; i++) {
+            if (!store.game.selected.has(store.game.blocks[i])) continue;
+            start[i][0] += s * tr;
+            start[i][1] += s * tc;
+          }
+          durationMs = Math.max(60, Math.round(this.moveDurationMs * (1 - s)));
+        }
+      }
+    }
 
     if (!this.animationEnabled) {
       // 關閉動畫：瞬間提交；保留選中以便連續滑動
@@ -509,7 +759,7 @@ export class BoardController {
       cmd.stepCount += 1;
       cmd.history.save_snapshot(store.game, {
         direction,
-        step: store.currentStep,
+        step: moveStep,
         gap_type: cmd.selectedGap?.type,
         gap_line: cmd.selectedGap?.line,
         moved_positions: movedPositions,
@@ -520,7 +770,7 @@ export class BoardController {
       return;
     }
 
-    renderer.animation = { start, end, progress: 0, durationMs: this.moveDurationMs };
+    renderer.animation = { start, end, progress: 0, durationMs };
     const t0 = performance.now();
 
     const frame = (now: number): void => {
@@ -538,7 +788,7 @@ export class BoardController {
         cmd.stepCount += 1;
         cmd.history.save_snapshot(store.game, {
           direction,
-          step: store.currentStep,
+          step: moveStep,
           gap_type: cmd.selectedGap?.type,
           gap_line: cmd.selectedGap?.line,
           moved_positions: movedPositions,
@@ -559,6 +809,8 @@ export class BoardController {
 
   private deselect(): void {
     const { store } = this.ui;
+    // 右鍵/點空白取消選中：跟隨預覽一併撤（選中組沒了，偏移畫在空氣上）
+    this.clearFollow();
     store.cmd.selectedGap = null;
     store.cmd.selectedBlock = null;
     store.game.selected.clear();

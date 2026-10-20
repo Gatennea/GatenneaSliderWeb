@@ -485,6 +485,10 @@ const controller = new BoardController({
   requestPaint: schedulePaint,
   onZoomChange: () => syncZoomSlider(),
   beforeMove: () => {
+    // 教程解法回放中鎖住棋盤（對照原版 move.py::move_selected_blocks 開頭的
+    // _tut_board_locked）：回放在按快照重擺棋盤，玩家此時移動會被下一幀覆蓋，
+    // 只會看到畫面亂跳。拖拽跟隨的提交也走 animateMove，故一併被攔。
+    if (tutorial.isReplaying()) return '教程解法回放中：稍等回放结束再操作';
     if (gameMode === 'timed') {
       if (timer.state === 'idle') return '竞速模式：请先使用打乱功能';
       if (timer.state === 'ready') return '竞速模式：按空白键开始计时后才能滑动';
@@ -1554,6 +1558,8 @@ function requestHistoryStep(kind: 'undo' | 'redo'): void {
   const hist = store.cmd.history;
   if (kind === 'undo' && !hist.canUndo) { showToast('没有可撤销的步骤'); return; }
   if (kind === 'redo' && !hist.canRedo) { showToast('没有可重做的步骤'); return; }
+  // 拖拽跟隨與過場動畫互斥：先撤掉實時預覽，避免松手時按陳舊偏移誤提交（缺陷 18）
+  controller.cancelFollow();
   historyAnimQueue.push(kind);
   processHistoryQueue();
 }
@@ -1639,6 +1645,7 @@ function handleRedo(): void {
 
 function handleShuffle(): void {
   if (gameMode === 'timed' && timer.state === 'running') { showToast('计时中无法打乱'); return; }
+  controller.cancelFollow(); // 換了整局：拖拽跟隨的實時預畫沒有意義（缺陷 18）
   const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
   showToast(r.message);
   stickyPlayer.stop(); // 換了整局，連播中的撤銷/重做沒有意義（原版換局也重置歷史）
@@ -1652,6 +1659,7 @@ function handleShuffle(): void {
 
 function handleReset(): void {
   if (gameMode === 'timed' && timer.state === 'running') { showToast('计时中无法重置'); return; }
+  controller.cancelFollow(); // 回到初始態：跟隨預覽與目標局無關（缺陷 18）
   const r = reset(store.cmd);
   showToast(r.message);
   stickyPlayer.stop();

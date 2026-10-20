@@ -448,6 +448,11 @@ const controller = new BoardController({
     requestPaint: schedulePaint,
     onZoomChange: () => syncZoomSlider(),
     beforeMove: () => {
+        // 教程解法回放中鎖住棋盤（對照原版 move.py::move_selected_blocks 開頭的
+        // _tut_board_locked）：回放在按快照重擺棋盤，玩家此時移動會被下一幀覆蓋，
+        // 只會看到畫面亂跳。拖拽跟隨的提交也走 animateMove，故一併被攔。
+        if (tutorial.isReplaying())
+            return '教程解法回放中：稍等回放结束再操作';
         if (gameMode === 'timed') {
             if (timer.state === 'idle')
                 return '竞速模式：请先使用打乱功能';
@@ -1497,6 +1502,8 @@ function requestHistoryStep(kind) {
         showToast('没有可重做的步骤');
         return;
     }
+    // 拖拽跟隨與過場動畫互斥：先撤掉實時預覽，避免松手時按陳舊偏移誤提交（缺陷 18）
+    controller.cancelFollow();
     historyAnimQueue.push(kind);
     processHistoryQueue();
 }
@@ -1588,6 +1595,7 @@ function handleShuffle() {
         showToast('计时中无法打乱');
         return;
     }
+    controller.cancelFollow(); // 換了整局：拖拽跟隨的實時預畫沒有意義（缺陷 18）
     const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
     showToast(r.message);
     stickyPlayer.stop(); // 換了整局，連播中的撤銷/重做沒有意義（原版換局也重置歷史）
@@ -1606,6 +1614,7 @@ function handleReset() {
         showToast('计时中无法重置');
         return;
     }
+    controller.cancelFollow(); // 回到初始態：跟隨預覽與目標局無關（缺陷 18）
     const r = reset(store.cmd);
     showToast(r.message);
     stickyPlayer.stop();
@@ -2977,6 +2986,7 @@ const { ARROW_IMAGE_DATA_URI } = require("./arrowImage.js");
 const { findTargetWindow, detectHoles } = require("../solver/gather.js");
 const { stateFromBlocks } = require("../solver/model.js");
 const { formatTime } = require("../feature/Timer.js");
+const { shakeAmpCells } = require("../feature/dragFollow.js");
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
 function hsvToRgb(h, s, v) {
@@ -3048,6 +3058,17 @@ class BoardRenderer {
         this.solvedPopupRect = null;
         this.solvedPopupRaf = 0;
         this.solvedPopupT0 = 0;
+        /**
+         * 拖拽跟隨（缺陷 18）：選中組畫在「實時拖到的位置」，單位=小數格（dr=行, dc=列）。
+         * 對照原版 renderer 的 follow_map：只作用於選中（be_opted）的塊，且**動畫播放
+         * 期間讓位給動畫**（原版是 anim_map.get(id) or follow_map.get(id)）。
+         */
+        this.dragFollow = null;
+        /**
+         * 越界鬆手的撞牆回彈（原版 S1-3 _shake_blocks/_shake_offset，約 200ms）。
+         * blocks 是鬆手那刻選中組的快照（拷貝）——單次觸控隨後會清空選中，抖動不能跟著消失。
+         */
+        this.followShake = null;
         this.lastBounds = null;
         // ---- 箭頭按鍵（復刻原版 S1-4：選中縫隙 + 選中組後，切片兩端各一個可點箭頭）----
         /** 箭頭按鍵總開關（原版 arrows_enabled，預設開）。 */
@@ -3261,6 +3282,21 @@ class BoardRenderer {
                 r = sr + (er - sr) * t;
                 c = sc + (ec - sc) * t;
             }
+            else if (this.dragFollow && store.game.selected.has(block)) {
+                // 拖拽跟隨（缺陷 18）：一邊拖一邊動的實時預覽。動畫期間讓位（見欄位註釋）；
+                // 偏移已在 events 側夾緊到 [0, maxCells]，這裡直接當單一數據源使用。
+                r += this.dragFollow.dr;
+                c += this.dragFollow.dc;
+            }
+            // 越界鬆手的撞牆回彈：與跟隨/動畫疊加（原版也是疊在 map 位置之上再偏移屏幕座標）
+            const shake = this.followShake;
+            if (shake && shake.blocks.has(block)) {
+                const amp = shakeAmpCells(performance.now() - shake.t0, this.zoom, this.stepPx);
+                // ⚠️ 原版這裡把「行符號」加到了屏幕 x 上（_shake_offset 返回 (dr,dc) 卻按
+                // (x,y) 消費），橫向拖拽會豎直抖——明顯是筆誤。按意圖實現：沿越界方向本身抖。
+                r += shake.dr * amp;
+                c += shake.dc * amp;
+            }
             const [x, y] = this.worldToScreen(c * this.step, r * this.step);
             const key = `${Math.round(r)}:${Math.round(c)}`;
             const selected = store.game.selected.has(block);
@@ -3433,6 +3469,33 @@ class BoardRenderer {
             return; // Node 測試環境：只置位不動畫
         if (!this.solvedPopupRaf)
             this.solvedPopupRaf = requestAnimationFrame(this.popupFrame);
+    }
+    /**
+     * 越界鬆手的撞牆回彈（缺陷 18，對照原版 S1-3）：把鬆手那刻的選中組沿越界方向
+     * 抖約 200ms。blocks 會拷一份——單次觸控隨後清空選中，抖動不該跟著消失。
+     * dr/dc 傳跟隨偏移（行,列），內部取符號。
+     */
+    spawnFollowShake(blocks, dr, dc) {
+        const sdr = Math.sign(dr);
+        const sdc = Math.sign(dc);
+        if (blocks.size === 0 || (sdr === 0 && sdc === 0))
+            return;
+        this.followShake = { blocks: new Set(blocks), dr: sdr, dc: sdc, t0: performance.now() };
+        if (typeof requestAnimationFrame === 'undefined')
+            return; // Node 測試環境：只置位不動畫
+        const tick = () => {
+            const shake = this.followShake;
+            if (!shake)
+                return;
+            if (performance.now() - shake.t0 >= 200) {
+                this.followShake = null;
+                this.repaint?.();
+                return;
+            }
+            this.repaint?.();
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
     }
     /** 點擊命中懸浮窗矩形（供控制器攔截，避免穿透到棋盤）。 */
     hitSolvedPopup(x, y) {
@@ -3809,6 +3872,148 @@ return { BoardRenderer };
 },
     "m10": function (require) {
 /**
+ * 內部指令匯流排（對照 gui/events.py::process_commands 的動作語義）
+ *
+ * 體驗版不做 HTTP/stdin 通道；用同一套 action 名稱封裝，方便日後
+ * 把求解器掛到 Web Worker 時沿用原版指令協定。
+ */
+const { GameHistory } = require("./GameHistory.js");
+const { isValidDirectionForGap } = require("./rules.js");
+function createContext(game, step) {
+    const ctx = {
+        game,
+        history: new GameHistory(),
+        selectedGap: null,
+        selectedBlock: null,
+        step,
+        stepCount: 0,
+        shuffleBefore: null,
+    };
+    // 存初始快照作為 undo 基準（第一個 move 才能撤回到初始版面）
+    ctx.history.save_snapshot(game);
+    return ctx;
+}
+function selectGap(ctx, type, line) {
+    const valid = type === 'h' ? ctx.game.is_valid_h_line(line) : ctx.game.is_valid_v_line(line);
+    if (!valid) {
+        return { ok: false, message: `${type} 分割线 ${line} 不合法` };
+    }
+    ctx.selectedGap = { type, line };
+    ctx.game.selected.clear();
+    ctx.selectedBlock = null;
+    return { ok: true, message: `已选中缝隙: ${type} ${line}` };
+}
+function selectBlock(ctx, row, col) {
+    if (!ctx.selectedGap) {
+        return { ok: false, message: '请先选中缝隙' };
+    }
+    const block = ctx.game.blocks.find((b) => b.row === row && b.col === col);
+    if (!block) {
+        return { ok: false, message: `位置 (${row}, ${col}) 没有滑块` };
+    }
+    ctx.game.opt(ctx.selectedGap.type, ctx.selectedGap.line, block);
+    ctx.selectedBlock = [row, col];
+    const n = ctx.game.selected.size;
+    return { ok: true, message: `选中滑块组 共${n}个` };
+}
+function move(ctx, direction) {
+    if (!ctx.selectedGap) {
+        return { ok: false, message: '请先选中缝隙' };
+    }
+    if (!ctx.selectedBlock) {
+        return { ok: false, message: '请先选中滑块' };
+    }
+    if (!isValidDirectionForGap(ctx.selectedGap.type, direction)) {
+        const g = ctx.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s';
+        return { ok: false, message: `移动方向非法（${g}）` };
+    }
+    // 禁止整體滑動：合法縫隙（is_valid_*_line）兩側必有方塊，選中組不可能等於全體；
+    // 相等只可能是繞過 selectGap 校驗的邊界縫。整盤剛體平移不改變形狀，而判勝只看
+    // 形狀——零進度的無意義操作，命令層直接拒絕。
+    // （引擎層 try_move 對此放行，與原版一致；規則屬於「網站不給這麼玩」，不是遊戲規則。）
+    if (ctx.game.selected.size > 0 && ctx.game.selected.size === ctx.game.blocks.length) {
+        return { ok: false, message: '整盘平移没有意义：过关只看形状，不看绝对位置' };
+    }
+    const finalPositions = ctx.game.try_move(direction, ctx.step);
+    if (!finalPositions) {
+        return { ok: false, message: '移动不合法（碰撞或断连）' };
+    }
+    const movedPositions = ctx.game.blocks
+        .filter((b) => ctx.game.selected.has(b))
+        .map((b) => [b.row, b.col]);
+    ctx.game.commit_move(finalPositions);
+    // 對照原版：移動後保留縫隙/滑塊組選中，以便連續滑動
+    ctx.stepCount += 1;
+    ctx.history.save_snapshot(ctx.game, {
+        direction,
+        step: ctx.step,
+        gap_type: ctx.selectedGap?.type,
+        gap_line: ctx.selectedGap?.line,
+        moved_positions: movedPositions,
+    });
+    return { ok: true, message: `移动 ${direction}` };
+}
+function undo(ctx) {
+    if (!ctx.history.canUndo) {
+        return { ok: false, message: '没有可撤销的步骤' };
+    }
+    ctx.history.undo(ctx.game);
+    ctx.stepCount = Math.max(0, ctx.stepCount - 1);
+    return { ok: true, message: '撤销' };
+}
+function redo(ctx) {
+    if (!ctx.history.canRedo) {
+        return { ok: false, message: '没有可重做的步骤' };
+    }
+    ctx.history.redo(ctx.game);
+    ctx.stepCount += 1;
+    return { ok: true, message: '重做' };
+}
+/**
+ * 安全打亂的 attempts 折減係數。
+ *
+ * 普通 shuffle() 每次嘗試有約 2/3 會因 try_move 失敗而作廢（實測成功率約三成），
+ * 但 shuffle_safe() 會在 tries 內換一組再試，幾乎每次都能走成功（成功率接近 100%）。
+ * 同樣的 attempts 下，安全打亂的**實際步數會多好幾倍** —— 既過度打亂，
+ * 大棋盤還會拖慢（8×8 attempts=640 實測 1.8 秒，畫面明顯卡住）。
+ * 故折減 attempts，讓兩種模式的實際打亂步數大致相當。
+ */
+const SAFE_ATTEMPTS_RATIO = 0.4;
+function shuffle(ctx, attempts = 100, opts = {}) {
+    const safe = opts.safe ?? true;
+    ctx.shuffleBefore = ctx.game.snapshot();
+    if (safe) {
+        ctx.game.shuffle_safe(Math.max(1, Math.round(attempts * SAFE_ATTEMPTS_RATIO)), ctx.step, opts.rng);
+    }
+    else {
+        ctx.game.shuffle(attempts, ctx.step, opts.rng);
+    }
+    ctx.selectedGap = null;
+    ctx.selectedBlock = null;
+    ctx.stepCount = 0;
+    ctx.history = new GameHistory();
+    // 打亂後存快照，作為 undo 的基準（退回打亂後第一個狀態）
+    ctx.history.save_snapshot(ctx.game);
+    return { ok: true, message: '已打乱' };
+}
+/** reset = 回到復原狀態並清空歷史（對照原版 reset_puzzle → new_puzzle(current m/n/step)）。 */
+function reset(ctx) {
+    const m = ctx.game.m;
+    const n = ctx.game.n;
+    ctx.game.resetTo(m, n);
+    ctx.selectedGap = null;
+    ctx.selectedBlock = null;
+    ctx.stepCount = 0;
+    ctx.history = new GameHistory();
+    ctx.history.save_snapshot(ctx.game);
+    ctx.shuffleBefore = null;
+    return { ok: true, message: '已重置' };
+}
+
+return { createContext, selectGap, selectBlock, move, undo, redo, shuffle, reset };
+},
+    "m11": function (require) {
+/**
  * 快照式撤銷/重做（對照 history.py::GameHistory + move_info）
  *
  * 每筆快照記錄當下版面與「如何從前一版面到達此版面」的 move_info，
@@ -3923,7 +4128,7 @@ class GameHistory {
 
 return { GameHistory };
 },
-    "m11": function (require) {
+    "m12": function (require) {
 /**
  * 滑塊 Block（對照 game.py::Block）
  *
@@ -3955,7 +4160,7 @@ class Block {
 
 return { Block };
 },
-    "m12": function (require) {
+    "m13": function (require) {
 /**
  * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
  * 存檔格式與原版完全一致：{version, puzzle, step_count, history:{history_index, snapshots:[{matrix,bounds,move_info?}]}}
@@ -4190,7 +4395,7 @@ class GameStore {
 
 return { GameStore };
 },
-    "m13": function (require) {
+    "m14": function (require) {
 /**
  * 滑塊矩陣核心邏輯（對照 game.py::SliderMatrix 逐函數移植）
  *
@@ -4644,7 +4849,7 @@ function oppositeOf(direction) {
 
 return { SliderMatrix };
 },
-    "m14": function (require) {
+    "m15": function (require) {
 /**
  * 復原彈窗的觸發判斷（純邏輯、無 DOM——方便無頭測試）。
  * 對照原版 GUI._maybe_show_solved_popup 的邊緣檢測與三個抑制條件：
@@ -4678,7 +4883,7 @@ class SolvedPopupTracker {
 
 return { SolvedPopupTracker };
 },
-    "m15": function (require) {
+    "m16": function (require) {
 /**
  * 求解器對外入口
  *
@@ -4802,7 +5007,7 @@ function describeAction(a) {
 
 return { solve, describeAction, findTargetWindow, detectHoles, overlapWith, solveByGather, bestMove, outsideDistance, stateScore, scoreBetter, enc, decRow, decCol, stateFromBlocks, blocksOf, enumerateMoves, applyAction, isSolvedState, isInverseAction };
 },
-    "m16": function (require) {
+    "m17": function (require) {
 /**
  * 存檔/導入（M4）：localStorage 自動快照 + 檔案下載/上傳 + 解析 map 文本。
  * 存檔 JSON 與原版完全一致（{version, puzzle, step_count, history:{history_index, snapshots}}）。
@@ -5003,7 +5208,7 @@ function downloadText(filename, text) {
 
 return { compactJsonDumps, autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, updateSlot, loadSlot, deleteSlot };
 },
-    "m17": function (require) {
+    "m18": function (require) {
 /**
  * 成績記錄（M6）：按 puzzle 分組存 localStorage，統計 count/best/worst/ao5/ao12/dnf。
  * 對照 records.py 的語義（AoN 取最近 n 次、去掉最好與最差、DNF 視為無窮）。
@@ -5171,7 +5376,7 @@ class Records {
 
 return { avgOf, stats, series, tpsOf, blocksToMap, puzzleKey, Records };
 },
-    "m18": function (require) {
+    "m19": function (require) {
 /**
  * 新手教程控制器（對照原版 gui/tutorial.py 的 TutorialMixin 數據驅動設計）
  *
@@ -5767,7 +5972,96 @@ function mkBtn(label, primary, onClick) {
 
 return { TutorialController };
 },
-    "m19": function (require) {
+    "m2": function (require) {
+/**
+ * 畫風 token（對照 docs/theme.md；來源 GUI.py::self.colors 與 gui/renderer.py）
+ * 單一來源，渲染與選單共用，禁止散落寫死色值。
+ */
+function rgb(r, g, b) {
+    return `rgb(${r}, ${g}, ${b})`;
+}
+const COLORS = {
+    background: rgb(30, 30, 30),
+    block: rgb(60, 150, 200),
+    block_selected: rgb(0, 200, 100),
+    border: rgb(100, 100, 100),
+    gap: rgb(80, 80, 80),
+    line: rgb(255, 0, 0),
+    grid: rgb(40, 40, 40),
+    menu_bg: rgb(50, 50, 50),
+    menu_hover: rgb(70, 70, 70),
+    menu_text: rgb(220, 220, 220),
+    menu_selected: rgb(80, 130, 180),
+    status_bg: rgb(40, 40, 40),
+    status_text: rgb(200, 200, 200),
+    dialog_bg: rgb(45, 45, 48),
+    dialog_border: rgb(100, 100, 100),
+    dialog_text: rgb(230, 230, 230),
+    dialog_title: rgb(255, 255, 255),
+    solved: rgb(0, 200, 80),
+    unsolved: rgb(200, 160, 0),
+    input_bg: rgb(60, 60, 65),
+    input_active: rgb(80, 80, 120),
+    input_text: rgb(255, 255, 255),
+    selection_bg: rgb(50, 80, 160),
+    button_bg: rgb(70, 130, 180),
+    button_hover: rgb(90, 150, 200),
+    separator: rgb(80, 80, 80),
+    timer_running: rgb(255, 200, 80),
+    macro_base_mark: rgb(255, 200, 50),
+    // 棋盤標記（原版 board_marks_enabled：目標框 + 洞/缺口/凸起記號，metrics_panel.py）
+    mark_target: rgb(80, 220, 100),
+    mark_hole_large: rgb(255, 80, 80),
+    mark_hole_small: rgb(80, 160, 255),
+    mark_protrusion: rgb(255, 210, 60),
+    // 復原成功懸浮窗（原版 draw_solved_popup）
+    popup_glow: rgb(130, 130, 140),
+    popup_body: rgb(215, 215, 220),
+    popup_score: rgb(240, 225, 150),
+    popup_pb: rgb(255, 190, 90),
+};
+const GEOMETRY = {
+    base_cell_size: 60,
+    gap_width: 4,
+    padding: 10,
+    block_radius: 5, // 原版 int(5 * zoom)，zoom=1 時為 5
+    block_border_width: 2, // 原版 max(1, int(2 * zoom))
+    selected_line_width: 3,
+    menu_bar_height: 32,
+    status_bar_height: 28,
+    right_panel_width: 132,
+    min_width: 1000,
+    min_height: 618,
+};
+/** 原版 ease_out：1 - (1-t)^2 */
+function easeOut(t) {
+    return 1 - (1 - t) * (1 - t);
+}
+/**
+ * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
+ * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
+ *
+ * ⚠️ 為什麼要再掛一串 **TC（繁體）** 字型：介面文案歷史上是簡繁並存（見
+ * `docs/remediation-plan.md` 第 2 項）。只給 SC 字型的話，遇到「謎/擬/鍵」這類
+ * SC 字型沒收的字形，瀏覽器會跳出字型棧去系統預設字型裡找——**同一行文字裡
+ * 簡體是黑體、繁體是別的字型**，就是玩家說的「繁簡字體混用」。
+ * TC 字型排在 SC 之後：缺字時優先在黑體家族內補齊，而不是掉到系統預設。
+ */
+const FONT_FAMILY = "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', "
+    + "'PingFang TC', 'Noto Sans CJK TC', 'Microsoft JhengHei', 'Source Han Sans TC', "
+    + 'system-ui, sans-serif';
+const TEXT = {
+    solved: '状态：复原',
+    unsolved: '状态：未复原',
+    stepPrefix: '步数：',
+    puzzlePrefix: '谜题：',
+    // 原版選單列順序（GUI.py::self.menu_items）
+    menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
+};
+
+return { COLORS, GEOMETRY, easeOut, FONT_FAMILY, TEXT };
+},
+    "m20": function (require) {
 /**
  * 新手教程數據（由 scripts/gen-tutorial-data.mjs 自動生成，來源為原版 GatenneaSlider）。
  * 內聯以避免 file:// 下 fetch 本地 JSON 失敗。請勿手動編輯。
@@ -6184,96 +6478,7 @@ const TUTORIAL_ARCHIVES = JSON.parse("{\"1\":{\"version\":1,\"puzzle\":{\"m\":3,
 
 return { TUTORIAL_TEXTS, TUTORIAL_LEVELS, TUTORIAL_ORDER, TUTORIAL_ARCHIVES };
 },
-    "m2": function (require) {
-/**
- * 畫風 token（對照 docs/theme.md；來源 GUI.py::self.colors 與 gui/renderer.py）
- * 單一來源，渲染與選單共用，禁止散落寫死色值。
- */
-function rgb(r, g, b) {
-    return `rgb(${r}, ${g}, ${b})`;
-}
-const COLORS = {
-    background: rgb(30, 30, 30),
-    block: rgb(60, 150, 200),
-    block_selected: rgb(0, 200, 100),
-    border: rgb(100, 100, 100),
-    gap: rgb(80, 80, 80),
-    line: rgb(255, 0, 0),
-    grid: rgb(40, 40, 40),
-    menu_bg: rgb(50, 50, 50),
-    menu_hover: rgb(70, 70, 70),
-    menu_text: rgb(220, 220, 220),
-    menu_selected: rgb(80, 130, 180),
-    status_bg: rgb(40, 40, 40),
-    status_text: rgb(200, 200, 200),
-    dialog_bg: rgb(45, 45, 48),
-    dialog_border: rgb(100, 100, 100),
-    dialog_text: rgb(230, 230, 230),
-    dialog_title: rgb(255, 255, 255),
-    solved: rgb(0, 200, 80),
-    unsolved: rgb(200, 160, 0),
-    input_bg: rgb(60, 60, 65),
-    input_active: rgb(80, 80, 120),
-    input_text: rgb(255, 255, 255),
-    selection_bg: rgb(50, 80, 160),
-    button_bg: rgb(70, 130, 180),
-    button_hover: rgb(90, 150, 200),
-    separator: rgb(80, 80, 80),
-    timer_running: rgb(255, 200, 80),
-    macro_base_mark: rgb(255, 200, 50),
-    // 棋盤標記（原版 board_marks_enabled：目標框 + 洞/缺口/凸起記號，metrics_panel.py）
-    mark_target: rgb(80, 220, 100),
-    mark_hole_large: rgb(255, 80, 80),
-    mark_hole_small: rgb(80, 160, 255),
-    mark_protrusion: rgb(255, 210, 60),
-    // 復原成功懸浮窗（原版 draw_solved_popup）
-    popup_glow: rgb(130, 130, 140),
-    popup_body: rgb(215, 215, 220),
-    popup_score: rgb(240, 225, 150),
-    popup_pb: rgb(255, 190, 90),
-};
-const GEOMETRY = {
-    base_cell_size: 60,
-    gap_width: 4,
-    padding: 10,
-    block_radius: 5, // 原版 int(5 * zoom)，zoom=1 時為 5
-    block_border_width: 2, // 原版 max(1, int(2 * zoom))
-    selected_line_width: 3,
-    menu_bar_height: 32,
-    status_bar_height: 28,
-    right_panel_width: 132,
-    min_width: 1000,
-    min_height: 618,
-};
-/** 原版 ease_out：1 - (1-t)^2 */
-function easeOut(t) {
-    return 1 - (1 - t) * (1 - t);
-}
-/**
- * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
- * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
- *
- * ⚠️ 為什麼要再掛一串 **TC（繁體）** 字型：介面文案歷史上是簡繁並存（見
- * `docs/remediation-plan.md` 第 2 項）。只給 SC 字型的話，遇到「謎/擬/鍵」這類
- * SC 字型沒收的字形，瀏覽器會跳出字型棧去系統預設字型裡找——**同一行文字裡
- * 簡體是黑體、繁體是別的字型**，就是玩家說的「繁簡字體混用」。
- * TC 字型排在 SC 之後：缺字時優先在黑體家族內補齊，而不是掉到系統預設。
- */
-const FONT_FAMILY = "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', "
-    + "'PingFang TC', 'Noto Sans CJK TC', 'Microsoft JhengHei', 'Source Han Sans TC', "
-    + 'system-ui, sans-serif';
-const TEXT = {
-    solved: '状态：复原',
-    unsolved: '状态：未复原',
-    stepPrefix: '步数：',
-    puzzlePrefix: '谜题：',
-    // 原版選單列順序（GUI.py::self.menu_items）
-    menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
-};
-
-return { COLORS, GEOMETRY, easeOut, FONT_FAMILY, TEXT };
-},
-    "m20": function (require) {
+    "m21": function (require) {
 /**
  * 創造模式控制器（對照原版 gui/annotation.py + speedrun.py 的模式開關第三態）。
  *
@@ -6553,7 +6758,7 @@ function clampInt(v, lo, hi, def) {
 
 return { CreativeController };
 },
-    "m21": function (require) {
+    "m22": function (require) {
 /**
  * 版本公告（更新預告）。
  *
@@ -6603,7 +6808,7 @@ function shouldShowChangelog(lastSeen, version = APP_VERSION) {
 
 return { APP_VERSION, CHANGELOG, entryFor, shouldShowChangelog };
 },
-    "m22": function (require) {
+    "m23": function (require) {
 /**
  * 虛擬鍵盤：純邏輯部分（佈局計算 + 粘滯連續播放 + 跳到某步）。
  *
@@ -7557,6 +7762,98 @@ return { formatTime, Timer };
 },
     "m8": function (require) {
 /**
+ * 拖拽跟随（缺陷 18：一边拖一边动 + 越界判定）。
+ * 对照原版 gui/drag.py 的 DragMixin + gui/events.py 的 MOUSEMOTION 分发。
+ *
+ * 这里只放纯逻辑（引擎探测 / 偏移投影 / 提交量化 / 拖拽接续比例 / 回弹包络），
+ * DOM、光标与动画帧由 BoardController 驱动——否则「夹紧是否生效」「量化是否会
+ * 少走一格」这类边界只有人肉拖才会发现，写不进测试。
+ *
+ * 机制（对照原版，方形模式）：
+ * 1. 进入跟随：位移超阈值 → 定缝（单次触控 8 区 / 两次触控沿已选缝主轴）→
+ *    缝须在棋形内部（边界缝拒绝）→ 选中连通组 → 探可达上限（只探一次，期间棋盘不变）。
+ * 2. 每帧：屏幕位移 → 格位移 → 投影到锁定方向的前进轴 → 夹到 [0, maxCells]；
+ *    越界（forward > max + 0.05）时光标变禁止图标。
+ * 3. 松手：偏移量化到 step 整数倍，从大步长递减找第一个可接受的；
+ *    拖拽接续——动画起点接到松手那刻的跟随位置，否则整组会跳回原位再滑一次。
+ * 4. 越界松手：撞墙回弹（约 200ms，|sin|×线性衰减包络）。
+ */
+const { DIRECTION_DELTA } = require("../core/rules.js");
+/** 回弹时长（ms）。原版按帧记（12 帧 ≈ 200ms）。 */
+const SHAKE_MS = 200;
+/**
+ * 探测沿 direction 可连续推进的最大格数，向下取整到 step 的整数倍。
+ * 对照原版 drag.py::_probe_max_cells——跟随期间棋盘状态不变，只需探测一次。
+ *
+ * ⚠️ 全员选中（只可能是绕过校验的边界缝）按 0 格处理：引擎对此放行是刻意保留的
+ * 原版语义（护栏在命令层/UI 层），不拦的话探测会一路试到安全上限，而整盘刚体
+ * 平移不改变形状（判胜只看形状）。对应原版 try_move_ex 的 all_selected。
+ */
+function probeMaxCells(game, direction, step, limit = 64) {
+    if (game.selected.size > 0 && game.selected.size === game.blocks.length)
+        return 0;
+    const stepSize = Math.max(1, step);
+    let reach = 0;
+    while (reach < limit) {
+        if (!game.try_move(direction, reach + 1))
+            break;
+        reach += 1;
+    }
+    return Math.floor(reach / stepSize) * stepSize;
+}
+/**
+ * 每帧偏移：屏幕位移投影到锁定方向的前进轴，夹到 [0, maxCells]。
+ * 对照 events.py 方形分支：raw 取主轴分量；'d'/'s' 是屏幕正方向、'a'/'w' 是负方向
+ * （方向在进入时已锁定，必须乘方向符号，否则上/左拖拽会被夹紧吃掉）。
+ * 反向拖回起点后停在原位，绝不产生反向位移。
+ *
+ * @param pitchPx 每格像素数 = 「格 + 间隙」的间距 × zoom（不是 scaledCell，
+ *   少了间隙会把位移低估约一成：拖一格间距却读出 >1 格）
+ */
+function followFrame(direction, pxDx, pxDy, pitchPx, maxCells) {
+    const raw = direction === 'd' || direction === 'a' ? pxDx / pitchPx : pxDy / pitchPx;
+    const forward = direction === 'd' || direction === 's' ? raw : -raw;
+    const clamped = Math.max(0, Math.min(forward, maxCells));
+    const [di, dj] = DIRECTION_DELTA[direction];
+    return { dr: di * clamped, dc: dj * clamped, invalid: forward > maxCells + 0.05 };
+}
+/**
+ * 提交量化：int(cells / step + 0.5) * step。
+ * 取整用 floor(x+0.5) 而非 round——规避 round() 的银行家舍入（0.5 格时行为不同）。
+ */
+function quantizeCells(cells, step) {
+    const stepSize = Math.max(1, step);
+    return Math.floor(cells / stepSize + 0.5) * stepSize;
+}
+/**
+ * 拖拽接续比例（对照原版 animation.py::_apply_drag_origin）：
+ * 按跟随位移在总位移上的占比 s∈[0,1] 把动画起点前移，动画只滑剩下的那一段。
+ * s 夹紧——跟随量超过落点时（如跟了 1.4 格却只走 1 格）起点停在落点，
+ * 动画退化为一帧落位，也不会往回滑。
+ */
+function continuationRatio(originDr, originDc, totalDr, totalDc) {
+    if (Math.abs(originDr) < 1e-9 && Math.abs(originDc) < 1e-9)
+        return 0;
+    const den = totalDr * totalDr + totalDc * totalDc;
+    if (den < 1e-12)
+        return 0;
+    return Math.max(0, Math.min(1, (originDr * totalDr + originDc * totalDc) / den));
+}
+/**
+ * 回弹振幅（格）：6px×zoom×|sin|×线性衰减包络，换算成格。
+ * 对照原版 drag.py::_shake_offset（先正向冲一下再弹回）。
+ */
+function shakeAmpCells(elapsedMs, zoom, pitchPx) {
+    const phase = 1 - elapsedMs / SHAKE_MS;
+    if (phase <= 0)
+        return 0;
+    return (6 * zoom * phase * Math.abs(Math.sin(phase * Math.PI))) / pitchPx;
+}
+
+return { SHAKE_MS, probeMaxCells, followFrame, quantizeCells, continuationRatio, shakeAmpCells };
+},
+    "m9": function (require) {
+/**
  * 棋盤互動控制器（M2）
  * 對照 gui/events.py 的三連互動與 gui/renderer.py 的命中測試。
  *
@@ -7571,6 +7868,7 @@ return { formatTime, Timer };
  */
 const { selectBlock, selectGap } = require("../core/CommandBus.js");
 const { isValidDirectionForGap } = require("../core/rules.js");
+const { probeMaxCells, followFrame, quantizeCells, continuationRatio } = require("../feature/dragFollow.js");
 const DRAG_MOVE_THRESHOLD = 18;
 /**
  * 觸控的判定門檻比滑鼠高一截（手機專項第 12 項「太容易誤觸」）：
@@ -7650,12 +7948,20 @@ class BoardController {
         this.downButton = 0;
         this.pinchZoom = 1;
         this.pinchActive = false;
+        /** 拖拽跟隨狀態（缺陷 18）；null = 不在跟隨中 */
+        this.follow = null;
+        /** 觸點越過可達上限（容差 0.05 格）：光標變禁止圖標、鬆手撞牆回彈 */
+        this.followInvalid = false;
+        /** 上一次跟隨進入失敗的提示（同一條不重複彈，避免拖動中瘋狂刷 toast） */
+        this.lastFollowFail = '';
         this.ui = ui;
-        this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true, touch: false };
+        this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true, touch: false, block: null };
         this.attach();
     }
     /** 播放一段過場動畫（undo/redo 用）：從 from 到 to 平滑過渡後停在 to。 */
     playTransition(from, to, durationMs = this.moveDurationMs) {
+        // 過場動畫與拖拽跟隨互斥（對照原版 anim_map 優先於 follow_map）
+        this.clearFollow();
         const renderer = this.ui.renderer;
         renderer.animation = { start: from, end: to, progress: 0, durationMs };
         const t0 = performance.now();
@@ -7705,6 +8011,10 @@ class BoardController {
         c.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (e.touches.length >= 2) {
+                // 第二根手指 = 縮放：放棄當前的拖拽與跟隨。否則跟隨偏移會凍結在舊值一直
+                // 顯示，且這期間不會再收到 touchmove 更新（缺陷 18）
+                this.drag.active = false;
+                this.clearFollow();
                 this.pinchDist = dist(e.touches[0], e.touches[1]);
                 this.pinchZoom = this.ui.renderer.zoom;
                 this.pinchActive = true;
@@ -7731,8 +8041,12 @@ class BoardController {
         c.addEventListener('touchend', (e) => {
             e.preventDefault();
             if (this.pinchActive) {
-                if (e.touches.length < 2)
+                if (e.touches.length < 2) {
+                    // 縮放結束：剩下的那根手指不接續舊拖拽（起手時已被放棄），重新按過才有效
                     this.pinchActive = false;
+                    this.drag.active = false;
+                    this.clearFollow();
+                }
                 return;
             }
             this.onPointerUp();
@@ -7769,7 +8083,8 @@ class BoardController {
         // 按在滑塊上時禁止平移地圖（對照原版）；按在縫隙/空白才能拖動平移。
         // 但原版 events.py 記拖拽起點的條件是「單次 or 兩次觸控」——兩者都關時
         // 按在滑塊上也只是平移（全關就該只剩平移/縮放），否則會留下起點卻不給滑。
-        const onBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store) !== null;
+        const startBlock = this.ui.renderer.getBlockAtPos(x, y, this.ui.store);
+        const onBlock = startBlock !== null;
         const draggable = this.singleTouchEnabled || this.twoTouchEnabled;
         this.drag = {
             active: true,
@@ -7782,6 +8097,7 @@ class BoardController {
             ay: 0,
             pan: !onBlock || !draggable,
             touch,
+            block: startBlock,
         };
     }
     onPointerMove(x, y) {
@@ -7795,12 +8111,28 @@ class BoardController {
             this.drag.moved = true;
         this.drag.ax = dx;
         this.drag.ay = dy;
+        // 拖拽跟隨中（缺陷 18）：每帧更新偏移。**不受閾值限制**——拖回起點附近時位移
+        // 會小於閾值，若受門控偏移會凍結在舊值，鬆手後仍按舊偏移移動（對照原版註解）
+        if (this.follow) {
+            this.updateFollow(x, y);
+            return;
+        }
         // 拖拽期間即時平移鏡頭（不等到 mouseup）；只有「空白/縫隙按下」才允許平移
         if (this.drag.pan) {
             const r = this.ui.renderer;
             r.cameraX = this.drag.camX + dx;
             r.cameraY = this.drag.camY + dy;
             this.ui.requestPaint?.();
+            return;
+        }
+        // 超過拖動門檻、且按在滑塊上：嘗試進入跟隨（一邊拖一邊動的實時預覽）。
+        // 與松手時的手勢判定共用同一套閾值——兩條路只會走一條。
+        const threshold = this.drag.touch ? DRAG_MOVE_THRESHOLD_TOUCH : DRAG_MOVE_THRESHOLD;
+        if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
+            // 進入成功後立刻按「這一次」的位移算偏移：原版在同一事件裡先 _init_drag_follow
+            // 再走每帧更新，漏掉這步會表現為「第一拖沒有跟手，要再動一下才動」
+            if (this.tryEnterFollow(dx, dy))
+                this.updateFollow(x, y);
         }
     }
     onPointerUp() {
@@ -7815,9 +8147,16 @@ class BoardController {
         const dy = this.drag.ay;
         const [x, y] = [this.drag.startX, this.drag.startY];
         this.drag.active = false;
-        // 非左鍵鬆開：平移已在 move 期間跟手生效，這裡不再觸發點擊/滑動
-        if (downButton !== 0)
+        // 非左鍵鬆開：平移已在 move 期間跟手生效，這裡不再觸發點擊/滑動；跟隨也一併取消
+        if (downButton !== 0) {
+            this.clearFollow();
             return;
+        }
+        // 拖拽跟隨中（缺陷 18）：松手提交（含量化 + 拖拽接續），不再走下面的手勢路徑
+        if (this.follow) {
+            this.commitFollow();
+            return;
+        }
         if (!moved) {
             // 視為點擊
             this.handleClick(x, y);
@@ -7864,6 +8203,156 @@ class BoardController {
             r.cameraY = this.drag.camY + dy;
             this.ui.requestPaint?.();
         }
+    }
+    // ---------- 拖拽跟隨（缺陷 18：一邊拖一邊動 + 越界判定） ----------
+    // 對照原版 gui/drag.py 的 DragMixin + gui/events.py 的 MOUSEMOTION 分發。
+    /**
+     * 嘗試進入拖拽跟隨。對照原版 drag.py::_init_drag_follow：
+     * 定縫（單次觸控 8 區 / 兩次觸控沿已選縫主軸）→ 縫須在棋形內部（邊界縫拒絕）
+     * → 選中連通組 → 探可達上限。回傳 true 表示已進入跟隨。
+     *
+     * 與松手路徑的關係：進入失敗就退回舊路徑（松手時的手勢判定），
+     * 對照原版「跟隨初始化失敗：回退到舊路徑」。
+     */
+    tryEnterFollow(dx, dy) {
+        const block = this.drag.block;
+        if (!block)
+            return false;
+        const { store, renderer } = this.ui;
+        // 動畫播放中不進入（對照原版 animating 拒絕）：按住左鍵時另一只手按了方向鍵
+        if (renderer.animation)
+            return false;
+        const gap = store.cmd.selectedGap;
+        let gapType;
+        let line;
+        let direction;
+        if (gap) {
+            // 兩次觸控：沿已有縫隙的主方向軸
+            if (!this.twoTouchEnabled)
+                return false;
+            gapType = gap.type;
+            line = gap.line;
+            direction = gap.type === 'h' ? (dx > 0 ? 'd' : 'a') : (dy > 0 ? 's' : 'w');
+            if (!store.cmd.selectedBlock) {
+                const reply = selectBlock(store.cmd, block.row, block.col);
+                if (!reply.ok)
+                    return false;
+            }
+        }
+        else {
+            // 單次觸控：8 區角度直接判定
+            if (!this.singleTouchEnabled)
+                return false;
+            const gesture = directGestureFromDrag(block.row, block.col, dx, dy);
+            if (!gesture)
+                return false;
+            // 手勢算出的縫隙必須過 selectGap 校驗：起點方塊在整盤外沿時 8 區映射會算出
+            // 「邊界縫」（所有方塊都在縫的同一側），整盤剛體平移是零進度操作——與第 1 項
+            // 「禁止整體滑動」同源，這裡在跟隨入口再攔一次。
+            const gapReply = selectGap(store.cmd, gesture.gap.type, gesture.gap.line);
+            if (!gapReply.ok) {
+                if (this.lastFollowFail !== gapReply.message) {
+                    this.lastFollowFail = gapReply.message;
+                    this.notify('这个方向没有可推的缝隙（別拖整盘外沿）');
+                }
+                return false;
+            }
+            const reply = selectBlock(store.cmd, block.row, block.col);
+            if (!reply.ok)
+                return false;
+            gapType = gesture.gap.type;
+            line = gesture.gap.line;
+            direction = gesture.direction;
+        }
+        const maxCells = probeMaxCells(store.game, direction, store.currentStep);
+        this.follow = {
+            direction,
+            gap: { type: gapType, line },
+            maxCells,
+            startScreen: [this.drag.startX, this.drag.startY],
+            autoDeselect: gap === null,
+        };
+        this.followInvalid = false;
+        this.lastFollowFail = '';
+        renderer.dragFollow = { dr: 0, dc: 0 };
+        this.ui.requestPaint?.();
+        return true;
+    }
+    /** 跟隨中：把指針位移投影到鎖定方向，夾到 [0, maxCells]（對照 events.py 每帧更新）。 */
+    updateFollow(x, y) {
+        const f = this.follow;
+        if (!f)
+            return;
+        const { renderer } = this.ui;
+        // 每格像素數用「格+間隙」的間距（renderer.stepPx）而不是 scaledCell：少了間隙會把
+        // 位移低估約一成，拖一格間距的距離卻讀出 >1 格（對照原版 cell_size + gap_width）
+        const frame = followFrame(f.direction, x - f.startScreen[0], y - f.startScreen[1], renderer.stepPx, f.maxCells);
+        renderer.dragFollow = { dr: frame.dr, dc: frame.dc };
+        if (frame.invalid !== this.followInvalid) {
+            this.followInvalid = frame.invalid;
+            // 越過可達上限：光標變禁止圖標（對照原版 SYSTEM_CURSOR_NO）
+            this.canvas.style.cursor = frame.invalid ? 'not-allowed' : '';
+        }
+        this.ui.requestPaint?.();
+    }
+    /** 離開跟隨：清偏移與光標。選中狀態不動，由呼叫方決定去留。 */
+    clearFollow() {
+        this.follow = null;
+        this.followInvalid = false;
+        if (this.ui.renderer.dragFollow) {
+            this.ui.renderer.dragFollow = null;
+            this.canvas.style.cursor = '';
+            this.ui.requestPaint?.();
+        }
+    }
+    /**
+     * 松手提交。對照原版 drag.py::_commit_drag_move：
+     * 偏移量化到 step 整數倍，從大步長遞減找第一個可接受的（兜底）；
+     * 拖拽接續——動畫起點接到松手那刻的跟隨位置，否則整組會跳回原位再滑一次。
+     */
+    commitFollow() {
+        const f = this.follow;
+        if (!f)
+            return;
+        const { store, renderer } = this.ui;
+        const dr = renderer.dragFollow?.dr ?? 0;
+        const dc = renderer.dragFollow?.dc ?? 0;
+        const invalid = this.followInvalid;
+        const autoDeselect = f.autoDeselect;
+        this.clearFollow();
+        // 跟隨期間若已經有一步在播（按住左鍵時另一只手按了方向鍵）：只收尾，不移動
+        if (renderer.animation) {
+            if (autoDeselect)
+                this.deselect();
+            return;
+        }
+        const step = Math.max(1, store.currentStep);
+        // 取 max 而非 abs 之和：方形四向必然只有一個分量非零（兩者等價）
+        const cells = Math.max(0, Math.abs(dr), Math.abs(dc));
+        let n = quantizeCells(cells, step);
+        // 循環遞減兜底：從最大合法步長開始，逐次減少 step，找到第一個可接受的值
+        while (n > 0 && !store.game.try_move(f.direction, n))
+            n -= step;
+        if (n > 0) {
+            this.animateMove(f.direction, autoDeselect, n, [dr, dc]);
+            return;
+        }
+        // 沒走成：越界松手 → 撞牆回彈 + 明說上限（玩家要的就是「最多能推多遠」的反饋）
+        if (invalid) {
+            this.flashInvalid();
+            this.notify(f.maxCells > 0 ? `这个方向最多能推 ${f.maxCells} 格` : '这个方向已经推不动了');
+            renderer.spawnFollowShake(store.game.selected, dr, dc);
+        }
+        if (autoDeselect)
+            this.deselect();
+    }
+    /**
+     * 對外：打斷跟隨（撤销/重做/打乱/重置等換了整局或整步的操作前呼叫）。
+     * 不清選中——那些操作自己會重建局面；只撤掉實時預覽偏移，避免動畫與偏移疊加、
+     * 以及松手時按陳舊偏移誤提交。
+     */
+    cancelFollow() {
+        this.clearFollow();
     }
     handleClick(x, y) {
         const { store, renderer } = this.ui;
@@ -7942,14 +8431,22 @@ class BoardController {
         if (!dir)
             return;
         e.preventDefault();
+        // 鍵盤移動會打斷跟隨：先撤掉實時預覽，否則動畫與跟隨偏移疊加（缺陷 18）
+        this.clearFollow();
         this.animateMove(dir);
     }
     /** 對外：虛擬鍵盤/程式化移動入口。 */
     move(direction) {
+        this.clearFollow();
         this.animateMove(direction);
     }
-    /** 帶動畫的移動：預測 → 動畫插值 → 提交。 */
-    animateMove(direction, clearAfter = false) {
+    /**
+     * 帶動畫的移動：預測 → 動畫插值 → 提交。
+     * @param cells 推進格數（拖拽跟隨可一次提交多格；鍵盤/箭頭恆為 currentStep）
+     * @param origin 拖拽接續的松手偏移（行,列，小數格）：動畫起點接到松手那刻的跟隨
+     *   位置，否則整組會先跳回原位再完整滑一遍（對照原版 _apply_drag_origin）
+     */
+    animateMove(direction, clearAfter = false, cells = this.ui.store.currentStep, origin = null) {
         const { store, renderer } = this.ui;
         const cmd = store.cmd;
         const blocked = this.ui.beforeMove?.();
@@ -7984,7 +8481,7 @@ class BoardController {
             this.notify(`移动方向非法（${cmd.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s'}）`);
             return;
         }
-        const finalPositions = store.game.try_move(direction, store.currentStep);
+        const finalPositions = store.game.try_move(direction, cells);
         if (!finalPositions) {
             this.clearSelectionAfterMove = false;
             this.flashInvalid();
@@ -8000,13 +8497,38 @@ class BoardController {
             const e = endBySelected.get(b);
             return e ? [e[0], e[1]] : [b.row, b.col];
         });
+        // 快照記「實際推進格數」而非謎題 step：撤銷/重做動畫按 post = pre + delta*step
+        // 重建位置（buildHistoryAnim），多格提交若記 step 會整步錯位
+        const moveStep = cells;
+        // 拖拽接續（缺陷 18，對照原版 animation.py::_apply_drag_origin）：起點接到松手
+        // 那刻的跟隨位置。跟隨是實時預覽——松手時整組已經被畫到近乎落點；若仍從原點播
+        // 起，松手瞬間整組會先跳回原位、再完整滑一遍。時長按剩餘比例縮短，保證速度不變
+        // （不會變成最後一點點慢慢挪）。s 夾緊：跟過頭時起點停在落點，退化為一幀落位。
+        let durationMs = this.moveDurationMs;
+        if (origin) {
+            const refIdx = start.findIndex((_, i) => store.game.selected.has(store.game.blocks[i]));
+            if (refIdx >= 0) {
+                const tr = end[refIdx][0] - start[refIdx][0];
+                const tc = end[refIdx][1] - start[refIdx][1];
+                const s = continuationRatio(origin[0], origin[1], tr, tc);
+                if (s > 0) {
+                    for (let i = 0; i < start.length; i++) {
+                        if (!store.game.selected.has(store.game.blocks[i]))
+                            continue;
+                        start[i][0] += s * tr;
+                        start[i][1] += s * tc;
+                    }
+                    durationMs = Math.max(60, Math.round(this.moveDurationMs * (1 - s)));
+                }
+            }
+        }
         if (!this.animationEnabled) {
             // 關閉動畫：瞬間提交；保留選中以便連續滑動
             store.game.commit_move(finalPositions);
             cmd.stepCount += 1;
             cmd.history.save_snapshot(store.game, {
                 direction,
-                step: store.currentStep,
+                step: moveStep,
                 gap_type: cmd.selectedGap?.type,
                 gap_line: cmd.selectedGap?.line,
                 moved_positions: movedPositions,
@@ -8016,7 +8538,7 @@ class BoardController {
             this.ui.requestPaint?.();
             return;
         }
-        renderer.animation = { start, end, progress: 0, durationMs: this.moveDurationMs };
+        renderer.animation = { start, end, progress: 0, durationMs };
         const t0 = performance.now();
         const frame = (now) => {
             const anim = renderer.animation;
@@ -8035,7 +8557,7 @@ class BoardController {
                 cmd.stepCount += 1;
                 cmd.history.save_snapshot(store.game, {
                     direction,
-                    step: store.currentStep,
+                    step: moveStep,
                     gap_type: cmd.selectedGap?.type,
                     gap_line: cmd.selectedGap?.line,
                     moved_positions: movedPositions,
@@ -8055,6 +8577,8 @@ class BoardController {
     }
     deselect() {
         const { store } = this.ui;
+        // 右鍵/點空白取消選中：跟隨預覽一併撤（選中組沒了，偏移畫在空氣上）
+        this.clearFollow();
         store.cmd.selectedGap = null;
         store.cmd.selectedBlock = null;
         store.game.selected.clear();
@@ -8063,148 +8587,6 @@ class BoardController {
 }
 
 return { directGestureFromDrag, BoardController };
-},
-    "m9": function (require) {
-/**
- * 內部指令匯流排（對照 gui/events.py::process_commands 的動作語義）
- *
- * 體驗版不做 HTTP/stdin 通道；用同一套 action 名稱封裝，方便日後
- * 把求解器掛到 Web Worker 時沿用原版指令協定。
- */
-const { GameHistory } = require("./GameHistory.js");
-const { isValidDirectionForGap } = require("./rules.js");
-function createContext(game, step) {
-    const ctx = {
-        game,
-        history: new GameHistory(),
-        selectedGap: null,
-        selectedBlock: null,
-        step,
-        stepCount: 0,
-        shuffleBefore: null,
-    };
-    // 存初始快照作為 undo 基準（第一個 move 才能撤回到初始版面）
-    ctx.history.save_snapshot(game);
-    return ctx;
-}
-function selectGap(ctx, type, line) {
-    const valid = type === 'h' ? ctx.game.is_valid_h_line(line) : ctx.game.is_valid_v_line(line);
-    if (!valid) {
-        return { ok: false, message: `${type} 分割线 ${line} 不合法` };
-    }
-    ctx.selectedGap = { type, line };
-    ctx.game.selected.clear();
-    ctx.selectedBlock = null;
-    return { ok: true, message: `已选中缝隙: ${type} ${line}` };
-}
-function selectBlock(ctx, row, col) {
-    if (!ctx.selectedGap) {
-        return { ok: false, message: '请先选中缝隙' };
-    }
-    const block = ctx.game.blocks.find((b) => b.row === row && b.col === col);
-    if (!block) {
-        return { ok: false, message: `位置 (${row}, ${col}) 没有滑块` };
-    }
-    ctx.game.opt(ctx.selectedGap.type, ctx.selectedGap.line, block);
-    ctx.selectedBlock = [row, col];
-    const n = ctx.game.selected.size;
-    return { ok: true, message: `选中滑块组 共${n}个` };
-}
-function move(ctx, direction) {
-    if (!ctx.selectedGap) {
-        return { ok: false, message: '请先选中缝隙' };
-    }
-    if (!ctx.selectedBlock) {
-        return { ok: false, message: '请先选中滑块' };
-    }
-    if (!isValidDirectionForGap(ctx.selectedGap.type, direction)) {
-        const g = ctx.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s';
-        return { ok: false, message: `移动方向非法（${g}）` };
-    }
-    // 禁止整體滑動：合法縫隙（is_valid_*_line）兩側必有方塊，選中組不可能等於全體；
-    // 相等只可能是繞過 selectGap 校驗的邊界縫。整盤剛體平移不改變形狀，而判勝只看
-    // 形狀——零進度的無意義操作，命令層直接拒絕。
-    // （引擎層 try_move 對此放行，與原版一致；規則屬於「網站不給這麼玩」，不是遊戲規則。）
-    if (ctx.game.selected.size > 0 && ctx.game.selected.size === ctx.game.blocks.length) {
-        return { ok: false, message: '整盘平移没有意义：过关只看形状，不看绝对位置' };
-    }
-    const finalPositions = ctx.game.try_move(direction, ctx.step);
-    if (!finalPositions) {
-        return { ok: false, message: '移动不合法（碰撞或断连）' };
-    }
-    const movedPositions = ctx.game.blocks
-        .filter((b) => ctx.game.selected.has(b))
-        .map((b) => [b.row, b.col]);
-    ctx.game.commit_move(finalPositions);
-    // 對照原版：移動後保留縫隙/滑塊組選中，以便連續滑動
-    ctx.stepCount += 1;
-    ctx.history.save_snapshot(ctx.game, {
-        direction,
-        step: ctx.step,
-        gap_type: ctx.selectedGap?.type,
-        gap_line: ctx.selectedGap?.line,
-        moved_positions: movedPositions,
-    });
-    return { ok: true, message: `移动 ${direction}` };
-}
-function undo(ctx) {
-    if (!ctx.history.canUndo) {
-        return { ok: false, message: '没有可撤销的步骤' };
-    }
-    ctx.history.undo(ctx.game);
-    ctx.stepCount = Math.max(0, ctx.stepCount - 1);
-    return { ok: true, message: '撤销' };
-}
-function redo(ctx) {
-    if (!ctx.history.canRedo) {
-        return { ok: false, message: '没有可重做的步骤' };
-    }
-    ctx.history.redo(ctx.game);
-    ctx.stepCount += 1;
-    return { ok: true, message: '重做' };
-}
-/**
- * 安全打亂的 attempts 折減係數。
- *
- * 普通 shuffle() 每次嘗試有約 2/3 會因 try_move 失敗而作廢（實測成功率約三成），
- * 但 shuffle_safe() 會在 tries 內換一組再試，幾乎每次都能走成功（成功率接近 100%）。
- * 同樣的 attempts 下，安全打亂的**實際步數會多好幾倍** —— 既過度打亂，
- * 大棋盤還會拖慢（8×8 attempts=640 實測 1.8 秒，畫面明顯卡住）。
- * 故折減 attempts，讓兩種模式的實際打亂步數大致相當。
- */
-const SAFE_ATTEMPTS_RATIO = 0.4;
-function shuffle(ctx, attempts = 100, opts = {}) {
-    const safe = opts.safe ?? true;
-    ctx.shuffleBefore = ctx.game.snapshot();
-    if (safe) {
-        ctx.game.shuffle_safe(Math.max(1, Math.round(attempts * SAFE_ATTEMPTS_RATIO)), ctx.step, opts.rng);
-    }
-    else {
-        ctx.game.shuffle(attempts, ctx.step, opts.rng);
-    }
-    ctx.selectedGap = null;
-    ctx.selectedBlock = null;
-    ctx.stepCount = 0;
-    ctx.history = new GameHistory();
-    // 打亂後存快照，作為 undo 的基準（退回打亂後第一個狀態）
-    ctx.history.save_snapshot(ctx.game);
-    return { ok: true, message: '已打乱' };
-}
-/** reset = 回到復原狀態並清空歷史（對照原版 reset_puzzle → new_puzzle(current m/n/step)）。 */
-function reset(ctx) {
-    const m = ctx.game.m;
-    const n = ctx.game.n;
-    ctx.game.resetTo(m, n);
-    ctx.selectedGap = null;
-    ctx.selectedBlock = null;
-    ctx.stepCount = 0;
-    ctx.history = new GameHistory();
-    ctx.history.save_snapshot(ctx.game);
-    ctx.shuffleBefore = null;
-    return { ok: true, message: '已重置' };
-}
-
-return { createContext, selectGap, selectBlock, move, undo, redo, shuffle, reset };
 } };
   var __cache = {};
   function __load(id) {
@@ -8216,27 +8598,28 @@ return { createContext, selectGap, selectBlock, move, undo, redo, shuffle, reset
   }
   var __resolve = { "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/main.js": "m0",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/BoardRenderer.js": "m1",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/GameHistory.js": "m10",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/Block.js": "m11",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/store/GameStore.js": "m12",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/SliderMatrix.js": "m13",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/solvedPopup.js": "m14",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/index.js": "m15",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/io/SaveManager.js": "m16",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Records.js": "m17",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/tutorial.js": "m18",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/tutorial/tutorialData.js": "m19",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/CommandBus.js": "m10",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/GameHistory.js": "m11",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/Block.js": "m12",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/store/GameStore.js": "m13",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/SliderMatrix.js": "m14",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/solvedPopup.js": "m15",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/index.js": "m16",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/io/SaveManager.js": "m17",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Records.js": "m18",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/tutorial.js": "m19",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/theme.js": "m2",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/create.js": "m20",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/changelog.js": "m21",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/virtualKeyboard.js": "m22",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/tutorial/tutorialData.js": "m20",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/create.js": "m21",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/changelog.js": "m22",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/virtualKeyboard.js": "m23",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/rules.js": "m3",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/arrowImage.js": "m4",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/gather.js": "m5",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/model.js": "m6",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Timer.js": "m7",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/interaction/BoardController.js": "m8",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/CommandBus.js": "m9" };
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/dragFollow.js": "m8",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/interaction/BoardController.js": "m9" };
   function __resolvedId(fromId, spec) {
     var fromAbs = null;
     for (var k in __resolve) { if (__resolve[k] === fromId) { fromAbs = k; break; } }

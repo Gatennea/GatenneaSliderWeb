@@ -18,6 +18,7 @@ import { cases as tutorialCases } from '../tests/tutorial.test.mjs';
 import { cases as vkCases } from '../tests/virtualKeyboard.test.mjs';
 import { cases as ctrlCases } from '../tests/controlModes.test.mjs';
 import { cases as changelogCases } from '../tests/changelog.test.mjs';
+import { cases as dragFollowCases } from '../tests/dragFollow.test.mjs';
 
 const suites = [
   { name: 'SliderMatrix/GameHistory', cases: matrixCases },
@@ -36,6 +37,7 @@ const suites = [
   { name: '虛擬鍵盤（佈局/夾邊/粘滯連播）', cases: vkCases },
   { name: '控制方式解耦（原版五開關）', cases: ctrlCases },
   { name: '版本公告（更新預告）', cases: changelogCases },
+  { name: '拖拽跟隨（一邊拖一邊動 + 越界判定）', cases: dragFollowCases },
 ];
 
 let passed = 0;
