@@ -12,6 +12,11 @@ export interface RecordItem {
   time_ms: number;
   moves: number;
   dnf: boolean;
+  /**
+   * 開局局面（打亂後的方塊座標），對照原版 records.py 的 initial_matrix。
+   * 2026-10-19 才開始記錄，舊資料沒有這個欄位 → 讀取時要容許 undefined。
+   */
+  initial?: [number, number][];
 }
 
 export type RecordsMap = Record<string, RecordItem[]>;
@@ -32,6 +37,8 @@ export interface Stats {
   count: number;
   best: number | null;
   worst: number | null;
+  /** 所有有效（非 DNF）成績的平均；一筆有效都沒有時為 null */
+  mean: number | null;
   dnf_count: number;
   ao5: number | 'DNF' | null;
   ao12: number | 'DNF' | null;
@@ -44,10 +51,59 @@ export function stats(records: RecordItem[]): Stats {
     count: records.length,
     best: valid.length ? Math.min(...valid) : null,
     worst: valid.length ? Math.max(...valid) : null,
+    mean: valid.length ? valid.reduce((s, v) => s + v, 0) / valid.length : null,
     dnf_count: times.length - valid.length,
     ao5: avgOf(times, 5),
     ao12: avgOf(times, 12),
   };
+}
+
+export interface SeriesRow {
+  item: RecordItem;
+  /** 以這條成績為**結尾**的滑動窗口算出的 Ao5/Ao12（csTimer 風格，與原版 series() 同義） */
+  ao5: number | 'DNF' | null;
+  ao12: number | 'DNF' | null;
+}
+
+/**
+ * 逐行成績：每條都帶上「到那一條為止」的 Ao5/Ao12。
+ * 對照原版 records.py::series —— 列表是 csTimer 那種三列，不是只看最後一個平均值。
+ */
+export function series(records: RecordItem[]): SeriesRow[] {
+  const times: (number | null)[] = records.map((r) => (r.dnf ? null : r.time_ms));
+  return records.map((item, i) => ({
+    item,
+    ao5: avgOf(times.slice(0, i + 1), 5),
+    ao12: avgOf(times.slice(0, i + 1), 12),
+  }));
+}
+
+/** TPS（每秒步數），與原版同口徑：moves / 秒。時間 0 或無步數時回 0。 */
+export function tpsOf(item: RecordItem): number {
+  if (!item.time_ms || item.time_ms <= 0) return 0;
+  return item.moves / (item.time_ms / 1000);
+}
+
+/**
+ * 把一組方塊座標畫成等寬文字地圖（開局局面用）。
+ * 正常化到左上角為原點，每格兩個字寬（██ / ··），讓 HTML 裡對齊得像棋盤。
+ */
+export function blocksToMap(blocks: [number, number][]): string[] {
+  if (!blocks || blocks.length === 0) return [];
+  const rows = blocks.map((b) => b[0]);
+  const cols = blocks.map((b) => b[1]);
+  const minR = Math.min(...rows);
+  const maxR = Math.max(...rows);
+  const minC = Math.min(...cols);
+  const maxC = Math.max(...cols);
+  const set = new Set(blocks.map(([r, c]) => `${r}:${c}`));
+  const out: string[] = [];
+  for (let r = minR; r <= maxR; r++) {
+    let line = '';
+    for (let c = minC; c <= maxC; c++) line += set.has(`${r}:${c}`) ? '██' : '··';
+    out.push(line);
+  }
+  return out;
 }
 
 export function puzzleKey(m: number, n: number, step: number): string {
@@ -87,6 +143,7 @@ export class Records {
     moves: number,
     dnf: boolean,
     numbered = false,
+    initial?: [number, number][],
   ): RecordItem {
     const item: RecordItem = {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -98,6 +155,7 @@ export class Records {
       moves,
       dnf,
     };
+    if (initial && initial.length) item.initial = initial;
     const key = numbered ? `${puzzleKey(m, n, step)}#num` : puzzleKey(m, n, step);
     (this.data[key] ??= []).push(item);
     this.save();
