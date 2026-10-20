@@ -2,11 +2,22 @@
 <html lang="zh-Hans">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover：env(safe-area-inset-*) 要有值才避得開瀏海與底部手勢條 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1e1e1e" />
     <title>貓九的滑块游戏 — 网页体验版</title>
     <style>
       * { box-sizing: border-box; }
-      body { margin: 0; background: #1e1e1e; }
+      html, body { margin: 0; height: 100%; background: #1e1e1e; }
+      body {
+        overflow: hidden;
+        /* 關掉下拉刷新與橡皮筋：手機上拖棋盤最容易被它打斷 */
+        overscroll-behavior: none;
+        -webkit-text-size-adjust: 100%;
+      }
+      /* 100dvh：手機瀏覽器工具列會收合，用 100vh 會把底部狀態列頂出畫面。
+         不支援 dvh 的舊瀏覽器忽略這條，退回 JS 設的 100vh。 */
+      #app { height: 100vh; height: 100dvh; }
     </style>
   </head>
   <body>

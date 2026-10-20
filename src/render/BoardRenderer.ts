@@ -541,7 +541,9 @@ export class BoardRenderer {
     const showResult = !!result && !result.dnf;
     const baseW = 460;
     const baseH = showResult ? 300 : 200;
-    const cx = (W - GEOMETRY.right_panel_width) / 2;
+    // 居於畫布正中。原版扣掉右欄 132px 是因為它的右欄畫在 screen 內；
+    // 網頁版右欄是畫布外的 DOM 元素，再扣就整個偏左 66px 了。
+    const cx = W / 2;
     const cy = H / 2;
 
     // 彈入：前 200ms 由 0.70 立方回彈到 1；之後 1±0.012 呼吸（原版以幁計，此處折算毫秒）

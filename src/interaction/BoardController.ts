@@ -36,6 +36,12 @@ export interface BoardControllerUI {
 }
 
 const DRAG_MOVE_THRESHOLD = 18;
+/**
+ * 觸控的判定門檻比滑鼠高一截（手機專項第 12 項「太容易誤觸」）：
+ * 手指按下時會先抖一下、點擊也常帶幾 px 位移，門檻太小會把「點一下」誤判成
+ * 「拖了某個方向」——結果是想選縫隙卻直接把滑塊推走。
+ */
+const DRAG_MOVE_THRESHOLD_TOUCH = 28;
 
 interface DragState {
   active: boolean;
@@ -50,6 +56,8 @@ interface DragState {
   ay: number;
   /** 按下處若在滑塊上則禁止平移（對照原版：點滑塊不能拖動地圖） */
   pan: boolean;
+  /** 這次是手指還是滑鼠（影響拖動門檻與點擊判定） */
+  touch: boolean;
 }
 
 const DIRECTION_KEYS: Record<string, Direction> = {
@@ -134,7 +142,7 @@ export class BoardController {
 
   constructor(ui: BoardControllerUI) {
     this.ui = ui;
-    this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true };
+    this.drag = { active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false, ax: 0, ay: 0, pan: true, touch: false };
     this.attach();
   }
 
@@ -202,7 +210,7 @@ export class BoardController {
       }
       const t = e.touches[0];
       const rect = c.getBoundingClientRect();
-      this.onPointerDown(t.clientX - rect.left, t.clientY - rect.top);
+      this.onPointerDown(t.clientX - rect.left, t.clientY - rect.top, 0, true);
     }, { passive: false });
     c.addEventListener('touchmove', (e) => {
       e.preventDefault();
@@ -250,7 +258,7 @@ export class BoardController {
     if (changed) this.ui.requestPaint?.();
   }
 
-  private onPointerDown(x: number, y: number, button = 0): void {
+  private onPointerDown(x: number, y: number, button = 0, touch = false): void {
     // 原版：事件分發最前面呼叫 spawn_click_feedback —— 左鍵按下都給漣漪
     this.downButton = button;
     if (button === 0) this.ui.renderer.spawnClickFeedback(x, y);
@@ -270,6 +278,7 @@ export class BoardController {
       ax: 0,
       ay: 0,
       pan: !onBlock || !draggable,
+      touch,
     };
   }
 
@@ -277,7 +286,9 @@ export class BoardController {
     if (!this.drag.active) return;
     const dx = x - this.drag.startX;
     const dy = y - this.drag.startY;
-    if (Math.abs(dx) + Math.abs(dy) > 4) this.drag.moved = true;
+    // 判定「這是拖不是點」的位移量：手指抖動比滑鼠大，門檻也跟著放寬
+    const slop = this.drag.touch ? 10 : 4;
+    if (Math.abs(dx) + Math.abs(dy) > slop) this.drag.moved = true;
     this.drag.ax = dx;
     this.drag.ay = dy;
     // 拖拽期間即時平移鏡頭（不等到 mouseup）；只有「空白/縫隙按下」才允許平移
@@ -312,7 +323,8 @@ export class BoardController {
     }
 
     // 拖動：若已選中縫隙，且起點在滑塊上，超過閾值 → 直接選中組並滑動（不必先點方塊）
-    const overThreshold = Math.abs(dx) > DRAG_MOVE_THRESHOLD || Math.abs(dy) > DRAG_MOVE_THRESHOLD;
+    const threshold = this.drag.touch ? DRAG_MOVE_THRESHOLD_TOUCH : DRAG_MOVE_THRESHOLD;
+    const overThreshold = Math.abs(dx) > threshold || Math.abs(dy) > threshold;
     const startBlock = r.getBlockAtPos(x, y, store);
     const direction: Direction = Math.abs(dx) > Math.abs(dy)
       ? (dx > 0 ? 'd' : 'a')

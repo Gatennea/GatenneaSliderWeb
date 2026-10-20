@@ -23,6 +23,13 @@ import type { Block } from './core/Block.js';
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.style.background = COLORS.background;
 app.style.height = '100vh';
+// 100dvh（動態視口）：手機瀏覽器工具列收合時 100vh 並不跟著變，底部狀態列會被頂出畫面。
+// 不支援的瀏覽器會忽略這一條，保留上一行的 100vh。
+app.style.height = '100dvh';
+// 安全區：避開瀏海（上）與手勢條（下）。padding 加在 app 上，棋盤與狀態列一起內縮，
+// 底部欄才不會被手勢條壓住（手機專項第 14/15 項）。
+app.style.paddingTop = 'env(safe-area-inset-top, 0px)';
+app.style.paddingBottom = 'env(safe-area-inset-bottom, 0px)';
 app.style.overflow = 'hidden';
 app.style.display = 'flex';
 app.style.flexDirection = 'column';
@@ -68,6 +75,13 @@ canvas.style.display = 'block';
 canvas.style.width = 'auto';
 canvas.style.height = '100%';
 canvas.style.minWidth = '0';
+// 手機防誤觸（第 12 項）：讓棋盤獨佔觸控手勢，瀏覽器不要把拖曳解釋成捲動/縮放/長按選單；
+// 也關掉長按會冒出的文字選取與點擊高亮（否則拖一下棋盤就「選到字」）。
+canvas.style.touchAction = 'none';
+canvas.style.userSelect = 'none';
+canvas.style.setProperty('-webkit-user-select', 'none');
+canvas.style.setProperty('-webkit-touch-callout', 'none');
+canvas.style.setProperty('-webkit-tap-highlight-color', 'transparent');
 content.appendChild(canvas);
 
 const rightPanel = document.createElement('div');
@@ -813,6 +827,10 @@ switchStates.forEach((s) => {
   el.style.cursor = 'pointer';
   el.style.fontSize = '12px';
   el.style.borderRadius = '4px';
+  // 豎屏時面板改成底部橫條：開關要固定寬度才排得整齊（flex 預設會被擠扁）
+  el.style.flex = '0 0 auto';
+  el.style.minWidth = '62px';
+  el.style.padding = '0 6px';
   s.el = el;
   renderSwitch(s);
   el.addEventListener('click', () => { s.set(!s.get()); renderSwitch(s); });
@@ -829,6 +847,9 @@ sliderArea.style.flexDirection = 'row';
 sliderArea.style.order = '-1';
 sliderArea.style.gap = '8px';
 rightPanel.appendChild(sliderArea);
+
+/** 兩條滑條的容器（豎屏改底部橫條時要一起收窄，故記下來） */
+const sliderWraps: HTMLElement[] = [];
 
 function makeSlider(label: string, onChange: (ratio: number) => void): { track: HTMLDivElement; knob: HTMLDivElement } {
   const wrap = document.createElement('div');
@@ -857,6 +878,7 @@ function makeSlider(label: string, onChange: (ratio: number) => void): { track: 
   track.appendChild(knob);
   wrap.append(lab, track);
   sliderArea.appendChild(wrap);
+  sliderWraps.push(wrap);
 
   function updateFromY(clientY: number): void {
     const rect = track.getBoundingClientRect();
@@ -926,8 +948,14 @@ const stickyPlayer = new StickyPlayer(
 let vkMoved = false;
 /** 面板尺寸隨方向鍵行數定，網頁版恆為矩形形態 */
 const vkViewport = (): VkViewport => ({ width: window.innerWidth, height: window.innerHeight });
-/** 面板不得壓住上一層選單列與下一層狀態列 */
-const vkChrome = (): VkChrome => ({ top: GEOMETRY.menu_bar_height, bottom: GEOMETRY.status_bar_height });
+/**
+ * 面板不得壓住上一層選單列與下一層狀態列。
+ * 上界用選單欄**實際底邊**（safe-area 上內邊距會讓它 != menu_bar_height）。
+ */
+const vkChrome = (): VkChrome => ({
+  top: menuBar.offsetTop + menuBar.offsetHeight,
+  bottom: GEOMETRY.status_bar_height,
+});
 
 function buildVK(): void {
   vkBody.innerHTML = '';
@@ -1076,6 +1104,56 @@ const undoQuick = quickButton('↶ 撤销', () => handleUndo());
 const redoQuick = quickButton('↷ 重做', () => handleRedo());
 quickBar.append(undoQuick, redoQuick);
 app.appendChild(quickBar);
+
+// ---------- 橫屏提示（手機專項第 10 項） ----------
+/**
+ * 豎屏下的棋盤是又窄又高，滑塊被擠成小方塊、手指還容易誤觸，所以明示建議橫屏。
+ * 只對「觸屏 + 豎屏 + 窄」的裝置提示（桌機視窗拉窄不代表手機，別去煩桌機使用者）；
+ * 按「知道了」就不再出現（記進 localStorage），但換成更窄的裝置仍會再提示一次。
+ */
+const ROTATE_HINT_KEY = 'gatennea.rotateHint';
+const rotateBar = document.createElement('div');
+rotateBar.style.position = 'fixed';
+rotateBar.style.left = '50%';
+rotateBar.style.transform = 'translateX(-50%)';
+rotateBar.style.top = '0';
+rotateBar.style.display = 'none';
+rotateBar.style.alignItems = 'center';
+rotateBar.style.gap = '10px';
+rotateBar.style.maxWidth = 'calc(100vw - 24px)';
+rotateBar.style.background = 'rgba(40,40,48,0.96)';
+rotateBar.style.border = `1px solid ${COLORS.dialog_border}`;
+rotateBar.style.borderRadius = '0 0 8px 8px';
+rotateBar.style.padding = '6px 12px';
+rotateBar.style.color = COLORS.dialog_text;
+rotateBar.style.fontSize = '12px';
+rotateBar.style.zIndex = '950';
+rotateBar.style.boxShadow = '0 2px 8px rgba(0,0,0,0.45)';
+const rotateText = document.createElement('span');
+rotateText.textContent = '建议横屏游玩：竖屏下棋盘会被压窄';
+const rotateOk = document.createElement('span');
+rotateOk.textContent = '知道了';
+rotateOk.style.cursor = 'pointer';
+rotateOk.style.color = BRAND_COLOR;
+rotateOk.style.whiteSpace = 'nowrap';
+rotateOk.addEventListener('click', () => {
+  try { localStorage.setItem(ROTATE_HINT_KEY, '1'); } catch { /* 隱私模式：只是下次再提示 */ }
+  rotateBar.style.display = 'none';
+});
+rotateBar.append(rotateText, rotateOk);
+app.appendChild(rotateBar);
+
+function syncRotateHint(): void {
+  if (rotateBar.dataset['dismissed'] === '1') return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(ROTATE_HINT_KEY) === '1'; } catch { dismissed = false; }
+  const touch = typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+  const portrait = window.innerHeight > window.innerWidth;
+  rotateBar.style.display = (touch && portrait && window.innerWidth < 640 && !dismissed)
+    ? 'flex' : 'none';
+  rotateBar.dataset['dismissed'] = dismissed ? '1' : '0';
+}
 
 /** 新手引導條與這條都在底部，引導出現時把這條抬上去，免得疊在一起 */
 function syncQuickBarBottom(): void {
@@ -1925,7 +2003,7 @@ function makeDropdown(sub: boolean): HTMLDivElement {
   dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
   // 窄屏保護：寬度不超過畫面，高度不超過棋盤區，超出就自己捲
   dd.style.maxWidth = 'calc(100vw - 8px)';
-  dd.style.maxHeight = `calc(100vh - ${GEOMETRY.menu_bar_height + GEOMETRY.status_bar_height + 8}px)`;
+  dd.style.maxHeight = `calc(100dvh - ${GEOMETRY.menu_bar_height + GEOMETRY.status_bar_height + 8}px)`;
   dd.style.overflowY = 'auto';
   return dd;
 }
@@ -2080,7 +2158,9 @@ function buildMenu(): void {
       if (activeMenu === idx) { closeAllMenus(); return; }
       closeAllMenus();
       const dd = makeDropdown(false);
-      dd.style.top = `${GEOMETRY.menu_bar_height}px`;
+      // 用選單欄**實際底邊**而非常數：app 有 safe-area 上內邊距時兩者不再相等，
+      // 寫死會讓下拉往上飄、壓住選單欄
+      dd.style.top = `${menuBar.offsetTop + menuBar.offsetHeight}px`;
       renderEntries(dd, menu, menu.items);
       app.appendChild(dd);
       // 對齊被點的選單項目，再夾住右邊界：否則窄屏點最右幾個選單，下拉會開在畫面外
@@ -2117,6 +2197,36 @@ function applyChromeDensity(): void {
   status.style.fontSize = statusFont;
   status.style.gap = narrow ? '10px' : '24px';
   status.style.overflowX = 'auto';
+
+  // 豎屏/窄屏（手機專項第 11 項「豎屏比例有問題」）：右側那條 132px 固定欄在
+  // 豎屏會吃掉三分之一寬度，棋盤被擠扁。改成**底部橫條**——棋盤拿回全部寬度，
+  // 開關與滑條橫向排列、放不下就橫向捲。
+  const stacked = window.innerWidth < 640;
+  content.style.flexDirection = stacked ? 'column' : 'row';
+  rightPanel.style.width = stacked ? 'auto' : `${GEOMETRY.right_panel_width}px`;
+  rightPanel.style.flex = stacked ? '0 0 auto' : `0 0 ${GEOMETRY.right_panel_width}px`;
+  rightPanel.style.height = stacked ? '52px' : 'auto';
+  rightPanel.style.flexDirection = stacked ? 'row' : 'column';
+  rightPanel.style.alignItems = stacked ? 'center' : 'stretch';
+  rightPanel.style.padding = stacked ? '4px 8px' : '10px 8px';
+  rightPanel.style.gap = stacked ? '6px' : '6px';
+  rightPanel.style.overflowX = stacked ? 'auto' : 'visible';
+  rightPanel.style.overflowY = 'hidden';
+  rightPanel.style.borderLeft = stacked ? 'none' : `1px solid ${COLORS.border}`;
+  rightPanel.style.borderTop = stacked ? `1px solid ${COLORS.border}` : 'none';
+  // 狀態列原本為右欄留了 132px；面板移到底下後不必再留
+  status.style.paddingRight = stacked ? '10px' : `${GEOMETRY.right_panel_width + 10}px`;
+  // 通知也一樣：面板不在右側時，右下角不用再為它留位
+  toast.style.right = `${stacked ? 12 : GEOMETRY.right_panel_width + 12}px`;
+  // 滑條區：豎屏橫條裡不要撐開（兩條各佔固定寬即可）
+  sliderArea.style.flex = stacked ? '0 0 auto' : '1 1 auto';
+  sliderArea.style.order = stacked ? '0' : '-1';
+  sliderArea.style.height = stacked ? '100%' : 'auto';
+  for (const wrap of sliderWraps) {
+    wrap.style.width = stacked ? '40px' : 'auto';
+    wrap.style.flex = stacked ? '0 0 40px' : '1 1 auto';
+  }
+  layoutCanvas();
 }
 
 // ---------- 命令面板（「搜索」選單；對照原版 命令面板 Ctrl+K）----------
@@ -2574,12 +2684,13 @@ buildMenu();
 
 buildVK();
 layoutCanvas();
-window.addEventListener('resize', () => {
+function onViewportChange(): void {
   closeAllMenus();
   applyChromeDensity();
   layoutCanvas();
   syncZoomSlider();
   syncSpeedSlider();
+  syncRotateHint(); // 轉屏後豎/橫變了，提示要跟著出現或收起
   // 視窗變小後浮動面板可能被擠出畫面（原版每次重繪都 `_vk_clamp_position`）
   if (vkPanel.style.display !== 'none') {
     const p = vkClampPosition(
@@ -2592,7 +2703,18 @@ window.addEventListener('resize', () => {
     vkPanel.style.top = `${p.y}px`;
   }
   schedulePaint();
+}
+window.addEventListener('resize', onViewportChange);
+// 轉屏：部分手機只發 orientationchange 不發 resize（或發得太早），兩個都聽
+window.addEventListener('orientationchange', () => setTimeout(onViewportChange, 120));
+
+// ---------- 手機端存檔時機（手機專項第 16 項） ----------
+// 手機上「切到別的 App」往往直接被系統回收，不會有 beforeunload。
+// 故在頁面被隱藏時也存一次，回來仍是同一局。
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') autosave(store);
 });
+window.addEventListener('pagehide', () => autosave(store));
 
 // ---------- 首頁玩法演示模式（?demo=存檔路徑） ----------
 const demoFile = new URLSearchParams(window.location.search).get('demo');
@@ -2692,6 +2814,7 @@ if (demoFile) {
 // 虛擬鍵盤的開關與位置：觸屏設備默認開著（手機沒有實體方向鍵，不開就沒法走）
 loadUiPrefs();
 syncQuickBarBottom();
+syncRotateHint();
 schedulePaint();
 
 setInterval(() => {

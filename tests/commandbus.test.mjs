@@ -23,8 +23,14 @@ export const cases = [
     run() {
       const ctx = createContext(new SliderMatrix(3, 3), 2);
       const before = ctx.game.snapshot();
-      shuffle(ctx, 50);
-      if (ctx.game.is_solved()) throw new Error('打亂後不應還原');
+      // 3×3 step2 的合法走法本來就少，一次打亂有可能一步都沒走成（仍是一個還原局面）。
+      // 那是隨機性、不是 bug：多試幾次再斷言，別讓這條用例偶爾紅。
+      let disturbed = false;
+      for (let i = 0; i < 8 && !disturbed; i++) {
+        shuffle(ctx, 50);
+        disturbed = !ctx.game.is_solved();
+      }
+      if (!disturbed) throw new Error('打亂後不應還原（連試 8 次都沒打亂成功）');
       reset(ctx);
       if (JSON.stringify(ctx.game.snapshot().blocks) !== JSON.stringify(before.blocks)) {
         throw new Error('reset 應回到打亂前');

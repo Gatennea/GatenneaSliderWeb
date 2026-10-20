@@ -335,14 +335,16 @@ export const cases = [
       if (r.hitSolvedPopup(334, 250)) throw new Error('未繪製前不應命中');
       r.solvedPopup.t = 300;
       r.drawSolvedPopup();
-      // 畫布 800×500，面板 460×200，中心 = ((800-132)/2, 250) = (334, 250)
-      if (!r.hitSolvedPopup(334, 250)) throw new Error('面板中心應命中');
-      if (!r.hitSolvedPopup(105, 151)) throw new Error('面板左上角內側應命中');
+      // 畫布 800×500，面板 460×200，居中於畫布正中 → 中心 (400, 250)。
+      // （原版扣掉右欄 132px 是因為它的右欄畫在 screen 內；網頁版右欄是畫布外的
+      //  DOM 元素，再扣就整個偏左了，故這裡以畫布中心為準。）
+      if (!r.hitSolvedPopup(400, 250)) throw new Error('面板中心應命中');
+      if (!r.hitSolvedPopup(171, 151)) throw new Error('面板左上角內側應命中');
       if (r.hitSolvedPopup(10, 10)) throw new Error('面板外不應命中');
-      if (r.hitSolvedPopup(700, 450)) throw new Error('右欄區域不應命中');
+      if (r.hitSolvedPopup(700, 450)) throw new Error('面板外（右下角）不應命中');
       r.closeSolvedPopup();
       if (r.solvedPopupActive) throw new Error('關閉後不應仍處於顯示中');
-      if (r.hitSolvedPopup(334, 250)) throw new Error('關閉後不應命中');
+      if (r.hitSolvedPopup(400, 250)) throw new Error('關閉後不應命中');
     },
   },
   {
