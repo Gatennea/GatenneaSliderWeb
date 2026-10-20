@@ -1486,7 +1486,7 @@ const menus: MenuDef[] = [
       else if (item.includes('存檔列表')) openSaveList();
     }
   },
-  { label: '编辑', items: ['撤销 Ctrl+Z', '重做 Ctrl+X', '打乱 Alt+S', '重置 Ctrl+R', '---', pro('自动求解 Ctrl+Alt+S')], handler: (item) => {
+  { label: '编辑', items: ['撤销 Ctrl+Z', '重做 Ctrl+X', '打乱 Alt+S', '重置 Ctrl+R'], handler: (item) => {
       if (item.startsWith('撤销')) handleUndo();
       else if (item.startsWith('重做')) handleRedo();
       else if (item.startsWith('打乱')) handleShuffle();
