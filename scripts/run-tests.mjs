@@ -12,6 +12,7 @@ import { cases as recordCases } from '../tests/records.test.mjs';
 import { cases as shuffleCases } from '../tests/shuffle.test.mjs';
 import { cases as numberedCases } from '../tests/numbered.test.mjs';
 import { cases as bundleCases } from '../tests/bundle.test.mjs';
+import { cases as solverCases } from '../tests/solver.test.mjs';
 
 const suites = [
   { name: 'SliderMatrix/GameHistory', cases: matrixCases },
@@ -24,6 +25,7 @@ const suites = [
   { name: '安全打亂（保證可還原）', cases: shuffleCases },
   { name: '數字形態 / 引導局面 (M7)', cases: numberedCases },
   { name: '打包器保險 (bundle)', cases: bundleCases },
+  { name: '求解器（聚攏 + 填洞補缺）', cases: solverCases },
 ];
 
 let passed = 0;
