@@ -2,7 +2,7 @@
  * 體驗版入口
  * 對照原版 GUI：頂部下拉選單 + 中央棋盤 + 右側面板(滑條/開關) + 底部狀態列。
  */
-import { BoardRenderer } from './render/BoardRenderer.js';
+import { BoardRenderer, type SolvedPopupResult } from './render/BoardRenderer.js';
 import { BoardController } from './interaction/BoardController.js';
 import { GameStore } from './store/GameStore.js';
 import { COLORS, GEOMETRY, easeOut, FONT_FAMILY } from './render/theme.js';
@@ -430,25 +430,48 @@ const controller = new BoardController({
     }
     return null;
   },
+  // 復原懸浮窗的「按 Enter 保存」（對照原版提示）
+  onPopupSave: () => {
+    downloadSave(store);
+    showToast('已下載存檔');
+  },
   onChanged: () => {
     // 引導/章節/解法回放期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
     if (!tutorialActive() && !tutorial.chapterActive()) autosave(store);
     tutorialOnMoved();
     tutorial.onMoved();
+    // 競速模式：還原瞬間停錶 + 記成績（含 PB 判定，供復原彈窗顯示）
+    let result: SolvedPopupResult | null = null;
     if (gameMode === 'timed') {
       if (store.solved && timer.state === 'running') {
         timer.solve();
         const ms = timer.elapsedMs;
-        records.add(
+        const { item, pb } = records.addTimed(
           store.currentM, store.currentN, store.currentStep, Math.round(ms),
           store.cmd.stepCount, false, store.numbered, raceInitialBlocks(),
         );
         showToast(`完成 ${formatTime(ms)}`);
+        result = { time_ms: item.time_ms, moves: item.moves, tps: tpsOf(item), pb };
       }
     }
+    maybeShowSolvedPopup(result);
     schedulePaint();
   },
 })
+
+/**
+ * 復原彈窗觸發（對照原版 _maybe_show_solved_popup）：
+ * 邊緣檢測（未復原→復原）+ 撤銷/重做/教程回放抑制。換局/打亂/重設的基線同步
+ * 在 GameStore.applyPuzzle 與此處的 shuffle/reset 尾部分別完成。
+ */
+function maybeShowSolvedPopup(
+  result: SolvedPopupResult | null = null,
+  opts: { viaRedo?: boolean; viaUndo?: boolean } = {},
+): void {
+  if (store.solvedPopupTracker.note(store.solved, { ...opts, locked: tutorial.isReplaying() })) {
+    renderer.spawnSolvedPopup(result);
+  }
+}
 
 // ---------- 章節教程 / 創造模式 控制器（在 controller 之後、任何 schedulePaint 呼叫之前實例化，避免 TDZ）----------
 const tutorial = new TutorialController({
@@ -709,9 +732,13 @@ const switchStates: SwitchState[] = [
   { key: 'coloring_enabled', label: '着色', get: () => renderer.coloringEnabled, set: (v) => { renderer.coloringEnabled = v; schedulePaint(); } },
   { key: 'chain_hint_enabled', label: '连锁', get: () => renderer.chainHintEnabled, set: (v) => { renderer.chainHintEnabled = v; schedulePaint(); } },
   { key: 'arrows_enabled', label: '箭头', get: () => renderer.arrowEnabled, set: (v) => { renderer.arrowEnabled = v; schedulePaint(); } },
+  // 棋盤標記（原版 board_marks_enabled）：目標框 + 洞/缺口/凸起記號。
+  // 與原版 F2 調試面板是兩個獨立開關——面板本體未移植（體驗版不需要），
+  // 但標記屬於視覺強化，單獨可用。
+  { key: 'board_marks_enabled', label: '标记', get: () => renderer.boardMarksEnabled, set: (v) => { renderer.boardMarksEnabled = v; schedulePaint(); } },
   { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('計時中無法切換模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
   // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
-  // 網頁版沒有「標記」（原版的作者內部工具），所以是 6 個；「成績」對應成績面板開關。
+  // 網頁版多一個「箭頭」（復刻原版箭頭按鍵）；「成績」對應成績面板開關。
   { key: 'records_visible', label: '成绩', get: () => recordsVisible, set: (v) => { recordsVisible = v; recordsPanel.style.display = v ? '' : 'none'; if (v) renderRecordsPanel(); syncSwitches(); } },
 ];
 
@@ -1184,6 +1211,8 @@ function runHistoryAnimation(kind: 'undo' | 'redo', onDone: () => void): void {
     if (!r.ok) { showToast(r.message); onDone(); return; }
     flashMoveSelection(moveInfo, kind === 'undo', true);
     autosave(store);
+    // 對照原版：撤銷/重做實現的「過關」不彈復原懸浮窗
+    maybeShowSolvedPopup(null, kind === 'redo' ? { viaRedo: true } : { viaUndo: true });
     schedulePaint();
     showToast(r.message);
     onDone();
@@ -1247,6 +1276,7 @@ function handleShuffle(): void {
   const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
   showToast(r.message);
   renderer.animation = null;
+  store.solvedPopupTracker.reset(store.solved); // 打亂換了整局，同步過關基線
   centerCamera();
   autosave(store);
   if (gameMode === 'timed') timer.enterReady(); else timer.cancel();
@@ -1258,6 +1288,7 @@ function handleReset(): void {
   const r = reset(store.cmd);
   showToast(r.message);
   renderer.animation = null;
+  store.solvedPopupTracker.reset(store.solved); // 重設回到初始態，不算「過關」
   centerCamera();
   autosave(store);
   timer.cancel();

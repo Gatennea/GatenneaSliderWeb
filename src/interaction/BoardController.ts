@@ -31,6 +31,8 @@ export interface BoardControllerUI {
   onZoomChange?: () => void;
   /** 移動前檢查（回傳訊息表示禁止移動，例如競速模式未開始） */
   beforeMove?: () => string | null;
+  /** 復原懸浮窗按 Enter 保存（main 接 downloadSave） */
+  onPopupSave?: () => void;
 }
 
 const DRAG_MOVE_THRESHOLD = 18;
@@ -337,6 +339,13 @@ export class BoardController {
   private handleClick(x: number, y: number): void {
     const { store, renderer } = this.ui;
 
+    // 復原懸浮窗命中優先於一切（對照原版事件層先問 _solved_popup_rect）：
+    // 點彈窗 = 關閉，不穿透到棋盤
+    if (renderer.hitSolvedPopup(x, y)) {
+      renderer.closeSolvedPopup();
+      return;
+    }
+
     // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）
     const arrowDir = renderer.hitArrowButton(x, y);
     if (arrowDir) {
@@ -373,6 +382,21 @@ export class BoardController {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    // 復原懸浮窗的按鍵優先於控制模式開關（UI 層按鍵，任何模式都能用）：
+    // Enter = 保存（對照原版提示「按 Enter 保存」），Esc = 關閉。
+    if (this.ui.renderer.solvedPopupActive) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.ui.renderer.closeSolvedPopup();
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.ui.onPopupSave?.();
+        this.ui.renderer.closeSolvedPopup();
+        return;
+      }
+    }
     if (!this.keyboardMouseEnabled) return;
     if (e.ctrlKey || e.metaKey) return; // 保留給 undo/redo 快捷鍵（M3）
     const dir = DIRECTION_KEYS[e.key];

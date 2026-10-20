@@ -6,6 +6,7 @@
 import { createContext, type CommandContext } from '../core/CommandBus.js';
 import { SliderMatrix } from '../core/SliderMatrix.js';
 import type { HistoryEntry } from '../core/GameHistory.js';
+import { SolvedPopupTracker } from '../feature/solvedPopup.js';
 
 function matrixToBlocks(matrix: unknown, bounds: any): [number, number][] | null {
   if (!Array.isArray(matrix) || !bounds || !Number.isInteger(bounds.min_row) || !Number.isInteger(bounds.min_col)) return null;
@@ -70,6 +71,11 @@ export class GameStore {
    * 矩陣每次重建後都要重新掛回，所以集中在各 new SliderMatrix 之後賦值。
    */
   solutionMask: Set<string> | null = null;
+  /**
+   * 復原彈窗的邊緣檢測基線（未復原→復原才算過關）。換局/套用局面時同步，
+   * 見 feature/solvedPopup.ts；玩家操作（移動/撤銷/重做）由 main 呼叫 note()。
+   */
+  readonly solvedPopupTracker = new SolvedPopupTracker();
 
   constructor(m = 4, n = 4, step = 2, numbered = false) {
     this.currentM = m;
@@ -110,6 +116,7 @@ export class GameStore {
     this.game.solutionMask = this.solutionMask;
     this.game.assignNumbers(numbered);
     this.cmd = createContext(this.game, step);
+    this.solvedPopupTracker.reset(this.solved); // 換局不算「過關」
     return true;
   }
 
@@ -129,6 +136,7 @@ export class GameStore {
     this.cmd = createContext(this.game, step);
     this.cmd.history.save_snapshot(this.game);
     this.cmd.stepCount = 0;
+    this.solvedPopupTracker.reset(this.solved); // 套用局面不算「過關」
   }
 
   /**

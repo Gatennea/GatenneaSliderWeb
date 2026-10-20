@@ -404,23 +404,42 @@ const controller = new BoardController({
         }
         return null;
     },
+    // 復原懸浮窗的「按 Enter 保存」（對照原版提示）
+    onPopupSave: () => {
+        downloadSave(store);
+        showToast('已下載存檔');
+    },
     onChanged: () => {
         // 引導/章節/解法回放期間不寫入自動存檔，避免把玩家原本的對局覆蓋成引導局面
         if (!tutorialActive() && !tutorial.chapterActive())
             autosave(store);
         tutorialOnMoved();
         tutorial.onMoved();
+        // 競速模式：還原瞬間停錶 + 記成績（含 PB 判定，供復原彈窗顯示）
+        let result = null;
         if (gameMode === 'timed') {
             if (store.solved && timer.state === 'running') {
                 timer.solve();
                 const ms = timer.elapsedMs;
-                records.add(store.currentM, store.currentN, store.currentStep, Math.round(ms), store.cmd.stepCount, false, store.numbered, raceInitialBlocks());
+                const { item, pb } = records.addTimed(store.currentM, store.currentN, store.currentStep, Math.round(ms), store.cmd.stepCount, false, store.numbered, raceInitialBlocks());
                 showToast(`完成 ${formatTime(ms)}`);
+                result = { time_ms: item.time_ms, moves: item.moves, tps: tpsOf(item), pb };
             }
         }
+        maybeShowSolvedPopup(result);
         schedulePaint();
     },
 });
+/**
+ * 復原彈窗觸發（對照原版 _maybe_show_solved_popup）：
+ * 邊緣檢測（未復原→復原）+ 撤銷/重做/教程回放抑制。換局/打亂/重設的基線同步
+ * 在 GameStore.applyPuzzle 與此處的 shuffle/reset 尾部分別完成。
+ */
+function maybeShowSolvedPopup(result = null, opts = {}) {
+    if (store.solvedPopupTracker.note(store.solved, { ...opts, locked: tutorial.isReplaying() })) {
+        renderer.spawnSolvedPopup(result);
+    }
+}
 // ---------- 章節教程 / 創造模式 控制器（在 controller 之後、任何 schedulePaint 呼叫之前實例化，避免 TDZ）----------
 const tutorial = new TutorialController({
     store, renderer, controller, app,
@@ -666,12 +685,16 @@ const switchStates = [
     { key: 'coloring_enabled', label: '着色', get: () => renderer.coloringEnabled, set: (v) => { renderer.coloringEnabled = v; schedulePaint(); } },
     { key: 'chain_hint_enabled', label: '连锁', get: () => renderer.chainHintEnabled, set: (v) => { renderer.chainHintEnabled = v; schedulePaint(); } },
     { key: 'arrows_enabled', label: '箭头', get: () => renderer.arrowEnabled, set: (v) => { renderer.arrowEnabled = v; schedulePaint(); } },
+    // 棋盤標記（原版 board_marks_enabled）：目標框 + 洞/缺口/凸起記號。
+    // 與原版 F2 調試面板是兩個獨立開關——面板本體未移植（體驗版不需要），
+    // 但標記屬於視覺強化，單獨可用。
+    { key: 'board_marks_enabled', label: '标记', get: () => renderer.boardMarksEnabled, set: (v) => { renderer.boardMarksEnabled = v; schedulePaint(); } },
     { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') {
             showToast('計時中無法切換模式');
             return;
         } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '計時模式：打亂後需按空格開始' : '練習模式：可自由滑動，不計時'); schedulePaint(); } },
     // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
-    // 網頁版沒有「標記」（原版的作者內部工具），所以是 6 個；「成績」對應成績面板開關。
+    // 網頁版多一個「箭頭」（復刻原版箭頭按鍵）；「成績」對應成績面板開關。
     { key: 'records_visible', label: '成绩', get: () => recordsVisible, set: (v) => { recordsVisible = v; recordsPanel.style.display = v ? '' : 'none'; if (v)
             renderRecordsPanel(); syncSwitches(); } },
 ];
@@ -1145,6 +1168,8 @@ function runHistoryAnimation(kind, onDone) {
         }
         flashMoveSelection(moveInfo, kind === 'undo', true);
         autosave(store);
+        // 對照原版：撤銷/重做實現的「過關」不彈復原懸浮窗
+        maybeShowSolvedPopup(null, kind === 'redo' ? { viaRedo: true } : { viaUndo: true });
         schedulePaint();
         showToast(r.message);
         onDone();
@@ -1212,6 +1237,7 @@ function handleShuffle() {
     const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
     showToast(r.message);
     renderer.animation = null;
+    store.solvedPopupTracker.reset(store.solved); // 打亂換了整局，同步過關基線
     centerCamera();
     autosave(store);
     if (gameMode === 'timed')
@@ -1228,6 +1254,7 @@ function handleReset() {
     const r = reset(store.cmd);
     showToast(r.message);
     renderer.animation = null;
+    store.solvedPopupTracker.reset(store.solved); // 重設回到初始態，不算「過關」
     centerCamera();
     autosave(store);
     timer.cancel();
@@ -2169,6 +2196,9 @@ return {};
 const { COLORS, GEOMETRY, easeOut, FONT_FAMILY } = require("./theme.js");
 const { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP } = require("../core/rules.js");
 const { ARROW_IMAGE_DATA_URI } = require("./arrowImage.js");
+const { findTargetWindow, detectHoles } = require("../solver/gather.js");
+const { stateFromBlocks } = require("../solver/model.js");
+const { formatTime } = require("../feature/Timer.js");
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
 function hsvToRgb(h, s, v) {
@@ -2226,6 +2256,20 @@ class BoardRenderer {
         this.chainHintEnabled = false;
         /** 目前懸停格（棋盤座標；可為空格） */
         this.hoverCell = null;
+        /**
+         * 棋盤標記開關（原版 board_marks_enabled，gui/metrics_panel.py）：
+         * 綠色目標框（聚攏度最高窗口）+ 洞（圓圈）/缺口（三角）/凸起（黃菱形）。
+         * 與 F2 調試面板是兩個獨立開關——這裡只畫標記，不移植面板本體。
+         */
+        this.boardMarksEnabled = false;
+        /**
+         * 復原成功懸浮窗（原版 draw_solved_popup）。null = 未顯示；
+         * t = 已顯示毫秒（彈入/呼吸/淡出都按它算）。公開欄位便于無頭測試直接置位。
+         */
+        this.solvedPopup = null;
+        this.solvedPopupRect = null;
+        this.solvedPopupRaf = 0;
+        this.solvedPopupT0 = 0;
         this.lastBounds = null;
         // ---- 箭頭按鍵（復刻原版 S1-4：選中縫隙 + 選中組後，切片兩端各一個可點箭頭）----
         /** 箭頭按鍵總開關（原版 arrows_enabled，預設開）。 */
@@ -2240,6 +2284,28 @@ class BoardRenderer {
         this.clickFeedback = [];
         /** 漣漪存活期間持續重繪用的回調（main 注入 schedulePaint）。 */
         this.repaint = null;
+        this.popupFrame = (now) => {
+            const pop = this.solvedPopup;
+            if (!pop) {
+                this.solvedPopupRaf = 0;
+                return;
+            }
+            pop.t = now - this.solvedPopupT0;
+            if (pop.t > 6000 + 250) {
+                // 超過 6 秒 + 淡出時長：自動關閉
+                this.solvedPopup = null;
+                this.solvedPopupRect = null;
+                this.solvedPopupRaf = 0;
+                this.repaint?.();
+                return;
+            }
+            this.repaint?.();
+            if (typeof requestAnimationFrame === 'undefined') {
+                this.solvedPopupRaf = 0; // Node 測試環境：不排下一幀
+                return;
+            }
+            this.solvedPopupRaf = requestAnimationFrame(this.popupFrame);
+        };
         this.ctx = ctx;
         this.zoom = zoom;
         this.cameraX = 0;
@@ -2478,10 +2544,228 @@ class BoardRenderer {
                 ctx.fill();
             }
         }
+        // 4.5) 棋盤標記（原版 board_marks_enabled；畫在滑塊之上、箭頭之下）
+        this.drawBoardMarks(store);
         // 5) 箭頭按鍵（選中縫隙 + 選中組後，切片兩端各一個可點箭頭；動畫中不畫）
         this.drawGapDirectionArrows(store);
         // 6) 點擊漣漪反饋（最上層，蓋住所有內容）
         this.drawClickFeedback();
+        // 7) 復原成功懸浮窗（最上層，蓋住一切）
+        this.drawSolvedPopup();
+    }
+    // ---------- 棋盤標記（原版 board_marks_enabled）----------
+    /**
+     * 目標框 + 洞/缺口/凸起記號。對照原版 metrics_panel._draw_target_window 與
+     * _draw_debug_holes，兩者共用同一個 _compute_target_region——這裡同樣只用一份
+     * findTargetWindow 的結果餵給 detectHoles，保證框與記號嚴格對齊。
+     *
+     * 記號規則（原版）：
+     *   目標窗口內、被方塊包圍的空位（洞）  = 圓圈
+     *   目標窗口內、連通窗口外緣的空位（缺口）= 三角形
+     *   目標窗口外的方塊（凸起）             = 黃色斜方形
+     *   大（邊界盒長或寬 ≥ step）= 紅，小 = 藍；凸起恆黃。
+     */
+    drawBoardMarks(store) {
+        if (!this.boardMarksEnabled)
+            return;
+        const blocks = store.game.blocks;
+        if (blocks.length === 0)
+            return;
+        const { ctx } = this;
+        const state = stateFromBlocks(blocks.map((b) => [b.row, b.col]));
+        const win = findTargetWindow(state, store.currentM, store.currentN);
+        if (!win || win.overlap <= 0)
+            return;
+        const rep = detectHoles(state, win, store.currentStep);
+        ctx.save();
+        // 目標框（無填充、綠色邊框）
+        const [fx, fy] = this.worldToScreen(win.c0 * this.step, win.r0 * this.step);
+        const fw = win.cw * this.scaledCell + (win.cw - 1) * this.scaledGap;
+        const fh = win.rh * this.scaledCell + (win.rh - 1) * this.scaledGap;
+        ctx.strokeStyle = COLORS.mark_target;
+        ctx.lineWidth = Math.max(2, 2 * this.zoom);
+        ctx.strokeRect(fx, fy, fw, fh);
+        const radius = Math.max(3, this.scaledCell * 0.35);
+        ctx.lineWidth = Math.max(2, 2 * this.zoom);
+        const centerOf = (r, c) => this.worldToScreen(c * this.step + CELL / 2, r * this.step + CELL / 2);
+        const drawEmpties = (groups, kind) => {
+            for (const cells of groups) {
+                let minR = Infinity;
+                let maxR = -Infinity;
+                let minC = Infinity;
+                let maxC = -Infinity;
+                for (const [r, c] of cells) {
+                    if (r < minR)
+                        minR = r;
+                    if (r > maxR)
+                        maxR = r;
+                    if (c < minC)
+                        minC = c;
+                    if (c > maxC)
+                        maxC = c;
+                }
+                const large = maxR - minR + 1 >= store.currentStep || maxC - minC + 1 >= store.currentStep;
+                ctx.strokeStyle = large ? COLORS.mark_hole_large : COLORS.mark_hole_small;
+                for (const [r, c] of cells) {
+                    const [cx, cy] = centerOf(r, c);
+                    ctx.beginPath();
+                    if (kind === 'hole') {
+                        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                    }
+                    else {
+                        ctx.moveTo(cx, cy - radius);
+                        ctx.lineTo(cx - radius, cy + radius);
+                        ctx.lineTo(cx + radius, cy + radius);
+                        ctx.closePath();
+                    }
+                    ctx.stroke();
+                }
+            }
+        };
+        drawEmpties(rep.holes, 'hole');
+        drawEmpties(rep.dents, 'dent');
+        // 目標窗口外的方塊（凸起）→ 黃色斜方形
+        ctx.strokeStyle = COLORS.mark_protrusion;
+        for (const [r, c] of rep.protrusions) {
+            const [cx, cy] = centerOf(r, c);
+            const d = radius;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - d);
+            ctx.lineTo(cx + d, cy);
+            ctx.lineTo(cx, cy + d);
+            ctx.lineTo(cx - d, cy);
+            ctx.closePath();
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+    // ---------- 復原成功懸浮窗（原版 draw_solved_popup）----------
+    /** 是否正在顯示（供事件層優先攔截點擊/按鍵）。 */
+    get solvedPopupActive() {
+        return this.solvedPopup !== null;
+    }
+    /**
+     * 彈出復原懸浮窗並啟動自帶的動畫迴圈（對照原版 _solved_popup_active/_t）。
+     * 彈入 ≈200ms（0.70→1 立方回彈）→ 輕微呼吸 → 6 秒自動淡出 ≈250ms。
+     */
+    spawnSolvedPopup(result = null) {
+        this.solvedPopup = { t: 0, result };
+        this.solvedPopupT0 = performance.now();
+        if (typeof requestAnimationFrame === 'undefined')
+            return; // Node 測試環境：只置位不動畫
+        if (!this.solvedPopupRaf)
+            this.solvedPopupRaf = requestAnimationFrame(this.popupFrame);
+    }
+    /** 點擊命中懸浮窗矩形（供控制器攔截，避免穿透到棋盤）。 */
+    hitSolvedPopup(x, y) {
+        const r = this.solvedPopupRect;
+        return !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    }
+    /** 立即關閉（Esc / 點擊 / Enter 保存後）。 */
+    closeSolvedPopup() {
+        if (this.solvedPopupRaf && typeof cancelAnimationFrame !== 'undefined') {
+            cancelAnimationFrame(this.solvedPopupRaf);
+        }
+        this.solvedPopupRaf = 0;
+        this.solvedPopup = null;
+        this.solvedPopupRect = null;
+        this.repaint?.();
+    }
+    /**
+     * 繪製復原懸浮窗（對照原版 renderer.draw_solved_popup）：
+     * 居中（扣掉右欄寬度）+ 彈入回彈 + 呼吸光暈 + 6 秒自動淡出；
+     * 競速模式附 用时/步数/TPS 與最佳恭喜。
+     */
+    drawSolvedPopup() {
+        const pop = this.solvedPopup;
+        if (!pop)
+            return;
+        const t = pop.t;
+        const { ctx } = this;
+        const W = ctx.canvas.width;
+        const H = ctx.canvas.height;
+        const result = pop.result;
+        const showResult = !!result && !result.dnf;
+        const baseW = 460;
+        const baseH = showResult ? 300 : 200;
+        const cx = (W - GEOMETRY.right_panel_width) / 2;
+        const cy = H / 2;
+        // 彈入：前 200ms 由 0.70 立方回彈到 1；之後 1±0.012 呼吸（原版以幁計，此處折算毫秒）
+        const p = Math.min(1, t / 200);
+        const ease = 1 - (1 - p) ** 3;
+        const scale = p < 1 ? 0.70 + 0.30 * ease : 1 + 0.012 * Math.sin(t / 150);
+        const alpha = 240 * Math.min(1, t / 100);
+        // 6 秒自動淡出（最後 250ms）
+        let fade = 1;
+        if (t > 6000) {
+            fade = Math.max(0, (250 - (t - 6000)) / 250);
+            if (fade <= 0)
+                return;
+        }
+        const a = alpha * fade;
+        const w = Math.round(baseW * scale);
+        const h = Math.round(baseH * scale);
+        const x = Math.round(cx - w / 2);
+        const y = Math.round(cy - h / 2);
+        this.solvedPopupRect = { x, y, w, h };
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // 外圈呼吸光暈（對話框邊框同色，alpha 0.25±0.10，跟隨懸浮窗整體透明）
+        const glowA = Math.max(0, 0.25 + 0.10 * Math.sin(t / 117)) * a;
+        if (glowA > 0.5) {
+            ctx.save();
+            ctx.globalAlpha = glowA / 255;
+            ctx.strokeStyle = COLORS.popup_glow;
+            ctx.lineWidth = 2;
+            this.roundRect(x - 7, y - 7, w + 14, h + 14, 15);
+            ctx.stroke();
+            ctx.restore();
+        }
+        // 面板 + 文字（統一 alpha）
+        ctx.globalAlpha = Math.max(0, a) / 240;
+        ctx.fillStyle = COLORS.dialog_bg;
+        this.roundRect(x, y, w, h, 10);
+        ctx.fill();
+        ctx.strokeStyle = COLORS.dialog_border;
+        ctx.lineWidth = 3;
+        this.roundRect(x, y, w, h, 10);
+        ctx.stroke();
+        // 標題 + 分隔線
+        ctx.fillStyle = COLORS.dialog_title;
+        ctx.font = `700 24px ${FONT_FAMILY}`;
+        ctx.fillText('复原成功！', cx, y + h * (showResult ? 0.22 : 0.28));
+        ctx.strokeStyle = COLORS.dialog_border;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + 20, y + h * (showResult ? 0.30 : 0.40));
+        ctx.lineTo(x + w - 20, y + h * (showResult ? 0.30 : 0.40));
+        ctx.stroke();
+        // 正文
+        ctx.fillStyle = COLORS.popup_body;
+        ctx.font = `16px ${FONT_FAMILY}`;
+        ctx.fillText('所有滑块已归位', cx, y + h * (showResult ? 0.48 : 0.62));
+        // 競速模式：成績 + TPS + 最佳恭喜
+        if (showResult && result) {
+            ctx.fillStyle = COLORS.popup_score;
+            ctx.fillText(`用时 ${formatTime(result.time_ms)} | ${result.moves} 步 | TPS ${result.tps.toFixed(2)}`, cx, y + h * 0.62);
+            const parts = [];
+            if (result.pb?.single)
+                parts.push('单次');
+            if (result.pb?.ao5)
+                parts.push('Ao5');
+            if (result.pb?.ao12)
+                parts.push('Ao12');
+            if (parts.length > 0) {
+                ctx.fillStyle = COLORS.popup_pb;
+                ctx.fillText(`恭喜最佳 ${parts.join('/')}！`, cx, y + h * 0.75);
+            }
+        }
+        // 操作提示
+        ctx.fillStyle = COLORS.dialog_border;
+        ctx.font = `12px ${FONT_FAMILY}`;
+        ctx.fillText('按 Enter 保存 ｜ 按 Esc 关闭', cx, y + h * 0.92);
+        ctx.restore();
     }
     drawSolutionGhosts(store) {
         if (!this.solutionMask || this.solutionMask.size === 0)
@@ -2744,6 +3028,389 @@ BoardRenderer.CLICK_FEEDBACK_MAX = 12;
 return { BoardRenderer };
 },
     "m10": function (require) {
+/**
+ * 快照式撤銷/重做（對照 history.py::GameHistory + move_info）
+ *
+ * 每筆快照記錄當下版面與「如何從前一版面到達此版面」的 move_info，
+ * 供撤銷/重做只對該步滑塊組做動畫（對照原版 _start_undo_redo_animation）。
+ */
+const { Block } = require("./Block.js");
+class GameHistory {
+    constructor() {
+        this.entries = [];
+        this.index = -1;
+    }
+    /** 保存當前狀態快照；若不在歷史末尾則截斷。 */
+    save_snapshot(game, move_info) {
+        const snapshot = {
+            blocks: game.blocks.map((b) => [b.row, b.col]),
+        };
+        // 只有數字形態才存編號，方形存檔維持與原版完全一致的格式
+        if (game.blocks.some((b) => b.number !== null)) {
+            snapshot.numbers = game.blocks.map((b) => b.number);
+        }
+        if (move_info)
+            snapshot.move_info = move_info;
+        if (this.index < this.entries.length - 1) {
+            this.entries = this.entries.slice(0, this.index + 1);
+        }
+        this.entries.push(snapshot);
+        this.index = this.entries.length - 1;
+    }
+    get canUndo() {
+        return this.index > 0;
+    }
+    get canRedo() {
+        return this.index >= 0 && this.index < this.entries.length - 1;
+    }
+    get length() {
+        return this.entries.length;
+    }
+    get currentIndex() {
+        return this.index;
+    }
+    /** 目前快照的 move_info（最後一步如何到達目前版面；undo 用它反向動畫）。 */
+    currentMoveInfo() {
+        return this.entries[this.index]?.move_info ?? null;
+    }
+    /** undo 目標（上一筆）快照的 blocks；無可撤銷回 null。 */
+    undoTarget() {
+        return this.canUndo ? this.entries[this.index - 1] : null;
+    }
+    /** redo 目標（下一筆）快照的 blocks；無可重做回 null。 */
+    redoTarget() {
+        return this.canRedo ? this.entries[this.index + 1] : null;
+    }
+    /** 下一個 redo 目標快照的 move_info。 */
+    nextMoveInfo() {
+        return this.entries[this.index + 1]?.move_info ?? null;
+    }
+    /** 撤銷：回退一步，並把快照套用到 game。 */
+    undo(game) {
+        if (!this.canUndo)
+            return false;
+        this.index -= 1;
+        this.apply(game, this.entries[this.index]);
+        return true;
+    }
+    /** 重做：前進一步。 */
+    redo(game) {
+        if (!this.canRedo)
+            return false;
+        this.index += 1;
+        this.apply(game, this.entries[this.index]);
+        return true;
+    }
+    /** 設定目前歷史索引（載入存檔時用）。 */
+    setIndex(index) {
+        if (Number.isInteger(index) && index >= 0 && index < this.entries.length)
+            this.index = index;
+    }
+    /** 直接跳到指定歷史步（虛擬鍵盤「跳到某步」用）。 */
+    jumpTo(game, index) {
+        if (!Number.isInteger(index) || index < 0 || index >= this.entries.length)
+            return false;
+        this.index = index;
+        this.apply(game, this.entries[this.index]);
+        return true;
+    }
+    /** 匯出全部快照（供存檔）。 */
+    snapshotAll() {
+        return this.entries.map((e) => ({
+            blocks: e.blocks.map(([r, c]) => [r, c]),
+            ...(e.numbers ? { numbers: [...e.numbers] } : {}),
+            ...(e.move_info ? { move_info: e.move_info } : {}),
+        }));
+    }
+    /** 由快照列表還原（index 設為末位，對應載入時停在最新狀態）。 */
+    restoreAll(list) {
+        this.entries = list.map((e) => ({
+            blocks: e.blocks.map(([r, c]) => [r, c]),
+            ...(e.numbers ? { numbers: [...e.numbers] } : {}),
+            ...(e.move_info ? { move_info: e.move_info } : {}),
+        }));
+        this.index = this.entries.length - 1;
+    }
+    apply(game, entry) {
+        game.blocks = entry.blocks.map(([r, c], i) => {
+            const b = new Block([r, c]);
+            b.number = entry.numbers?.[i] ?? null;
+            return b;
+        });
+        game.selected.clear();
+    }
+}
+
+return { GameHistory };
+},
+    "m11": function (require) {
+/**
+ * 滑塊 Block（對照 game.py::Block）
+ *
+ * 原版把 be_opted 存在每個 block 上；網頁版把選中狀態移出，
+ * 由 SliderMatrix.selected 集合統一管理，避免物件上散布可變標誌。
+ */
+class Block {
+    constructor(location) {
+        /**
+         * 數字形態的編號（1..m*n），跟著滑塊走；非數字形態為 null。
+         * 對照 game.py::Block.number —— 過關條件與方形完全相同（拼成實心矩形），
+         * 編號只是給玩家看的視覺線索，不參與勝負判定。
+         */
+        this.number = null;
+        this.location = location;
+    }
+    get row() {
+        return this.location[0];
+    }
+    get col() {
+        return this.location[1];
+    }
+    clone() {
+        const b = new Block([this.location[0], this.location[1]]);
+        b.number = this.number;
+        return b;
+    }
+}
+
+return { Block };
+},
+    "m12": function (require) {
+/**
+ * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
+ * 存檔格式與原版完全一致：{version, puzzle, step_count, history:{history_index, snapshots:[{matrix,bounds,move_info?}]}}
+ */
+const { createContext } = require("../core/CommandBus.js");
+const { SliderMatrix } = require("../core/SliderMatrix.js");
+const { SolvedPopupTracker } = require("../feature/solvedPopup.js");
+function matrixToBlocks(matrix, bounds) {
+    if (!Array.isArray(matrix) || !bounds || !Number.isInteger(bounds.min_row) || !Number.isInteger(bounds.min_col))
+        return null;
+    const out = [];
+    for (let r = 0; r < matrix.length; r++) {
+        const row = matrix[r];
+        if (!Array.isArray(row))
+            return null;
+        for (let c = 0; c < row.length; c++) {
+            if (row[c] === 1)
+                out.push([bounds.min_row + r, bounds.min_col + c]);
+        }
+    }
+    return out;
+}
+/**
+ * 把「依滑塊順序」排列的編號改成「依位置行主序」排列。
+ * 存檔裡的 matrix 是按位置掃出來的，編號必須用同一個順序才不會錯位。
+ */
+function numbersInMatrixOrder(blocks, numbers) {
+    if (!numbers)
+        return null;
+    const order = blocks
+        .map((_, i) => i)
+        .sort((a, b) => blocks[a][0] - blocks[b][0] || blocks[a][1] - blocks[b][1]);
+    return order.map((i) => numbers[i] ?? null);
+}
+function blocksToMatrix(blocks) {
+    if (blocks.length === 0) {
+        return { matrix: [], bounds: { min_row: 0, max_row: 0, min_col: 0, max_col: 0 } };
+    }
+    const rows = blocks.map((b) => b[0]);
+    const cols = blocks.map((b) => b[1]);
+    const min_row = Math.min(...rows);
+    const max_row = Math.max(...rows);
+    const min_col = Math.min(...cols);
+    const max_col = Math.max(...cols);
+    const set = new Set(blocks.map((b) => `${b[0]}:${b[1]}`));
+    const matrix = [];
+    for (let r = min_row; r <= max_row; r++) {
+        const row = [];
+        for (let c = min_col; c <= max_col; c++) {
+            row.push(set.has(`${r}:${c}`) ? 1 : 0);
+        }
+        matrix.push(row);
+    }
+    return { matrix, bounds: { min_row, max_row, min_col, max_col } };
+}
+class GameStore {
+    constructor(m = 4, n = 4, step = 2, numbered = false) {
+        /**
+         * 自定義目標形狀（創造模式手造形狀用）。null 表示沿用「m×n 實心矩形」判定。
+         * 矩陣每次重建後都要重新掛回，所以集中在各 new SliderMatrix 之後賦值。
+         */
+        this.solutionMask = null;
+        /**
+         * 復原彈窗的邊緣檢測基線（未復原→復原才算過關）。換局/套用局面時同步，
+         * 見 feature/solvedPopup.ts；玩家操作（移動/撤銷/重做）由 main 呼叫 note()。
+         */
+        this.solvedPopupTracker = new SolvedPopupTracker();
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.numbered = numbered;
+        this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
+        this.game.assignNumbers(numbered);
+        this.cmd = createContext(this.game, step);
+    }
+    get solved() {
+        return this.game.is_solved();
+    }
+    /** 謎題分組鍵（對照 puzzle_key）：數字形態後綴 #num，成績與狀態顯示都用它。 */
+    get puzzleKey() {
+        const base = `${this.currentStep}~${this.currentM}*${this.currentN}`;
+        return this.numbered ? `${base}#num` : base;
+    }
+    get selectedGap() {
+        return this.cmd.selectedGap;
+    }
+    get selectedCells() {
+        return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
+    }
+    newPuzzle(m, n, step, numbered = this.numbered) {
+        if (step >= Math.max(m, n))
+            return false;
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.numbered = numbered;
+        this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
+        this.game.assignNumbers(numbered);
+        this.cmd = createContext(this.game, step);
+        this.solvedPopupTracker.reset(this.solved); // 換局不算「過關」
+        return true;
+    }
+    /**
+     * 直接套用一段「以 [row,col] 列表描述的局面」作為新謎題起點（歷史清空為單一原點）。
+     * 教程載入某一關的起始亂局、創造模式套用手造形狀都走這裡。
+     * solutionMask 由呼叫方另行設定（教程為 null → 走矩形判定）。
+     */
+    applyPuzzle(m, n, step, blocks) {
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.numbered = false;
+        this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
+        this.game.restore({ blocks });
+        this.cmd = createContext(this.game, step);
+        this.cmd.history.save_snapshot(this.game);
+        this.cmd.stepCount = 0;
+        this.solvedPopupTracker.reset(this.solved); // 套用局面不算「過關」
+    }
+    /**
+     * 新手引導用的固定局面：4×4 等級 1，最下面一整排向右錯開一格。
+     * 只要「選第 3、4 行之間的橫縫 → 點最下面一排 → 往左推」一步就回到原位，
+     * 一次走完整套「點縫 → 點塊 → 推」的流程。
+     */
+    loadTutorialPosition() {
+        this.newPuzzle(4, 4, 1, false);
+        for (const b of this.game.blocks) {
+            if (b.row === 3)
+                b.location = [3, b.col + 1];
+        }
+        // 重建歷史，讓這個局面成為「原點」（撤銷不會退回還原態）
+        this.cmd = createContext(this.game, 1);
+        this.cmd.history.save_snapshot(this.game);
+    }
+    /** 在當前謎題上切換數字形態（重新編號，不重開一局）。 */
+    setNumbered(on) {
+        if (this.numbered === on)
+            return;
+        this.numbered = on;
+        this.game.assignNumbers(on);
+    }
+    /** 序列化為與原版完全一致的結構。 */
+    serialize() {
+        const entries = this.cmd.history.snapshotAll();
+        const snapshots = entries.map((e) => {
+            const { matrix, bounds } = blocksToMatrix(e.blocks);
+            const snap = { matrix, bounds };
+            if (e.move_info)
+                snap.move_info = e.move_info;
+            // 編號另外存，不塞進 matrix：原版存檔格式維持 0/1，原版開啟時退化為方形
+            const nums = numbersInMatrixOrder(e.blocks, e.numbers);
+            if (nums)
+                snap.numbers = nums;
+            return snap;
+        });
+        return {
+            version: 1,
+            puzzle: {
+                m: this.currentM,
+                n: this.currentN,
+                step: this.currentStep,
+                ...(this.numbered ? { kind: 'numbered' } : {}),
+            },
+            step_count: this.cmd.stepCount,
+            ...(this.solutionMask ? { solution: Array.from(this.solutionMask) } : {}),
+            history: {
+                history_index: this.cmd.history.currentIndex,
+                snapshots,
+            },
+        };
+    }
+    /** 由序列化結構還原（相容原版 save JSON；也相容舊版網頁格式）。 */
+    deserialize(p) {
+        const m = p.puzzle?.m ?? this.currentM;
+        const n = p.puzzle?.n ?? this.currentN;
+        const step = p.puzzle?.step ?? this.currentStep;
+        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step))
+            return false;
+        if (step >= Math.max(m, n))
+            return false;
+        this.currentM = m;
+        this.currentN = n;
+        this.currentStep = step;
+        this.numbered = p.puzzle?.kind === 'numbered';
+        this.solutionMask = Array.isArray(p.solution)
+            ? new Set(p.solution)
+            : null;
+        this.game = new SliderMatrix(m, n);
+        this.game.solutionMask = this.solutionMask;
+        // 將各格式歷史轉為 HistoryEntry（blocks + numbers? + move_info?）
+        const entries = [];
+        if (Array.isArray(p.history)) {
+            // 舊版網頁格式：history 是 blocks 陣列
+            for (const h of p.history) {
+                if (Array.isArray(h?.blocks))
+                    entries.push({ blocks: h.blocks, ...(h.move_info ? { move_info: h.move_info } : {}) });
+            }
+        }
+        else if (p.history && Array.isArray(p.history.snapshots)) {
+            // 原版格式：matrix + bounds + move_info?
+            // numbers 是網頁版數字形態的附加欄位，順序與 matrix 掃描順序一致
+            for (const snap of p.history.snapshots) {
+                const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
+                if (blocks) {
+                    entries.push({
+                        blocks,
+                        ...(Array.isArray(snap?.numbers) ? { numbers: snap.numbers } : {}),
+                        ...(snap?.move_info ? { move_info: snap.move_info } : {}),
+                    });
+                }
+            }
+        }
+        if (entries.length > 0) {
+            const last = entries[entries.length - 1];
+            this.game.restore({ blocks: last.blocks, ...(last.numbers ? { numbers: last.numbers } : {}) });
+        }
+        this.cmd = createContext(this.game, step);
+        this.cmd.stepCount = p.step_count ?? 0;
+        if (entries.length > 0) {
+            this.cmd.history.restoreAll(entries);
+            const idx = p.history && typeof p.history === 'object' && 'history_index' in p.history
+                ? p.history.history_index
+                : entries.length - 1;
+            this.cmd.history.setIndex(idx);
+        }
+        return true;
+    }
+}
+
+return { GameStore };
+},
+    "m13": function (require) {
 /**
  * 滑塊矩陣核心邏輯（對照 game.py::SliderMatrix 逐函數移植）
  *
@@ -3197,7 +3864,41 @@ function oppositeOf(direction) {
 
 return { SliderMatrix };
 },
-    "m11": function (require) {
+    "m14": function (require) {
+/**
+ * 復原彈窗的觸發判斷（純邏輯、無 DOM——方便無頭測試）。
+ * 對照原版 GUI._maybe_show_solved_popup 的邊緣檢測與三個抑制條件：
+ *
+ *   became_solved = solved and not _prev_solved   （未復原→復原才算「過關」）
+ *   抑制：via_redo（最後一步由重做實現）/ suppress（由撤銷實現）/
+ *        _tut_board_locked（教程解法回放中，播完會撤回初始態）
+ *   每次調用都同步 _prev_solved，保證「復原→離開→再復原」可再次觸發。
+ */
+class SolvedPopupTracker {
+    constructor(initialSolved = false) {
+        this.prevSolved = initialSolved;
+    }
+    /**
+     * 換局 / 打亂 / 重設等「非玩家操作」後呼叫：同步邊緣檢測基線，永不觸發。
+     * （原版把這個同步散在各命令裡；這裡集中一個方法，呼叫方不會漏。）
+     */
+    reset(solved) {
+        this.prevSolved = solved;
+    }
+    /**
+     * 狀態提交後呼叫；回傳 true = 應該彈出復原懸浮窗。
+     * 無論觸發與否都會同步基線——重複呼叫同一狀態不會二次觸發。
+     */
+    note(solved, opts = {}) {
+        const became = solved && !this.prevSolved;
+        this.prevSolved = solved;
+        return became && !opts.viaRedo && !opts.viaUndo && !opts.locked;
+    }
+}
+
+return { SolvedPopupTracker };
+},
+    "m15": function (require) {
 /**
  * 求解器對外入口
  *
@@ -3321,652 +4022,7 @@ function describeAction(a) {
 
 return { solve, describeAction, findTargetWindow, detectHoles, overlapWith, solveByGather, bestMove, outsideDistance, stateScore, scoreBetter, enc, decRow, decCol, stateFromBlocks, blocksOf, enumerateMoves, applyAction, isSolvedState, isInverseAction };
 },
-    "m12": function (require) {
-/**
- * 求解器 · 狀態表示與走法生成
- * 對照原版 solver/state.py（狀態編碼/特徵）與 solver/actions.py（動作枚舉/執行）。
- *
- * 兩點刻意偏離原版，都是為了「更強」而非不同：
- *  1. 原版每個 (縫隙, 側) 只取 side_blocks[0] 作代表塊，同側若有多個連通分量會漏走法；
- *     這裡枚舉同側的**每一個連通分量**，解得出來的局面只會更多。
- *  2. 狀態用「編碼後的整數集合」而非 Block 物件陣列，搜尋時免掉大量物件配置。
- *     走法語義與 SliderMatrix.opt/try_move/commit_move 完全一致，由 tests/solver.test.mjs
- *     做等價性比對（同一局面、同一走法，兩邊結果必須逐格相同）。
- */
-const { DIRECTION_DELTA } = require("../core/rules.js");
-// ---------- 座標編碼 ----------
-// 滑塊可能被推出原本的 m×n 範圍（缺口外滑），座標可為負，故整體加偏移後打包成一個整數。
-const SHIFT = 11;
-const SPAN = 1 << SHIFT; // 2048
-const MASK = SPAN - 1;
-const OFF = 1 << 10; // 1024 → 允許 r/c ∈ [-1024, 1023]
-function enc(r, c) {
-    return ((r + OFF) << SHIFT) | (c + OFF);
-}
-function decRow(p) {
-    return (p >> SHIFT) - OFF;
-}
-function decCol(p) {
-    return (p & MASK) - OFF;
-}
-function stateFromBlocks(blocks) {
-    const s = new Set();
-    for (const [r, c] of blocks)
-        s.add(enc(r, c));
-    return s;
-}
-function blocksOf(state) {
-    const out = [];
-    for (const p of state)
-        out.push([decRow(p), decCol(p)]);
-    return out;
-}
-function boundsOf(state) {
-    let minR = Infinity;
-    let maxR = -Infinity;
-    let minC = Infinity;
-    let maxC = -Infinity;
-    for (const p of state) {
-        const r = decRow(p);
-        const c = decCol(p);
-        if (r < minR)
-            minR = r;
-        if (r > maxR)
-            maxR = r;
-        if (c < minC)
-            minC = c;
-        if (c > maxC)
-            maxC = c;
-    }
-    return { minR, maxR, minC, maxC };
-}
-/** 包圍盒面積（G1 階段目標就是讓它等於 m*n）。 */
-function bbArea(state) {
-    const b = boundsOf(state);
-    return (b.maxR - b.minR + 1) * (b.maxC - b.minC + 1);
-}
-/**
- * 是否已還原：包圍盒恰為 m×n（或 n×m）且盒內填滿。
- * 對照 SliderMatrix.is_solved 的「實心矩形」口徑（solutionMask 屬創造模式，求解器不處理）。
- */
-function isSolvedState(state, m, n) {
-    if (state.size !== m * n)
-        return false;
-    const b = boundsOf(state);
-    const h = b.maxR - b.minR + 1;
-    const w = b.maxC - b.minC + 1;
-    if (!((h === m && w === n) || (h === n && w === m)))
-        return false;
-    for (let r = b.minR; r <= b.maxR; r++) {
-        for (let c = b.minC; c <= b.maxC; c++) {
-            if (!state.has(enc(r, c)))
-                return false;
-        }
-    }
-    return true;
-}
-// ---------- 連通性 ----------
-function isSingleConnected(set) {
-    if (set.size === 0)
-        return true;
-    const start = set.values().next().value;
-    const seen = new Set([start]);
-    const stack = [start];
-    while (stack.length > 0) {
-        const p = stack.pop();
-        const r = decRow(p);
-        const c = decCol(p);
-        const nbs = [enc(r - 1, c), enc(r + 1, c), enc(r, c - 1), enc(r, c + 1)];
-        for (const nb of nbs) {
-            if (set.has(nb) && !seen.has(nb)) {
-                seen.add(nb);
-                stack.push(nb);
-            }
-        }
-    }
-    return seen.size === set.size;
-}
-/**
- * 縫某一側的所有連通分量。
- * 同一側內不會跨線，故直接在該側集合上做 BFS 即等價於 SliderMatrix.opt 的結果。
- */
-function componentsOnSide(state, gapType, line, side) {
-    const onSide = new Set();
-    for (const p of state) {
-        const r = decRow(p);
-        const c = decCol(p);
-        const ok = gapType === 'h'
-            ? side === 'above'
-                ? r <= line
-                : r > line
-            : side === 'left'
-                ? c <= line
-                : c > line;
-        if (ok)
-            onSide.add(p);
-    }
-    const seen = new Set();
-    const comps = [];
-    for (const p0 of onSide) {
-        if (seen.has(p0))
-            continue;
-        const comp = [];
-        const stack = [p0];
-        while (stack.length > 0) {
-            const p = stack.pop();
-            if (seen.has(p))
-                continue;
-            seen.add(p);
-            comp.push(p);
-            const r = decRow(p);
-            const c = decCol(p);
-            const nbs = [enc(r - 1, c), enc(r + 1, c), enc(r, c - 1), enc(r, c + 1)];
-            for (const nb of nbs) {
-                if (onSide.has(nb) && !seen.has(nb))
-                    stack.push(nb);
-            }
-        }
-        comps.push(comp);
-    }
-    return comps;
-}
-/**
- * 嘗試把 comp 往 dir 推 step 格。逐步驗證（碰撞 + 全體單一連通），
- * 任一步不合法就回 null —— 與 SliderMatrix.try_move 的逐步語義一致。
- */
-function tryMove(state, comp, dir, step) {
-    const delta = DIRECTION_DELTA[dir];
-    const rest = new Set();
-    const compSet = new Set(comp);
-    for (const p of state)
-        if (!compSet.has(p))
-            rest.add(p);
-    let cur = comp.slice();
-    for (let k = 0; k < step; k++) {
-        const next = cur.map((p) => enc(decRow(p) + delta[0], decCol(p) + delta[1]));
-        const nextSet = new Set(next);
-        for (const p of nextSet)
-            if (rest.has(p))
-                return null; // 碰撞
-        const union = new Set(rest);
-        for (const p of nextSet)
-            union.add(p);
-        if (!isSingleConnected(union))
-            return null;
-        cur = next;
-    }
-    const out = new Set(rest);
-    for (const p of cur)
-        out.add(p);
-    return out;
-}
-/**
- * 枚舉當前局面所有合法走法。
- * 縫隙範圍對照 SliderMatrix.is_valid_h_line / is_valid_v_line（含下邊界、不含上邊界）。
- */
-function enumerateMoves(state, step) {
-    const b = boundsOf(state);
-    const out = [];
-    const sidesFor = (gapType) => gapType === 'h' ? ['above', 'below'] : ['left', 'right'];
-    const dirsFor = (gapType) => gapType === 'h' ? ['a', 'd'] : ['w', 's'];
-    // h 縫：line ∈ [minR, maxR)，只能左右推
-    for (let line = b.minR; line < b.maxR; line++) {
-        for (const side of sidesFor('h')) {
-            for (const comp of componentsOnSide(state, 'h', line, side)) {
-                for (const dir of dirsFor('h')) {
-                    const next = tryMove(state, comp, dir, step);
-                    if (!next)
-                        continue;
-                    out.push({
-                        action: {
-                            gapType: 'h',
-                            line,
-                            side,
-                            seed: [decRow(comp[0]), decCol(comp[0])],
-                            dir,
-                        },
-                        next,
-                    });
-                }
-            }
-        }
-    }
-    // v 縫：line ∈ [minC, maxC)，只能上下推
-    for (let line = b.minC; line < b.maxC; line++) {
-        for (const side of sidesFor('v')) {
-            for (const comp of componentsOnSide(state, 'v', line, side)) {
-                for (const dir of dirsFor('v')) {
-                    const next = tryMove(state, comp, dir, step);
-                    if (!next)
-                        continue;
-                    out.push({
-                        action: {
-                            gapType: 'v',
-                            line,
-                            side,
-                            seed: [decRow(comp[0]), decCol(comp[0])],
-                            dir,
-                        },
-                        next,
-                    });
-                }
-            }
-        }
-    }
-    return out;
-}
-/**
- * 在狀態上執行一個走法：找出 seed 所屬的同側連通分量，再推 step 格。
- * 供求解器驗證與預覽使用（不依賴 SliderMatrix，純集合運算）。
- */
-function applyAction(state, action, step) {
-    const comps = componentsOnSide(state, action.gapType, action.line, action.side);
-    const seedPos = enc(action.seed[0], action.seed[1]);
-    for (const comp of comps) {
-        if (comp.indexOf(seedPos) >= 0)
-            return tryMove(state, comp, action.dir, step);
-    }
-    return null;
-}
-/**
- * 置換表用的狀態鍵：平移歸一化（減去包圍盒左上角）。
- * 對照原版 state_key —— 形狀相同、位置不同視為同一狀態。
- */
-function stateKey(state) {
-    const b = boundsOf(state);
-    const norm = [];
-    for (const p of state)
-        norm.push(enc(decRow(p) - b.minR, decCol(p) - b.minC));
-    norm.sort((x, y) => x - y);
-    return norm.join(',');
-}
-/** 兩個走法是否互為逆操作（同縫隙、同側、方向相反）—— 用來禁止原地來回。 */
-function isInverseAction(a, b) {
-    if (a.gapType !== b.gapType || a.line !== b.line || a.side !== b.side)
-        return false;
-    const pairs = [
-        ['w', 's'],
-        ['s', 'w'],
-        ['a', 'd'],
-        ['d', 'a'],
-    ];
-    return pairs.some(([x, y]) => a.dir === x && b.dir === y);
-}
-// ---------- 啟發式（對照 solver/heuristic.py） ----------
-function scoreParts(state, m, n) {
-    const b = boundsOf(state);
-    const H = b.maxR - b.minR + 1;
-    const W = b.maxC - b.minC + 1;
-    const K = m * n;
-    const area = H * W;
-    const fillRate = area > 0 ? K / area : 0;
-    const minDim = Math.min(m, n);
-    const maxDim = Math.max(m, n);
-    const targetRatio = minDim > 0 ? maxDim / minDim : 1;
-    const minHW = Math.min(H, W);
-    const maxHW = Math.max(H, W);
-    const currentRatio = minHW > 0 ? maxHW / minHW : 1;
-    const maxRatio = Math.max(currentRatio, targetRatio);
-    const aspectError = maxRatio > 0 ? Math.abs(currentRatio - targetRatio) / maxRatio : 0;
-    return { fillRate, aspectError };
-}
-/** 標準啟發：Score = 0.5·fill_rate + 0.5·(1−aspect_error)，h = 1 − Score ∈ [0,1)。 */
-function heuristic(state, m, n) {
-    if (isSolvedState(state, m, n))
-        return 0;
-    const { fillRate, aspectError } = scoreParts(state, m, n);
-    return 1 - (0.5 * fillRate + 0.5 * (1 - aspectError));
-}
-/** 快速模式啟發：加重聚攏權重（0.7 / 0.3），更快找到可行解，不保證最優。 */
-function fastHeuristic(state, m, n) {
-    if (isSolvedState(state, m, n))
-        return 0;
-    const { fillRate, aspectError } = scoreParts(state, m, n);
-    return 1 - (0.7 * fillRate + 0.3 * (1 - aspectError));
-}
-/** G1（聚攏）階段專用：只看填充率。 */
-function fillRateHeuristic(state, m, n) {
-    if (state.size === 0)
-        return 1;
-    const { fillRate } = scoreParts(state, m, n);
-    return 1 - fillRate;
-}
-/** G1 階段目標：包圍盒面積 == m*n（已是實心，但長寬比可能不對）。 */
-function isGathered(state, m, n) {
-    return state.size > 0 && bbArea(state) === m * n;
-}
-
-return { enc, decRow, decCol, stateFromBlocks, blocksOf, boundsOf, bbArea, isSolvedState, tryMove, enumerateMoves, applyAction, stateKey, isInverseAction, heuristic, fastHeuristic, fillRateHeuristic, isGathered };
-},
-    "m13": function (require) {
-/**
- * 求解器 · 聚攏 + 填洞補缺（貪心爬山）
- *
- * 對照原版 solver/ml/gather_solver.py（max_overlap / find_best_window / gather_solve）
- * 與 solver/ml/hole_detector.py（detect_holes）。
- *
- * 為什麼不做 IDA*：原版 solver/__init__.py 的註冊表已把 IDA*／貪心爬山歸為
- * 「早期搜索類算法，相對現有宏級流水線已非常低效，保留只為備查」；
- * 真正有效的是**聚攏**與**填洞補缺**這條路線，本模組即照這條路線實作。
- *
- * 核心觀察（把三件事統一成一個目標函數）：
- *   設 T = 與當前局面重疊最高的 m×n（或 n×m）窗口，K = m*n。
- *   - 窗口內的空格 = 洞 + 缺口    → 填洞補缺
- *   - 窗口外的方塊 = 凸起        → 聚攏
- *   兩者都等價於「提高窗口內方塊數 overlap」；overlap == K 時即為已還原。
- * 因此爬山目標就是 overlap，洞/缺口/包圍盒面積只作為同分時的次要排序鍵。
- */
-const { bbArea, blocksOf, boundsOf, enc, enumerateMoves, heuristic, isInverseAction, isSolvedState,  } = require("./model.js");
-/**
- * 找「聚攏度最高」的目標窗口（平移不變、轉置對稱）。
- * 對照 hole_detector.find_target_region（原版另有 mod 約束版 find_best_window，
- * 這裡先不引入 mod 約束——實測對聚攏目標的選窗影響極小，留待需要時再加）。
- */
-function findTargetWindow(state, m, n) {
-    const coords = blocksOf(state);
-    const total = m * n;
-    if (coords.length === 0)
-        return { r0: 0, c0: 0, rh: m, cw: n, overlap: 0 };
-    const b = boundsOf(state);
-    let best = { r0: b.minR, c0: b.minC, rh: m, cw: n, overlap: -1 };
-    for (const [rh, cw] of [
-        [m, n],
-        [n, m],
-    ]) {
-        for (let r0 = b.minR - rh + 1; r0 <= b.maxR; r0++) {
-            for (let c0 = b.minC - cw + 1; c0 <= b.maxC; c0++) {
-                let cnt = 0;
-                for (const [r, c] of coords) {
-                    if (r >= r0 && r < r0 + rh && c >= c0 && c < c0 + cw)
-                        cnt++;
-                }
-                if (cnt > best.overlap) {
-                    best = { r0, c0, rh, cw, overlap: cnt };
-                    if (cnt === total)
-                        return best; // 已滿，不可能更好
-                }
-            }
-        }
-    }
-    return best;
-}
-/** 窗口內的方塊數（爬山主目標）。 */
-function overlapWith(state, win) {
-    let cnt = 0;
-    for (const p of state) {
-        // 直接用編碼值比對，避免逐塊解碼
-        const r = (p >> 11) - 1024;
-        const c = (p & 2047) - 1024;
-        if (r >= win.r0 && r < win.r0 + win.rh && c >= win.c0 && c < win.c0 + win.cw)
-            cnt++;
-    }
-    return cnt;
-}
-/**
- * 偵測目標窗口內的洞與缺口、窗口外的凸起。
- * 對照 hole_detector.detect_holes：洪水填充連通空格區，
- * 觸及窗口邊緣者為 dent（缺口），否則為 hole（洞）。
- */
-function detectHoles(state, win, step) {
-    const { r0, c0, rh, cw } = win;
-    const grid = [];
-    for (let i = 0; i < rh; i++)
-        grid.push(new Array(cw).fill(0));
-    const protrusions = [];
-    for (const p of state) {
-        const r = (p >> 11) - 1024;
-        const c = (p & 2047) - 1024;
-        if (r >= r0 && r < r0 + rh && c >= c0 && c < c0 + cw) {
-            grid[r - r0][c - c0] = 1;
-        }
-        else {
-            protrusions.push([r, c]);
-        }
-    }
-    const seen = [];
-    for (let i = 0; i < rh; i++)
-        seen.push(new Array(cw).fill(false));
-    const holes = [];
-    const dents = [];
-    for (let i = 0; i < rh; i++) {
-        for (let j = 0; j < cw; j++) {
-            if (grid[i][j] !== 0 || seen[i][j])
-                continue;
-            const cells = [];
-            let touchesEdge = false;
-            const stack = [[i, j]];
-            seen[i][j] = true;
-            while (stack.length > 0) {
-                const [x, y] = stack.pop();
-                cells.push([x + r0, y + c0]);
-                const nbs = [
-                    [x - 1, y],
-                    [x + 1, y],
-                    [x, y - 1],
-                    [x, y + 1],
-                ];
-                for (const [nx, ny] of nbs) {
-                    if (nx >= 0 && nx < rh && ny >= 0 && ny < cw) {
-                        if (grid[nx][ny] === 0 && !seen[nx][ny]) {
-                            seen[nx][ny] = true;
-                            stack.push([nx, ny]);
-                        }
-                    }
-                    else {
-                        touchesEdge = true; // 越界 = 與外緣相連
-                    }
-                }
-            }
-            (touchesEdge ? dents : holes).push(cells);
-        }
-    }
-    // step 只影響「洞夠不夠大、能不能整組推進去」的後續判斷，這裡先保留語義；
-    // 目前爬山目標用不到它，但呼叫方可藉此決定要不要優先補大洞。
-    void step;
-    let emptyInWindow = 0;
-    for (const g of holes)
-        emptyInWindow += g.length;
-    for (const g of dents)
-        emptyInWindow += g.length;
-    return { holes, dents, protrusions, emptyInWindow };
-}
-/**
- * 窗口外方塊到窗口的距離和（曼哈頓）。
- *
- * 這是讓爬山能動起來的關鍵：「窗口內方塊數」是階梯函數，把方塊推近窗口
- * 卻還沒推進去時得分完全不變，貪心只會在平原上亂撞（實測 6×6 成功率僅 5~25%、
- * 平均要一百多步）。加這個連續梯度後，貪心才有「往窗口靠」的方向感
- * —— 原版最有效的算法就叫「梯度聚攏」，正是這個意思。
- */
-function outsideDistance(state, win) {
-    let d = 0;
-    const r1 = win.r0 + win.rh - 1;
-    const c1 = win.c0 + win.cw - 1;
-    for (const p of state) {
-        const r = (p >> 11) - 1024;
-        const c = (p & 2047) - 1024;
-        const dr = r < win.r0 ? win.r0 - r : r > r1 ? r - r1 : 0;
-        const dc = c < win.c0 ? win.c0 - c : c > c1 ? c - c1 : 0;
-        d += dr + dc;
-    }
-    return d;
-}
-function better(a, b) {
-    if (a.overlap !== b.overlap)
-        return a.overlap > b.overlap;
-    if (a.outside !== b.outside)
-        return a.outside < b.outside;
-    if (a.holeCells !== b.holeCells)
-        return a.holeCells < b.holeCells;
-    if (a.area !== b.area)
-        return a.area < b.area;
-    return a.h < b.h;
-}
-function scoreState(state, win, step, m, n) {
-    const rep = detectHoles(state, win, step);
-    let holeCells = 0;
-    for (const g of rep.holes)
-        holeCells += g.length;
-    return {
-        overlap: overlapWith(state, win),
-        outside: outsideDistance(state, win),
-        area: bbArea(state),
-        holeCells,
-        h: heuristic(state, m, n),
-    };
-}
-/**
- * 給任意局面打分（自選目標窗口）。原版 `gather_metrics(cs, m, n)['score']` 的
- * 等價物，專門給「部分成果擇優」用：全敗時按這個分數挑聚攏度最高的部分成果
- * （原版 fill_partial 協議，見 solver/auto_solver.py 的 partial_better）。
- */
-function stateScore(state, m, n, step) {
-    const win = findTargetWindow(state, m, n);
-    return scoreState(state, win, step, m, n);
-}
-/** 比分數優劣（字典序：聚攏度 → 窗外距離 → 洞 → 面積 → h）。匯出給部分成果擇優用。 */
-const scoreBetter = better;
-/**
- * 聚攏求解：貪心爬山 + 卡死時隨機踢一步。
- *
- * 每一步：枚舉全部合法走法 → 用「與目標窗口的重疊數」評分 → 走最好的一步；
- * 若最好的一步也沒有比現況好，視為陷入平原，隨機踢一步重試，
- * 連續 patience 步無改善就放棄。
- *
- * 注意：本遊戲**存在合法但無法還原的死局**（見「相關數學問題」），
- * 所以失敗不代表程式有錯；solved=false 時呼叫方應如實告知玩家。
- */
-function solveByGather(state, m, n, step, opts = {}) {
-    const maxSteps = opts.maxSteps ?? 400;
-    const patience = opts.patience ?? 40;
-    const maxStages = opts.maxStages ?? 4;
-    const timeBudgetMs = opts.timeBudgetMs ?? 5000;
-    const rng = opts.rng ?? Math.random;
-    /** 卡住時每隔幾步重選一次目標窗口（形狀會因踢步而改變） */
-    const replanEvery = 12;
-    /** 平原上每隔幾步隨機擾動一次（其餘時候走當下最好的一步） */
-    const kickEvery = 5;
-    const deadline = Date.now() + timeBudgetMs;
-    let cur = new Set(state);
-    const path = [];
-    // 窗口在一個階段內固定：每步重選會讓目標一直漂，貪心反而沒有穩定方向
-    let win = findTargetWindow(cur, m, n);
-    let stuck = 0;
-    let stage = 0;
-    if (isSolvedState(cur, m, n))
-        return { actions: path, solved: true, steps: 0 };
-    for (let i = 0; i < maxSteps; i++) {
-        if (isSolvedState(cur, m, n))
-            return { actions: path, solved: true, steps: path.length };
-        if (Date.now() > deadline)
-            break;
-        const curScore = scoreState(cur, win, step, m, n);
-        const moves = enumerateMoves(cur, step).filter((mv) => !path.length || !isInverseAction(path[path.length - 1], mv.action));
-        if (moves.length === 0)
-            break; // 完全凍結的死局
-        let bestMove = null;
-        let bestScore = null;
-        for (const mv of moves) {
-            const s = scoreState(mv.next, win, step, m, n);
-            if (bestScore === null || better(s, bestScore)) {
-                bestScore = s;
-                bestMove = mv;
-            }
-        }
-        if (!bestMove || !bestScore)
-            break;
-        if (better(bestScore, curScore)) {
-            cur = bestMove.next;
-            path.push(bestMove.action);
-            stuck = 0;
-        }
-        else {
-            // 平原：先換目標窗口再說，真的沒救才隨機踢一步
-            stuck++;
-            if (stuck > patience) {
-                stage++;
-                if (stage > maxStages)
-                    break;
-                win = findTargetWindow(cur, m, n);
-                stuck = 0;
-                continue;
-            }
-            if (stuck % replanEvery === 0)
-                win = findTargetWindow(cur, m, n);
-            // 平原時不再一律亂踢：填洞常常得先「惡化」一步（挪開讓出通道），
-            // 純爬山拒絕任何惡化步就只能在原地亂撞。這裡改走當下最好的一步——
-            // 有「到窗口的距離」這個連續梯度導引，它多半仍在往目標靠；
-            // 只每隔幾步才隨機擾動一次，避免整條路線被同一個局部極值鎖死。
-            if (stuck % kickEvery === 0) {
-                const kick = moves[Math.floor(rng() * moves.length) % moves.length];
-                cur = kick.next;
-                path.push(kick.action);
-            }
-            else {
-                cur = bestMove.next;
-                path.push(bestMove.action);
-            }
-        }
-    }
-    return {
-        actions: path,
-        solved: isSolvedState(cur, m, n),
-        steps: path.length,
-    };
-}
-/**
- * 只挑「當下最好的一步」，不做完整求解。
- * 「提示一步」用這個：一步前瞻很便宜，且與求解器共用同一套評分標準，
- * 所以提示的方向一定不會跟自動求解的第一步打架。
- */
-function bestMove(state, m, n, step) {
-    const win = findTargetWindow(state, m, n);
-    const curScore = scoreState(state, win, step, m, n);
-    const moves = enumerateMoves(state, step);
-    if (moves.length === 0)
-        return null; // 完全凍結
-    let bm = null;
-    let bs = null;
-    for (const mv of moves) {
-        const s = scoreState(mv.next, win, step, m, n);
-        if (bs === null || better(s, bs)) {
-            bs = s;
-            bm = mv;
-        }
-    }
-    if (!bm || !bs)
-        return null;
-    // 當下沒有更好的一步時，仍然回傳最好的一步（可能等於現況）：
-    // 提示的目的是給方向，寧可給一個「最接近目標」的，也不要空白。
-    void curScore;
-    return { action: bm.action, next: bm.next };
-}
-/**
- * 求解後的收尾：把連續「同一組來回推」的贅步壓掉，讓回放更乾淨。
- * 只移除相鄰的互逆步驟（其餘順序一律保留，避免破壞可行性）。
- */
-function trimPath(actions) {
-    const out = [];
-    for (const a of actions) {
-        const last = out[out.length - 1];
-        if (last && isInverseAction(last, a))
-            out.pop();
-        else
-            out.push(a);
-    }
-    return out;
-}
-/** 方便外部從 SliderMatrix 的 blocks 建立狀態。 */
-function stateOf(blocks) {
-    const s = new Set();
-    for (const [r, c] of blocks)
-        s.add(enc(r, c));
-    return s;
-}
-
-return { findTargetWindow, overlapWith, detectHoles, outsideDistance, stateScore, scoreBetter, solveByGather, bestMove, trimPath, stateOf };
-},
-    "m14": function (require) {
+    "m16": function (require) {
 /**
  * 存檔/導入（M4）：localStorage 自動快照 + 檔案下載/上傳 + 解析 map 文本。
  * 存檔 JSON 與原版完全一致（{version, puzzle, step_count, history:{history_index, snapshots}}）。
@@ -4167,76 +4223,7 @@ function downloadText(filename, text) {
 
 return { compactJsonDumps, autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, updateSlot, loadSlot, deleteSlot };
 },
-    "m15": function (require) {
-/**
- * 計時器（M5，對照原版競速狀態機）
- * 狀態：idle（待打亂）→ ready（就緒，空格開始）→ running → solved | dnf
- */
-function formatTime(ms) {
-    if (ms === null)
-        return '-';
-    const total = ms / 1000;
-    const minutes = Math.floor(total / 60);
-    const sec = total - minutes * 60;
-    if (minutes > 0)
-        return `${minutes}:${sec.toFixed(2).padStart(5, '0')}`;
-    return sec.toFixed(2);
-}
-class Timer {
-    constructor() {
-        this.state = 'idle';
-        this.startMs = 0;
-        this.endMs = 0;
-    }
-    get elapsedMs() {
-        if (this.state === 'running')
-            return performance.now() - this.startMs;
-        if (this.state === 'solved' || this.state === 'dnf')
-            return this.endMs - this.startMs;
-        return 0;
-    }
-    /** 打亂完成後進入 ready（就緒，空格開始）。 */
-    enterReady() {
-        this.state = 'ready';
-        this.startMs = 0;
-        this.endMs = 0;
-    }
-    /** 取消計時 / 切模式 / 換謎題：回到 idle（待打亂）。 */
-    cancel() {
-        this.state = 'idle';
-        this.startMs = 0;
-        this.endMs = 0;
-    }
-    /** 首次合法移動或按空白：ready → running。 */
-    start() {
-        if (this.state !== 'ready')
-            return;
-        this.state = 'running';
-        this.startMs = performance.now();
-    }
-    /** 完成（solved 自動停錶）。 */
-    solve() {
-        if (this.state !== 'running')
-            return this.elapsedMs;
-        this.endMs = performance.now();
-        this.state = 'solved';
-        return this.elapsedMs;
-    }
-    /** 手動 DNF。 */
-    dnf() {
-        if (this.state !== 'running')
-            return;
-        this.state = 'dnf';
-        this.endMs = performance.now();
-    }
-    get isRunning() {
-        return this.state === 'running';
-    }
-}
-
-return { formatTime, Timer };
-},
-    "m16": function (require) {
+    "m17": function (require) {
 /**
  * 成績記錄（M6）：按 puzzle 分組存 localStorage，統計 count/best/worst/ao5/ao12/dnf。
  * 對照 records.py 的語義（AoN 取最近 n 次、去掉最好與最差、DNF 視為無窮）。
@@ -4283,6 +4270,11 @@ function tpsOf(item) {
     if (!item.time_ms || item.time_ms <= 0)
         return 0;
     return item.moves / (item.time_ms / 1000);
+}
+/** 取一系列 AoN 裡的最優（最小）有效值；沒有有效值回 null。 */
+function bestAvg(values) {
+    const nums = values.filter((v) => typeof v === 'number');
+    return nums.length > 0 ? Math.min(...nums) : null;
 }
 /**
  * 把一組方塊座標畫成等寬文字地圖（開局局面用）。
@@ -4352,6 +4344,30 @@ class Records {
         this.save();
         return item;
     }
+    /**
+     * 競速成績錄入 + PB 判定（對照原版 _last_timed_result 的 pb_single/pb_ao5/pb_ao12）。
+     * 先算「加入前」的最優基線，加入後再比對：
+     *   single：本條破歷史最快；ao5/ao12：以本條為結尾的平均創歷史新低。
+     */
+    addTimed(m, n, step, timeMs, moves, dnf, numbered = false, initial) {
+        const key = numbered ? `${puzzleKey(m, n, step)}#num` : puzzleKey(m, n, step);
+        const before = this.data[key] ?? [];
+        const bestSingleBefore = stats(before).best;
+        const bestAo5Before = bestAvg(series(before).map((r) => r.ao5));
+        const bestAo12Before = bestAvg(series(before).map((r) => r.ao12));
+        const item = this.add(m, n, step, timeMs, moves, dnf, numbered, initial);
+        const rows = series(this.get(key));
+        const last = rows[rows.length - 1];
+        const ok = !item.dnf;
+        return {
+            item,
+            pb: {
+                single: ok && (bestSingleBefore === null || item.time_ms < bestSingleBefore),
+                ao5: ok && typeof last.ao5 === 'number' && (bestAo5Before === null || last.ao5 < bestAo5Before),
+                ao12: ok && typeof last.ao12 === 'number' && (bestAo12Before === null || last.ao12 < bestAo12Before),
+            },
+        };
+    }
     get(key) {
         return this.data[key] ?? [];
     }
@@ -4375,7 +4391,7 @@ class Records {
 
 return { avgOf, stats, series, tpsOf, blocksToMap, puzzleKey, Records };
 },
-    "m17": function (require) {
+    "m18": function (require) {
 /**
  * 新手教程控制器（對照原版 gui/tutorial.py 的 TutorialMixin 數據驅動設計）
  *
@@ -4971,7 +4987,7 @@ function mkBtn(label, primary, onClick) {
 
 return { TutorialController };
 },
-    "m18": function (require) {
+    "m19": function (require) {
 /**
  * 新手教程數據（由 scripts/gen-tutorial-data.mjs 自動生成，來源為原版 GatenneaSlider）。
  * 內聯以避免 file:// 下 fetch 本地 JSON 失敗。請勿手動編輯。
@@ -5388,7 +5404,88 @@ const TUTORIAL_ARCHIVES = JSON.parse("{\"1\":{\"version\":1,\"puzzle\":{\"m\":3,
 
 return { TUTORIAL_TEXTS, TUTORIAL_LEVELS, TUTORIAL_ORDER, TUTORIAL_ARCHIVES };
 },
-    "m19": function (require) {
+    "m2": function (require) {
+/**
+ * 畫風 token（對照 docs/theme.md；來源 GUI.py::self.colors 與 gui/renderer.py）
+ * 單一來源，渲染與選單共用，禁止散落寫死色值。
+ */
+function rgb(r, g, b) {
+    return `rgb(${r}, ${g}, ${b})`;
+}
+const COLORS = {
+    background: rgb(30, 30, 30),
+    block: rgb(60, 150, 200),
+    block_selected: rgb(0, 200, 100),
+    border: rgb(100, 100, 100),
+    gap: rgb(80, 80, 80),
+    line: rgb(255, 0, 0),
+    grid: rgb(40, 40, 40),
+    menu_bg: rgb(50, 50, 50),
+    menu_hover: rgb(70, 70, 70),
+    menu_text: rgb(220, 220, 220),
+    menu_selected: rgb(80, 130, 180),
+    status_bg: rgb(40, 40, 40),
+    status_text: rgb(200, 200, 200),
+    dialog_bg: rgb(45, 45, 48),
+    dialog_border: rgb(100, 100, 100),
+    dialog_text: rgb(230, 230, 230),
+    dialog_title: rgb(255, 255, 255),
+    solved: rgb(0, 200, 80),
+    unsolved: rgb(200, 160, 0),
+    input_bg: rgb(60, 60, 65),
+    input_active: rgb(80, 80, 120),
+    input_text: rgb(255, 255, 255),
+    selection_bg: rgb(50, 80, 160),
+    button_bg: rgb(70, 130, 180),
+    button_hover: rgb(90, 150, 200),
+    separator: rgb(80, 80, 80),
+    timer_running: rgb(255, 200, 80),
+    macro_base_mark: rgb(255, 200, 50),
+    // 棋盤標記（原版 board_marks_enabled：目標框 + 洞/缺口/凸起記號，metrics_panel.py）
+    mark_target: rgb(80, 220, 100),
+    mark_hole_large: rgb(255, 80, 80),
+    mark_hole_small: rgb(80, 160, 255),
+    mark_protrusion: rgb(255, 210, 60),
+    // 復原成功懸浮窗（原版 draw_solved_popup）
+    popup_glow: rgb(130, 130, 140),
+    popup_body: rgb(215, 215, 220),
+    popup_score: rgb(240, 225, 150),
+    popup_pb: rgb(255, 190, 90),
+};
+const GEOMETRY = {
+    base_cell_size: 60,
+    gap_width: 4,
+    padding: 10,
+    block_radius: 5, // 原版 int(5 * zoom)，zoom=1 時為 5
+    block_border_width: 2, // 原版 max(1, int(2 * zoom))
+    selected_line_width: 3,
+    menu_bar_height: 32,
+    status_bar_height: 28,
+    right_panel_width: 132,
+    min_width: 1000,
+    min_height: 618,
+};
+/** 原版 ease_out：1 - (1-t)^2 */
+function easeOut(t) {
+    return 1 - (1 - t) * (1 - t);
+}
+/**
+ * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
+ * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
+ */
+const FONT_FAMILY = "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif";
+const TEXT = {
+    solved: '狀態：復原',
+    unsolved: '狀態：未復原',
+    stepPrefix: '步數：',
+    puzzlePrefix: '謎題：',
+    // 原版選單列順序（GUI.py::self.menu_items）
+    menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
+};
+
+return { COLORS, GEOMETRY, easeOut, FONT_FAMILY, TEXT };
+},
+    "m20": function (require) {
 /**
  * 創造模式控制器（對照原版 gui/annotation.py + speedrun.py 的模式開關第三態）。
  *
@@ -5668,77 +5765,6 @@ function clampInt(v, lo, hi, def) {
 
 return { CreativeController };
 },
-    "m2": function (require) {
-/**
- * 畫風 token（對照 docs/theme.md；來源 GUI.py::self.colors 與 gui/renderer.py）
- * 單一來源，渲染與選單共用，禁止散落寫死色值。
- */
-function rgb(r, g, b) {
-    return `rgb(${r}, ${g}, ${b})`;
-}
-const COLORS = {
-    background: rgb(30, 30, 30),
-    block: rgb(60, 150, 200),
-    block_selected: rgb(0, 200, 100),
-    border: rgb(100, 100, 100),
-    gap: rgb(80, 80, 80),
-    line: rgb(255, 0, 0),
-    grid: rgb(40, 40, 40),
-    menu_bg: rgb(50, 50, 50),
-    menu_hover: rgb(70, 70, 70),
-    menu_text: rgb(220, 220, 220),
-    menu_selected: rgb(80, 130, 180),
-    status_bg: rgb(40, 40, 40),
-    status_text: rgb(200, 200, 200),
-    dialog_bg: rgb(45, 45, 48),
-    dialog_border: rgb(100, 100, 100),
-    dialog_text: rgb(230, 230, 230),
-    dialog_title: rgb(255, 255, 255),
-    solved: rgb(0, 200, 80),
-    unsolved: rgb(200, 160, 0),
-    input_bg: rgb(60, 60, 65),
-    input_active: rgb(80, 80, 120),
-    input_text: rgb(255, 255, 255),
-    selection_bg: rgb(50, 80, 160),
-    button_bg: rgb(70, 130, 180),
-    button_hover: rgb(90, 150, 200),
-    separator: rgb(80, 80, 80),
-    timer_running: rgb(255, 200, 80),
-    macro_base_mark: rgb(255, 200, 50),
-};
-const GEOMETRY = {
-    base_cell_size: 60,
-    gap_width: 4,
-    padding: 10,
-    block_radius: 5, // 原版 int(5 * zoom)，zoom=1 時為 5
-    block_border_width: 2, // 原版 max(1, int(2 * zoom))
-    selected_line_width: 3,
-    menu_bar_height: 32,
-    status_bar_height: 28,
-    right_panel_width: 132,
-    min_width: 1000,
-    min_height: 618,
-};
-/** 原版 ease_out：1 - (1-t)^2 */
-function easeOut(t) {
-    return 1 - (1 - t) * (1 - t);
-}
-/**
- * 介面字型：原版全 UI 都用 SimHei（黑體，`_gui_safe_font('SimHei', …)`）。
- * 這裡優先同名，其後才是跨平台的中文黑體替代，最後才退回系統預設。
- */
-const FONT_FAMILY = "'SimHei', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif";
-const TEXT = {
-    solved: '狀態：復原',
-    unsolved: '狀態：未復原',
-    stepPrefix: '步數：',
-    puzzlePrefix: '謎題：',
-    // 原版選單列順序（GUI.py::self.menu_items）
-    menuItems: ['文件', '编辑', '谜题', '宏定义', '设置', '帮助', '教程', '官网'],
-};
-
-return { COLORS, GEOMETRY, easeOut, FONT_FAMILY, TEXT };
-},
     "m3": function (require) {
 /**
  * 規則常量（對照 game.py / 術語規定.md）
@@ -5779,6 +5805,720 @@ const ARROW_IMAGE_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAA
 return { ARROW_IMAGE_DATA_URI };
 },
     "m5": function (require) {
+/**
+ * 求解器 · 聚攏 + 填洞補缺（貪心爬山）
+ *
+ * 對照原版 solver/ml/gather_solver.py（max_overlap / find_best_window / gather_solve）
+ * 與 solver/ml/hole_detector.py（detect_holes）。
+ *
+ * 為什麼不做 IDA*：原版 solver/__init__.py 的註冊表已把 IDA*／貪心爬山歸為
+ * 「早期搜索類算法，相對現有宏級流水線已非常低效，保留只為備查」；
+ * 真正有效的是**聚攏**與**填洞補缺**這條路線，本模組即照這條路線實作。
+ *
+ * 核心觀察（把三件事統一成一個目標函數）：
+ *   設 T = 與當前局面重疊最高的 m×n（或 n×m）窗口，K = m*n。
+ *   - 窗口內的空格 = 洞 + 缺口    → 填洞補缺
+ *   - 窗口外的方塊 = 凸起        → 聚攏
+ *   兩者都等價於「提高窗口內方塊數 overlap」；overlap == K 時即為已還原。
+ * 因此爬山目標就是 overlap，洞/缺口/包圍盒面積只作為同分時的次要排序鍵。
+ */
+const { bbArea, blocksOf, boundsOf, enc, enumerateMoves, heuristic, isInverseAction, isSolvedState,  } = require("./model.js");
+/**
+ * 找「聚攏度最高」的目標窗口（平移不變、轉置對稱）。
+ * 對照 hole_detector.find_target_region（原版另有 mod 約束版 find_best_window，
+ * 這裡先不引入 mod 約束——實測對聚攏目標的選窗影響極小，留待需要時再加）。
+ */
+function findTargetWindow(state, m, n) {
+    const coords = blocksOf(state);
+    const total = m * n;
+    if (coords.length === 0)
+        return { r0: 0, c0: 0, rh: m, cw: n, overlap: 0 };
+    const b = boundsOf(state);
+    let best = { r0: b.minR, c0: b.minC, rh: m, cw: n, overlap: -1 };
+    for (const [rh, cw] of [
+        [m, n],
+        [n, m],
+    ]) {
+        for (let r0 = b.minR - rh + 1; r0 <= b.maxR; r0++) {
+            for (let c0 = b.minC - cw + 1; c0 <= b.maxC; c0++) {
+                let cnt = 0;
+                for (const [r, c] of coords) {
+                    if (r >= r0 && r < r0 + rh && c >= c0 && c < c0 + cw)
+                        cnt++;
+                }
+                if (cnt > best.overlap) {
+                    best = { r0, c0, rh, cw, overlap: cnt };
+                    if (cnt === total)
+                        return best; // 已滿，不可能更好
+                }
+            }
+        }
+    }
+    return best;
+}
+/** 窗口內的方塊數（爬山主目標）。 */
+function overlapWith(state, win) {
+    let cnt = 0;
+    for (const p of state) {
+        // 直接用編碼值比對，避免逐塊解碼
+        const r = (p >> 11) - 1024;
+        const c = (p & 2047) - 1024;
+        if (r >= win.r0 && r < win.r0 + win.rh && c >= win.c0 && c < win.c0 + win.cw)
+            cnt++;
+    }
+    return cnt;
+}
+/**
+ * 偵測目標窗口內的洞與缺口、窗口外的凸起。
+ * 對照 hole_detector.detect_holes：洪水填充連通空格區，
+ * 觸及窗口邊緣者為 dent（缺口），否則為 hole（洞）。
+ */
+function detectHoles(state, win, step) {
+    const { r0, c0, rh, cw } = win;
+    const grid = [];
+    for (let i = 0; i < rh; i++)
+        grid.push(new Array(cw).fill(0));
+    const protrusions = [];
+    for (const p of state) {
+        const r = (p >> 11) - 1024;
+        const c = (p & 2047) - 1024;
+        if (r >= r0 && r < r0 + rh && c >= c0 && c < c0 + cw) {
+            grid[r - r0][c - c0] = 1;
+        }
+        else {
+            protrusions.push([r, c]);
+        }
+    }
+    const seen = [];
+    for (let i = 0; i < rh; i++)
+        seen.push(new Array(cw).fill(false));
+    const holes = [];
+    const dents = [];
+    for (let i = 0; i < rh; i++) {
+        for (let j = 0; j < cw; j++) {
+            if (grid[i][j] !== 0 || seen[i][j])
+                continue;
+            const cells = [];
+            let touchesEdge = false;
+            const stack = [[i, j]];
+            seen[i][j] = true;
+            while (stack.length > 0) {
+                const [x, y] = stack.pop();
+                cells.push([x + r0, y + c0]);
+                const nbs = [
+                    [x - 1, y],
+                    [x + 1, y],
+                    [x, y - 1],
+                    [x, y + 1],
+                ];
+                for (const [nx, ny] of nbs) {
+                    if (nx >= 0 && nx < rh && ny >= 0 && ny < cw) {
+                        if (grid[nx][ny] === 0 && !seen[nx][ny]) {
+                            seen[nx][ny] = true;
+                            stack.push([nx, ny]);
+                        }
+                    }
+                    else {
+                        touchesEdge = true; // 越界 = 與外緣相連
+                    }
+                }
+            }
+            (touchesEdge ? dents : holes).push(cells);
+        }
+    }
+    // step 只影響「洞夠不夠大、能不能整組推進去」的後續判斷，這裡先保留語義；
+    // 目前爬山目標用不到它，但呼叫方可藉此決定要不要優先補大洞。
+    void step;
+    let emptyInWindow = 0;
+    for (const g of holes)
+        emptyInWindow += g.length;
+    for (const g of dents)
+        emptyInWindow += g.length;
+    return { holes, dents, protrusions, emptyInWindow };
+}
+/**
+ * 窗口外方塊到窗口的距離和（曼哈頓）。
+ *
+ * 這是讓爬山能動起來的關鍵：「窗口內方塊數」是階梯函數，把方塊推近窗口
+ * 卻還沒推進去時得分完全不變，貪心只會在平原上亂撞（實測 6×6 成功率僅 5~25%、
+ * 平均要一百多步）。加這個連續梯度後，貪心才有「往窗口靠」的方向感
+ * —— 原版最有效的算法就叫「梯度聚攏」，正是這個意思。
+ */
+function outsideDistance(state, win) {
+    let d = 0;
+    const r1 = win.r0 + win.rh - 1;
+    const c1 = win.c0 + win.cw - 1;
+    for (const p of state) {
+        const r = (p >> 11) - 1024;
+        const c = (p & 2047) - 1024;
+        const dr = r < win.r0 ? win.r0 - r : r > r1 ? r - r1 : 0;
+        const dc = c < win.c0 ? win.c0 - c : c > c1 ? c - c1 : 0;
+        d += dr + dc;
+    }
+    return d;
+}
+function better(a, b) {
+    if (a.overlap !== b.overlap)
+        return a.overlap > b.overlap;
+    if (a.outside !== b.outside)
+        return a.outside < b.outside;
+    if (a.holeCells !== b.holeCells)
+        return a.holeCells < b.holeCells;
+    if (a.area !== b.area)
+        return a.area < b.area;
+    return a.h < b.h;
+}
+function scoreState(state, win, step, m, n) {
+    const rep = detectHoles(state, win, step);
+    let holeCells = 0;
+    for (const g of rep.holes)
+        holeCells += g.length;
+    return {
+        overlap: overlapWith(state, win),
+        outside: outsideDistance(state, win),
+        area: bbArea(state),
+        holeCells,
+        h: heuristic(state, m, n),
+    };
+}
+/**
+ * 給任意局面打分（自選目標窗口）。原版 `gather_metrics(cs, m, n)['score']` 的
+ * 等價物，專門給「部分成果擇優」用：全敗時按這個分數挑聚攏度最高的部分成果
+ * （原版 fill_partial 協議，見 solver/auto_solver.py 的 partial_better）。
+ */
+function stateScore(state, m, n, step) {
+    const win = findTargetWindow(state, m, n);
+    return scoreState(state, win, step, m, n);
+}
+/** 比分數優劣（字典序：聚攏度 → 窗外距離 → 洞 → 面積 → h）。匯出給部分成果擇優用。 */
+const scoreBetter = better;
+/**
+ * 聚攏求解：貪心爬山 + 卡死時隨機踢一步。
+ *
+ * 每一步：枚舉全部合法走法 → 用「與目標窗口的重疊數」評分 → 走最好的一步；
+ * 若最好的一步也沒有比現況好，視為陷入平原，隨機踢一步重試，
+ * 連續 patience 步無改善就放棄。
+ *
+ * 注意：本遊戲**存在合法但無法還原的死局**（見「相關數學問題」），
+ * 所以失敗不代表程式有錯；solved=false 時呼叫方應如實告知玩家。
+ */
+function solveByGather(state, m, n, step, opts = {}) {
+    const maxSteps = opts.maxSteps ?? 400;
+    const patience = opts.patience ?? 40;
+    const maxStages = opts.maxStages ?? 4;
+    const timeBudgetMs = opts.timeBudgetMs ?? 5000;
+    const rng = opts.rng ?? Math.random;
+    /** 卡住時每隔幾步重選一次目標窗口（形狀會因踢步而改變） */
+    const replanEvery = 12;
+    /** 平原上每隔幾步隨機擾動一次（其餘時候走當下最好的一步） */
+    const kickEvery = 5;
+    const deadline = Date.now() + timeBudgetMs;
+    let cur = new Set(state);
+    const path = [];
+    // 窗口在一個階段內固定：每步重選會讓目標一直漂，貪心反而沒有穩定方向
+    let win = findTargetWindow(cur, m, n);
+    let stuck = 0;
+    let stage = 0;
+    if (isSolvedState(cur, m, n))
+        return { actions: path, solved: true, steps: 0 };
+    for (let i = 0; i < maxSteps; i++) {
+        if (isSolvedState(cur, m, n))
+            return { actions: path, solved: true, steps: path.length };
+        if (Date.now() > deadline)
+            break;
+        const curScore = scoreState(cur, win, step, m, n);
+        const moves = enumerateMoves(cur, step).filter((mv) => !path.length || !isInverseAction(path[path.length - 1], mv.action));
+        if (moves.length === 0)
+            break; // 完全凍結的死局
+        let bestMove = null;
+        let bestScore = null;
+        for (const mv of moves) {
+            const s = scoreState(mv.next, win, step, m, n);
+            if (bestScore === null || better(s, bestScore)) {
+                bestScore = s;
+                bestMove = mv;
+            }
+        }
+        if (!bestMove || !bestScore)
+            break;
+        if (better(bestScore, curScore)) {
+            cur = bestMove.next;
+            path.push(bestMove.action);
+            stuck = 0;
+        }
+        else {
+            // 平原：先換目標窗口再說，真的沒救才隨機踢一步
+            stuck++;
+            if (stuck > patience) {
+                stage++;
+                if (stage > maxStages)
+                    break;
+                win = findTargetWindow(cur, m, n);
+                stuck = 0;
+                continue;
+            }
+            if (stuck % replanEvery === 0)
+                win = findTargetWindow(cur, m, n);
+            // 平原時不再一律亂踢：填洞常常得先「惡化」一步（挪開讓出通道），
+            // 純爬山拒絕任何惡化步就只能在原地亂撞。這裡改走當下最好的一步——
+            // 有「到窗口的距離」這個連續梯度導引，它多半仍在往目標靠；
+            // 只每隔幾步才隨機擾動一次，避免整條路線被同一個局部極值鎖死。
+            if (stuck % kickEvery === 0) {
+                const kick = moves[Math.floor(rng() * moves.length) % moves.length];
+                cur = kick.next;
+                path.push(kick.action);
+            }
+            else {
+                cur = bestMove.next;
+                path.push(bestMove.action);
+            }
+        }
+    }
+    return {
+        actions: path,
+        solved: isSolvedState(cur, m, n),
+        steps: path.length,
+    };
+}
+/**
+ * 只挑「當下最好的一步」，不做完整求解。
+ * 「提示一步」用這個：一步前瞻很便宜，且與求解器共用同一套評分標準，
+ * 所以提示的方向一定不會跟自動求解的第一步打架。
+ */
+function bestMove(state, m, n, step) {
+    const win = findTargetWindow(state, m, n);
+    const curScore = scoreState(state, win, step, m, n);
+    const moves = enumerateMoves(state, step);
+    if (moves.length === 0)
+        return null; // 完全凍結
+    let bm = null;
+    let bs = null;
+    for (const mv of moves) {
+        const s = scoreState(mv.next, win, step, m, n);
+        if (bs === null || better(s, bs)) {
+            bs = s;
+            bm = mv;
+        }
+    }
+    if (!bm || !bs)
+        return null;
+    // 當下沒有更好的一步時，仍然回傳最好的一步（可能等於現況）：
+    // 提示的目的是給方向，寧可給一個「最接近目標」的，也不要空白。
+    void curScore;
+    return { action: bm.action, next: bm.next };
+}
+/**
+ * 求解後的收尾：把連續「同一組來回推」的贅步壓掉，讓回放更乾淨。
+ * 只移除相鄰的互逆步驟（其餘順序一律保留，避免破壞可行性）。
+ */
+function trimPath(actions) {
+    const out = [];
+    for (const a of actions) {
+        const last = out[out.length - 1];
+        if (last && isInverseAction(last, a))
+            out.pop();
+        else
+            out.push(a);
+    }
+    return out;
+}
+/** 方便外部從 SliderMatrix 的 blocks 建立狀態。 */
+function stateOf(blocks) {
+    const s = new Set();
+    for (const [r, c] of blocks)
+        s.add(enc(r, c));
+    return s;
+}
+
+return { findTargetWindow, overlapWith, detectHoles, outsideDistance, stateScore, scoreBetter, solveByGather, bestMove, trimPath, stateOf };
+},
+    "m6": function (require) {
+/**
+ * 求解器 · 狀態表示與走法生成
+ * 對照原版 solver/state.py（狀態編碼/特徵）與 solver/actions.py（動作枚舉/執行）。
+ *
+ * 兩點刻意偏離原版，都是為了「更強」而非不同：
+ *  1. 原版每個 (縫隙, 側) 只取 side_blocks[0] 作代表塊，同側若有多個連通分量會漏走法；
+ *     這裡枚舉同側的**每一個連通分量**，解得出來的局面只會更多。
+ *  2. 狀態用「編碼後的整數集合」而非 Block 物件陣列，搜尋時免掉大量物件配置。
+ *     走法語義與 SliderMatrix.opt/try_move/commit_move 完全一致，由 tests/solver.test.mjs
+ *     做等價性比對（同一局面、同一走法，兩邊結果必須逐格相同）。
+ */
+const { DIRECTION_DELTA } = require("../core/rules.js");
+// ---------- 座標編碼 ----------
+// 滑塊可能被推出原本的 m×n 範圍（缺口外滑），座標可為負，故整體加偏移後打包成一個整數。
+const SHIFT = 11;
+const SPAN = 1 << SHIFT; // 2048
+const MASK = SPAN - 1;
+const OFF = 1 << 10; // 1024 → 允許 r/c ∈ [-1024, 1023]
+function enc(r, c) {
+    return ((r + OFF) << SHIFT) | (c + OFF);
+}
+function decRow(p) {
+    return (p >> SHIFT) - OFF;
+}
+function decCol(p) {
+    return (p & MASK) - OFF;
+}
+function stateFromBlocks(blocks) {
+    const s = new Set();
+    for (const [r, c] of blocks)
+        s.add(enc(r, c));
+    return s;
+}
+function blocksOf(state) {
+    const out = [];
+    for (const p of state)
+        out.push([decRow(p), decCol(p)]);
+    return out;
+}
+function boundsOf(state) {
+    let minR = Infinity;
+    let maxR = -Infinity;
+    let minC = Infinity;
+    let maxC = -Infinity;
+    for (const p of state) {
+        const r = decRow(p);
+        const c = decCol(p);
+        if (r < minR)
+            minR = r;
+        if (r > maxR)
+            maxR = r;
+        if (c < minC)
+            minC = c;
+        if (c > maxC)
+            maxC = c;
+    }
+    return { minR, maxR, minC, maxC };
+}
+/** 包圍盒面積（G1 階段目標就是讓它等於 m*n）。 */
+function bbArea(state) {
+    const b = boundsOf(state);
+    return (b.maxR - b.minR + 1) * (b.maxC - b.minC + 1);
+}
+/**
+ * 是否已還原：包圍盒恰為 m×n（或 n×m）且盒內填滿。
+ * 對照 SliderMatrix.is_solved 的「實心矩形」口徑（solutionMask 屬創造模式，求解器不處理）。
+ */
+function isSolvedState(state, m, n) {
+    if (state.size !== m * n)
+        return false;
+    const b = boundsOf(state);
+    const h = b.maxR - b.minR + 1;
+    const w = b.maxC - b.minC + 1;
+    if (!((h === m && w === n) || (h === n && w === m)))
+        return false;
+    for (let r = b.minR; r <= b.maxR; r++) {
+        for (let c = b.minC; c <= b.maxC; c++) {
+            if (!state.has(enc(r, c)))
+                return false;
+        }
+    }
+    return true;
+}
+// ---------- 連通性 ----------
+function isSingleConnected(set) {
+    if (set.size === 0)
+        return true;
+    const start = set.values().next().value;
+    const seen = new Set([start]);
+    const stack = [start];
+    while (stack.length > 0) {
+        const p = stack.pop();
+        const r = decRow(p);
+        const c = decCol(p);
+        const nbs = [enc(r - 1, c), enc(r + 1, c), enc(r, c - 1), enc(r, c + 1)];
+        for (const nb of nbs) {
+            if (set.has(nb) && !seen.has(nb)) {
+                seen.add(nb);
+                stack.push(nb);
+            }
+        }
+    }
+    return seen.size === set.size;
+}
+/**
+ * 縫某一側的所有連通分量。
+ * 同一側內不會跨線，故直接在該側集合上做 BFS 即等價於 SliderMatrix.opt 的結果。
+ */
+function componentsOnSide(state, gapType, line, side) {
+    const onSide = new Set();
+    for (const p of state) {
+        const r = decRow(p);
+        const c = decCol(p);
+        const ok = gapType === 'h'
+            ? side === 'above'
+                ? r <= line
+                : r > line
+            : side === 'left'
+                ? c <= line
+                : c > line;
+        if (ok)
+            onSide.add(p);
+    }
+    const seen = new Set();
+    const comps = [];
+    for (const p0 of onSide) {
+        if (seen.has(p0))
+            continue;
+        const comp = [];
+        const stack = [p0];
+        while (stack.length > 0) {
+            const p = stack.pop();
+            if (seen.has(p))
+                continue;
+            seen.add(p);
+            comp.push(p);
+            const r = decRow(p);
+            const c = decCol(p);
+            const nbs = [enc(r - 1, c), enc(r + 1, c), enc(r, c - 1), enc(r, c + 1)];
+            for (const nb of nbs) {
+                if (onSide.has(nb) && !seen.has(nb))
+                    stack.push(nb);
+            }
+        }
+        comps.push(comp);
+    }
+    return comps;
+}
+/**
+ * 嘗試把 comp 往 dir 推 step 格。逐步驗證（碰撞 + 全體單一連通），
+ * 任一步不合法就回 null —— 與 SliderMatrix.try_move 的逐步語義一致。
+ */
+function tryMove(state, comp, dir, step) {
+    const delta = DIRECTION_DELTA[dir];
+    const rest = new Set();
+    const compSet = new Set(comp);
+    for (const p of state)
+        if (!compSet.has(p))
+            rest.add(p);
+    let cur = comp.slice();
+    for (let k = 0; k < step; k++) {
+        const next = cur.map((p) => enc(decRow(p) + delta[0], decCol(p) + delta[1]));
+        const nextSet = new Set(next);
+        for (const p of nextSet)
+            if (rest.has(p))
+                return null; // 碰撞
+        const union = new Set(rest);
+        for (const p of nextSet)
+            union.add(p);
+        if (!isSingleConnected(union))
+            return null;
+        cur = next;
+    }
+    const out = new Set(rest);
+    for (const p of cur)
+        out.add(p);
+    return out;
+}
+/**
+ * 枚舉當前局面所有合法走法。
+ * 縫隙範圍對照 SliderMatrix.is_valid_h_line / is_valid_v_line（含下邊界、不含上邊界）。
+ */
+function enumerateMoves(state, step) {
+    const b = boundsOf(state);
+    const out = [];
+    const sidesFor = (gapType) => gapType === 'h' ? ['above', 'below'] : ['left', 'right'];
+    const dirsFor = (gapType) => gapType === 'h' ? ['a', 'd'] : ['w', 's'];
+    // h 縫：line ∈ [minR, maxR)，只能左右推
+    for (let line = b.minR; line < b.maxR; line++) {
+        for (const side of sidesFor('h')) {
+            for (const comp of componentsOnSide(state, 'h', line, side)) {
+                for (const dir of dirsFor('h')) {
+                    const next = tryMove(state, comp, dir, step);
+                    if (!next)
+                        continue;
+                    out.push({
+                        action: {
+                            gapType: 'h',
+                            line,
+                            side,
+                            seed: [decRow(comp[0]), decCol(comp[0])],
+                            dir,
+                        },
+                        next,
+                    });
+                }
+            }
+        }
+    }
+    // v 縫：line ∈ [minC, maxC)，只能上下推
+    for (let line = b.minC; line < b.maxC; line++) {
+        for (const side of sidesFor('v')) {
+            for (const comp of componentsOnSide(state, 'v', line, side)) {
+                for (const dir of dirsFor('v')) {
+                    const next = tryMove(state, comp, dir, step);
+                    if (!next)
+                        continue;
+                    out.push({
+                        action: {
+                            gapType: 'v',
+                            line,
+                            side,
+                            seed: [decRow(comp[0]), decCol(comp[0])],
+                            dir,
+                        },
+                        next,
+                    });
+                }
+            }
+        }
+    }
+    return out;
+}
+/**
+ * 在狀態上執行一個走法：找出 seed 所屬的同側連通分量，再推 step 格。
+ * 供求解器驗證與預覽使用（不依賴 SliderMatrix，純集合運算）。
+ */
+function applyAction(state, action, step) {
+    const comps = componentsOnSide(state, action.gapType, action.line, action.side);
+    const seedPos = enc(action.seed[0], action.seed[1]);
+    for (const comp of comps) {
+        if (comp.indexOf(seedPos) >= 0)
+            return tryMove(state, comp, action.dir, step);
+    }
+    return null;
+}
+/**
+ * 置換表用的狀態鍵：平移歸一化（減去包圍盒左上角）。
+ * 對照原版 state_key —— 形狀相同、位置不同視為同一狀態。
+ */
+function stateKey(state) {
+    const b = boundsOf(state);
+    const norm = [];
+    for (const p of state)
+        norm.push(enc(decRow(p) - b.minR, decCol(p) - b.minC));
+    norm.sort((x, y) => x - y);
+    return norm.join(',');
+}
+/** 兩個走法是否互為逆操作（同縫隙、同側、方向相反）—— 用來禁止原地來回。 */
+function isInverseAction(a, b) {
+    if (a.gapType !== b.gapType || a.line !== b.line || a.side !== b.side)
+        return false;
+    const pairs = [
+        ['w', 's'],
+        ['s', 'w'],
+        ['a', 'd'],
+        ['d', 'a'],
+    ];
+    return pairs.some(([x, y]) => a.dir === x && b.dir === y);
+}
+// ---------- 啟發式（對照 solver/heuristic.py） ----------
+function scoreParts(state, m, n) {
+    const b = boundsOf(state);
+    const H = b.maxR - b.minR + 1;
+    const W = b.maxC - b.minC + 1;
+    const K = m * n;
+    const area = H * W;
+    const fillRate = area > 0 ? K / area : 0;
+    const minDim = Math.min(m, n);
+    const maxDim = Math.max(m, n);
+    const targetRatio = minDim > 0 ? maxDim / minDim : 1;
+    const minHW = Math.min(H, W);
+    const maxHW = Math.max(H, W);
+    const currentRatio = minHW > 0 ? maxHW / minHW : 1;
+    const maxRatio = Math.max(currentRatio, targetRatio);
+    const aspectError = maxRatio > 0 ? Math.abs(currentRatio - targetRatio) / maxRatio : 0;
+    return { fillRate, aspectError };
+}
+/** 標準啟發：Score = 0.5·fill_rate + 0.5·(1−aspect_error)，h = 1 − Score ∈ [0,1)。 */
+function heuristic(state, m, n) {
+    if (isSolvedState(state, m, n))
+        return 0;
+    const { fillRate, aspectError } = scoreParts(state, m, n);
+    return 1 - (0.5 * fillRate + 0.5 * (1 - aspectError));
+}
+/** 快速模式啟發：加重聚攏權重（0.7 / 0.3），更快找到可行解，不保證最優。 */
+function fastHeuristic(state, m, n) {
+    if (isSolvedState(state, m, n))
+        return 0;
+    const { fillRate, aspectError } = scoreParts(state, m, n);
+    return 1 - (0.7 * fillRate + 0.3 * (1 - aspectError));
+}
+/** G1（聚攏）階段專用：只看填充率。 */
+function fillRateHeuristic(state, m, n) {
+    if (state.size === 0)
+        return 1;
+    const { fillRate } = scoreParts(state, m, n);
+    return 1 - fillRate;
+}
+/** G1 階段目標：包圍盒面積 == m*n（已是實心，但長寬比可能不對）。 */
+function isGathered(state, m, n) {
+    return state.size > 0 && bbArea(state) === m * n;
+}
+
+return { enc, decRow, decCol, stateFromBlocks, blocksOf, boundsOf, bbArea, isSolvedState, tryMove, enumerateMoves, applyAction, stateKey, isInverseAction, heuristic, fastHeuristic, fillRateHeuristic, isGathered };
+},
+    "m7": function (require) {
+/**
+ * 計時器（M5，對照原版競速狀態機）
+ * 狀態：idle（待打亂）→ ready（就緒，空格開始）→ running → solved | dnf
+ */
+function formatTime(ms) {
+    if (ms === null)
+        return '-';
+    const total = ms / 1000;
+    const minutes = Math.floor(total / 60);
+    const sec = total - minutes * 60;
+    if (minutes > 0)
+        return `${minutes}:${sec.toFixed(2).padStart(5, '0')}`;
+    return sec.toFixed(2);
+}
+class Timer {
+    constructor() {
+        this.state = 'idle';
+        this.startMs = 0;
+        this.endMs = 0;
+    }
+    get elapsedMs() {
+        if (this.state === 'running')
+            return performance.now() - this.startMs;
+        if (this.state === 'solved' || this.state === 'dnf')
+            return this.endMs - this.startMs;
+        return 0;
+    }
+    /** 打亂完成後進入 ready（就緒，空格開始）。 */
+    enterReady() {
+        this.state = 'ready';
+        this.startMs = 0;
+        this.endMs = 0;
+    }
+    /** 取消計時 / 切模式 / 換謎題：回到 idle（待打亂）。 */
+    cancel() {
+        this.state = 'idle';
+        this.startMs = 0;
+        this.endMs = 0;
+    }
+    /** 首次合法移動或按空白：ready → running。 */
+    start() {
+        if (this.state !== 'ready')
+            return;
+        this.state = 'running';
+        this.startMs = performance.now();
+    }
+    /** 完成（solved 自動停錶）。 */
+    solve() {
+        if (this.state !== 'running')
+            return this.elapsedMs;
+        this.endMs = performance.now();
+        this.state = 'solved';
+        return this.elapsedMs;
+    }
+    /** 手動 DNF。 */
+    dnf() {
+        if (this.state !== 'running')
+            return;
+        this.state = 'dnf';
+        this.endMs = performance.now();
+    }
+    get isRunning() {
+        return this.state === 'running';
+    }
+}
+
+return { formatTime, Timer };
+},
+    "m8": function (require) {
 /**
  * 棋盤互動控制器（M2）
  * 對照 gui/events.py 的三連互動與 gui/renderer.py 的命中測試。
@@ -6067,6 +6807,12 @@ class BoardController {
     }
     handleClick(x, y) {
         const { store, renderer } = this.ui;
+        // 復原懸浮窗命中優先於一切（對照原版事件層先問 _solved_popup_rect）：
+        // 點彈窗 = 關閉，不穿透到棋盤
+        if (renderer.hitSolvedPopup(x, y)) {
+            renderer.closeSolvedPopup();
+            return;
+        }
         // 箭頭按鍵命中優先於選縫隙（原版 events 裡先問它，否則會被「點空白起拖」吃掉）
         const arrowDir = renderer.hitArrowButton(x, y);
         if (arrowDir) {
@@ -6104,6 +6850,21 @@ class BoardController {
         }
     }
     onKeyDown(e) {
+        // 復原懸浮窗的按鍵優先於控制模式開關（UI 層按鍵，任何模式都能用）：
+        // Enter = 保存（對照原版提示「按 Enter 保存」），Esc = 關閉。
+        if (this.ui.renderer.solvedPopupActive) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.ui.renderer.closeSolvedPopup();
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.ui.onPopupSave?.();
+                this.ui.renderer.closeSolvedPopup();
+                return;
+            }
+        }
         if (!this.keyboardMouseEnabled)
             return;
         if (e.ctrlKey || e.metaKey)
@@ -6234,7 +6995,7 @@ class BoardController {
 
 return { directGestureFromDrag, BoardController };
 },
-    "m6": function (require) {
+    "m9": function (require) {
 /**
  * 內部指令匯流排（對照 gui/events.py::process_commands 的動作語義）
  *
@@ -6375,381 +7136,6 @@ function reset(ctx) {
 }
 
 return { createContext, selectGap, selectBlock, move, undo, redo, shuffle, reset };
-},
-    "m7": function (require) {
-/**
- * 快照式撤銷/重做（對照 history.py::GameHistory + move_info）
- *
- * 每筆快照記錄當下版面與「如何從前一版面到達此版面」的 move_info，
- * 供撤銷/重做只對該步滑塊組做動畫（對照原版 _start_undo_redo_animation）。
- */
-const { Block } = require("./Block.js");
-class GameHistory {
-    constructor() {
-        this.entries = [];
-        this.index = -1;
-    }
-    /** 保存當前狀態快照；若不在歷史末尾則截斷。 */
-    save_snapshot(game, move_info) {
-        const snapshot = {
-            blocks: game.blocks.map((b) => [b.row, b.col]),
-        };
-        // 只有數字形態才存編號，方形存檔維持與原版完全一致的格式
-        if (game.blocks.some((b) => b.number !== null)) {
-            snapshot.numbers = game.blocks.map((b) => b.number);
-        }
-        if (move_info)
-            snapshot.move_info = move_info;
-        if (this.index < this.entries.length - 1) {
-            this.entries = this.entries.slice(0, this.index + 1);
-        }
-        this.entries.push(snapshot);
-        this.index = this.entries.length - 1;
-    }
-    get canUndo() {
-        return this.index > 0;
-    }
-    get canRedo() {
-        return this.index >= 0 && this.index < this.entries.length - 1;
-    }
-    get length() {
-        return this.entries.length;
-    }
-    get currentIndex() {
-        return this.index;
-    }
-    /** 目前快照的 move_info（最後一步如何到達目前版面；undo 用它反向動畫）。 */
-    currentMoveInfo() {
-        return this.entries[this.index]?.move_info ?? null;
-    }
-    /** undo 目標（上一筆）快照的 blocks；無可撤銷回 null。 */
-    undoTarget() {
-        return this.canUndo ? this.entries[this.index - 1] : null;
-    }
-    /** redo 目標（下一筆）快照的 blocks；無可重做回 null。 */
-    redoTarget() {
-        return this.canRedo ? this.entries[this.index + 1] : null;
-    }
-    /** 下一個 redo 目標快照的 move_info。 */
-    nextMoveInfo() {
-        return this.entries[this.index + 1]?.move_info ?? null;
-    }
-    /** 撤銷：回退一步，並把快照套用到 game。 */
-    undo(game) {
-        if (!this.canUndo)
-            return false;
-        this.index -= 1;
-        this.apply(game, this.entries[this.index]);
-        return true;
-    }
-    /** 重做：前進一步。 */
-    redo(game) {
-        if (!this.canRedo)
-            return false;
-        this.index += 1;
-        this.apply(game, this.entries[this.index]);
-        return true;
-    }
-    /** 設定目前歷史索引（載入存檔時用）。 */
-    setIndex(index) {
-        if (Number.isInteger(index) && index >= 0 && index < this.entries.length)
-            this.index = index;
-    }
-    /** 直接跳到指定歷史步（虛擬鍵盤「跳到某步」用）。 */
-    jumpTo(game, index) {
-        if (!Number.isInteger(index) || index < 0 || index >= this.entries.length)
-            return false;
-        this.index = index;
-        this.apply(game, this.entries[this.index]);
-        return true;
-    }
-    /** 匯出全部快照（供存檔）。 */
-    snapshotAll() {
-        return this.entries.map((e) => ({
-            blocks: e.blocks.map(([r, c]) => [r, c]),
-            ...(e.numbers ? { numbers: [...e.numbers] } : {}),
-            ...(e.move_info ? { move_info: e.move_info } : {}),
-        }));
-    }
-    /** 由快照列表還原（index 設為末位，對應載入時停在最新狀態）。 */
-    restoreAll(list) {
-        this.entries = list.map((e) => ({
-            blocks: e.blocks.map(([r, c]) => [r, c]),
-            ...(e.numbers ? { numbers: [...e.numbers] } : {}),
-            ...(e.move_info ? { move_info: e.move_info } : {}),
-        }));
-        this.index = this.entries.length - 1;
-    }
-    apply(game, entry) {
-        game.blocks = entry.blocks.map(([r, c], i) => {
-            const b = new Block([r, c]);
-            b.number = entry.numbers?.[i] ?? null;
-            return b;
-        });
-        game.selected.clear();
-    }
-}
-
-return { GameHistory };
-},
-    "m8": function (require) {
-/**
- * 滑塊 Block（對照 game.py::Block）
- *
- * 原版把 be_opted 存在每個 block 上；網頁版把選中狀態移出，
- * 由 SliderMatrix.selected 集合統一管理，避免物件上散布可變標誌。
- */
-class Block {
-    constructor(location) {
-        /**
-         * 數字形態的編號（1..m*n），跟著滑塊走；非數字形態為 null。
-         * 對照 game.py::Block.number —— 過關條件與方形完全相同（拼成實心矩形），
-         * 編號只是給玩家看的視覺線索，不參與勝負判定。
-         */
-        this.number = null;
-        this.location = location;
-    }
-    get row() {
-        return this.location[0];
-    }
-    get col() {
-        return this.location[1];
-    }
-    clone() {
-        const b = new Block([this.location[0], this.location[1]]);
-        b.number = this.number;
-        return b;
-    }
-}
-
-return { Block };
-},
-    "m9": function (require) {
-/**
- * UI 狀態聚合（對照 SliderGUI 的狀態集中式設計）
- * 存檔格式與原版完全一致：{version, puzzle, step_count, history:{history_index, snapshots:[{matrix,bounds,move_info?}]}}
- */
-const { createContext } = require("../core/CommandBus.js");
-const { SliderMatrix } = require("../core/SliderMatrix.js");
-function matrixToBlocks(matrix, bounds) {
-    if (!Array.isArray(matrix) || !bounds || !Number.isInteger(bounds.min_row) || !Number.isInteger(bounds.min_col))
-        return null;
-    const out = [];
-    for (let r = 0; r < matrix.length; r++) {
-        const row = matrix[r];
-        if (!Array.isArray(row))
-            return null;
-        for (let c = 0; c < row.length; c++) {
-            if (row[c] === 1)
-                out.push([bounds.min_row + r, bounds.min_col + c]);
-        }
-    }
-    return out;
-}
-/**
- * 把「依滑塊順序」排列的編號改成「依位置行主序」排列。
- * 存檔裡的 matrix 是按位置掃出來的，編號必須用同一個順序才不會錯位。
- */
-function numbersInMatrixOrder(blocks, numbers) {
-    if (!numbers)
-        return null;
-    const order = blocks
-        .map((_, i) => i)
-        .sort((a, b) => blocks[a][0] - blocks[b][0] || blocks[a][1] - blocks[b][1]);
-    return order.map((i) => numbers[i] ?? null);
-}
-function blocksToMatrix(blocks) {
-    if (blocks.length === 0) {
-        return { matrix: [], bounds: { min_row: 0, max_row: 0, min_col: 0, max_col: 0 } };
-    }
-    const rows = blocks.map((b) => b[0]);
-    const cols = blocks.map((b) => b[1]);
-    const min_row = Math.min(...rows);
-    const max_row = Math.max(...rows);
-    const min_col = Math.min(...cols);
-    const max_col = Math.max(...cols);
-    const set = new Set(blocks.map((b) => `${b[0]}:${b[1]}`));
-    const matrix = [];
-    for (let r = min_row; r <= max_row; r++) {
-        const row = [];
-        for (let c = min_col; c <= max_col; c++) {
-            row.push(set.has(`${r}:${c}`) ? 1 : 0);
-        }
-        matrix.push(row);
-    }
-    return { matrix, bounds: { min_row, max_row, min_col, max_col } };
-}
-class GameStore {
-    constructor(m = 4, n = 4, step = 2, numbered = false) {
-        /**
-         * 自定義目標形狀（創造模式手造形狀用）。null 表示沿用「m×n 實心矩形」判定。
-         * 矩陣每次重建後都要重新掛回，所以集中在各 new SliderMatrix 之後賦值。
-         */
-        this.solutionMask = null;
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.numbered = numbered;
-        this.game = new SliderMatrix(m, n);
-        this.game.solutionMask = this.solutionMask;
-        this.game.assignNumbers(numbered);
-        this.cmd = createContext(this.game, step);
-    }
-    get solved() {
-        return this.game.is_solved();
-    }
-    /** 謎題分組鍵（對照 puzzle_key）：數字形態後綴 #num，成績與狀態顯示都用它。 */
-    get puzzleKey() {
-        const base = `${this.currentStep}~${this.currentM}*${this.currentN}`;
-        return this.numbered ? `${base}#num` : base;
-    }
-    get selectedGap() {
-        return this.cmd.selectedGap;
-    }
-    get selectedCells() {
-        return new Set([...this.cmd.game.selected].map((b) => `${b.row}:${b.col}`));
-    }
-    newPuzzle(m, n, step, numbered = this.numbered) {
-        if (step >= Math.max(m, n))
-            return false;
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.numbered = numbered;
-        this.game = new SliderMatrix(m, n);
-        this.game.solutionMask = this.solutionMask;
-        this.game.assignNumbers(numbered);
-        this.cmd = createContext(this.game, step);
-        return true;
-    }
-    /**
-     * 直接套用一段「以 [row,col] 列表描述的局面」作為新謎題起點（歷史清空為單一原點）。
-     * 教程載入某一關的起始亂局、創造模式套用手造形狀都走這裡。
-     * solutionMask 由呼叫方另行設定（教程為 null → 走矩形判定）。
-     */
-    applyPuzzle(m, n, step, blocks) {
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.numbered = false;
-        this.game = new SliderMatrix(m, n);
-        this.game.solutionMask = this.solutionMask;
-        this.game.restore({ blocks });
-        this.cmd = createContext(this.game, step);
-        this.cmd.history.save_snapshot(this.game);
-        this.cmd.stepCount = 0;
-    }
-    /**
-     * 新手引導用的固定局面：4×4 等級 1，最下面一整排向右錯開一格。
-     * 只要「選第 3、4 行之間的橫縫 → 點最下面一排 → 往左推」一步就回到原位，
-     * 一次走完整套「點縫 → 點塊 → 推」的流程。
-     */
-    loadTutorialPosition() {
-        this.newPuzzle(4, 4, 1, false);
-        for (const b of this.game.blocks) {
-            if (b.row === 3)
-                b.location = [3, b.col + 1];
-        }
-        // 重建歷史，讓這個局面成為「原點」（撤銷不會退回還原態）
-        this.cmd = createContext(this.game, 1);
-        this.cmd.history.save_snapshot(this.game);
-    }
-    /** 在當前謎題上切換數字形態（重新編號，不重開一局）。 */
-    setNumbered(on) {
-        if (this.numbered === on)
-            return;
-        this.numbered = on;
-        this.game.assignNumbers(on);
-    }
-    /** 序列化為與原版完全一致的結構。 */
-    serialize() {
-        const entries = this.cmd.history.snapshotAll();
-        const snapshots = entries.map((e) => {
-            const { matrix, bounds } = blocksToMatrix(e.blocks);
-            const snap = { matrix, bounds };
-            if (e.move_info)
-                snap.move_info = e.move_info;
-            // 編號另外存，不塞進 matrix：原版存檔格式維持 0/1，原版開啟時退化為方形
-            const nums = numbersInMatrixOrder(e.blocks, e.numbers);
-            if (nums)
-                snap.numbers = nums;
-            return snap;
-        });
-        return {
-            version: 1,
-            puzzle: {
-                m: this.currentM,
-                n: this.currentN,
-                step: this.currentStep,
-                ...(this.numbered ? { kind: 'numbered' } : {}),
-            },
-            step_count: this.cmd.stepCount,
-            ...(this.solutionMask ? { solution: Array.from(this.solutionMask) } : {}),
-            history: {
-                history_index: this.cmd.history.currentIndex,
-                snapshots,
-            },
-        };
-    }
-    /** 由序列化結構還原（相容原版 save JSON；也相容舊版網頁格式）。 */
-    deserialize(p) {
-        const m = p.puzzle?.m ?? this.currentM;
-        const n = p.puzzle?.n ?? this.currentN;
-        const step = p.puzzle?.step ?? this.currentStep;
-        if (!Number.isInteger(m) || !Number.isInteger(n) || !Number.isInteger(step))
-            return false;
-        if (step >= Math.max(m, n))
-            return false;
-        this.currentM = m;
-        this.currentN = n;
-        this.currentStep = step;
-        this.numbered = p.puzzle?.kind === 'numbered';
-        this.solutionMask = Array.isArray(p.solution)
-            ? new Set(p.solution)
-            : null;
-        this.game = new SliderMatrix(m, n);
-        this.game.solutionMask = this.solutionMask;
-        // 將各格式歷史轉為 HistoryEntry（blocks + numbers? + move_info?）
-        const entries = [];
-        if (Array.isArray(p.history)) {
-            // 舊版網頁格式：history 是 blocks 陣列
-            for (const h of p.history) {
-                if (Array.isArray(h?.blocks))
-                    entries.push({ blocks: h.blocks, ...(h.move_info ? { move_info: h.move_info } : {}) });
-            }
-        }
-        else if (p.history && Array.isArray(p.history.snapshots)) {
-            // 原版格式：matrix + bounds + move_info?
-            // numbers 是網頁版數字形態的附加欄位，順序與 matrix 掃描順序一致
-            for (const snap of p.history.snapshots) {
-                const blocks = matrixToBlocks(snap?.matrix, snap?.bounds);
-                if (blocks) {
-                    entries.push({
-                        blocks,
-                        ...(Array.isArray(snap?.numbers) ? { numbers: snap.numbers } : {}),
-                        ...(snap?.move_info ? { move_info: snap.move_info } : {}),
-                    });
-                }
-            }
-        }
-        if (entries.length > 0) {
-            const last = entries[entries.length - 1];
-            this.game.restore({ blocks: last.blocks, ...(last.numbers ? { numbers: last.numbers } : {}) });
-        }
-        this.cmd = createContext(this.game, step);
-        this.cmd.stepCount = p.step_count ?? 0;
-        if (entries.length > 0) {
-            this.cmd.history.restoreAll(entries);
-            const idx = p.history && typeof p.history === 'object' && 'history_index' in p.history
-                ? p.history.history_index
-                : entries.length - 1;
-            this.cmd.history.setIndex(idx);
-        }
-        return true;
-    }
-}
-
-return { GameStore };
 } };
   var __cache = {};
   function __load(id) {
@@ -6761,24 +7147,25 @@ return { GameStore };
   }
   var __resolve = { "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/main.js": "m0",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/BoardRenderer.js": "m1",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/SliderMatrix.js": "m10",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/index.js": "m11",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/model.js": "m12",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/gather.js": "m13",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/io/SaveManager.js": "m14",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Timer.js": "m15",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Records.js": "m16",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/tutorial.js": "m17",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/tutorial/tutorialData.js": "m18",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/create.js": "m19",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/GameHistory.js": "m10",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/Block.js": "m11",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/store/GameStore.js": "m12",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/SliderMatrix.js": "m13",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/solvedPopup.js": "m14",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/index.js": "m15",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/io/SaveManager.js": "m16",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Records.js": "m17",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/tutorial.js": "m18",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/tutorial/tutorialData.js": "m19",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/theme.js": "m2",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/create.js": "m20",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/rules.js": "m3",
     "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/render/arrowImage.js": "m4",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/interaction/BoardController.js": "m5",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/CommandBus.js": "m6",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/GameHistory.js": "m7",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/Block.js": "m8",
-    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/store/GameStore.js": "m9" };
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/gather.js": "m5",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/solver/model.js": "m6",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/feature/Timer.js": "m7",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/interaction/BoardController.js": "m8",
+    "E:/program_project/other/wkbddtest/GatenneaSliderWeb/dist/core/CommandBus.js": "m9" };
   function __resolvedId(fromId, spec) {
     var fromAbs = null;
     for (var k in __resolve) { if (__resolve[k] === fromId) { fromAbs = k; break; } }

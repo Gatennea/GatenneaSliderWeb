@@ -9,6 +9,7 @@ import { cases as cmdCases } from '../tests/commandbus.test.mjs';
 import { cases as saveCases } from '../tests/save.test.mjs';
 import { cases as timerCases } from '../tests/timer.test.mjs';
 import { cases as recordCases } from '../tests/records.test.mjs';
+import { cases as popupCases } from '../tests/solvedPopup.test.mjs';
 import { cases as shuffleCases } from '../tests/shuffle.test.mjs';
 import { cases as numberedCases } from '../tests/numbered.test.mjs';
 import { cases as bundleCases } from '../tests/bundle.test.mjs';
@@ -23,6 +24,7 @@ const suites = [
   { name: '存檔/導入/切換 (M4)', cases: saveCases },
   { name: '計時器 (M5)', cases: timerCases },
   { name: '成績 (M6)', cases: recordCases },
+  { name: '棋盤標記 / 復原彈窗', cases: popupCases },
   { name: '安全打亂（保證可還原）', cases: shuffleCases },
   { name: '數字形態 / 引導局面 (M7)', cases: numberedCases },
   { name: '打包器保險 (bundle)', cases: bundleCases },

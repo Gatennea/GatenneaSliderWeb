@@ -14,6 +14,9 @@ import type { GapType, Direction } from '../core/rules.js';
 import { COLORS, GEOMETRY, easeOut, FONT_FAMILY } from './theme.js';
 import { DIRECTION_DELTA, VALID_DIRECTIONS_FOR_GAP } from '../core/rules.js';
 import { ARROW_IMAGE_DATA_URI } from './arrowImage.js';
+import { findTargetWindow, detectHoles } from '../solver/gather.js';
+import { stateFromBlocks } from '../solver/model.js';
+import { formatTime } from '../feature/Timer.js';
 
 const CELL = GEOMETRY.base_cell_size;
 const GAP = GEOMETRY.gap_width;
@@ -25,6 +28,15 @@ export interface MoveAnimation {
   end: [number, number][];
   progress: number; // 0..1
   durationMs: number;
+}
+
+/** 復原懸浮窗的競速成績內容（對照原版 _last_timed_result 用到的欄位）。 */
+export interface SolvedPopupResult {
+  time_ms: number;
+  moves: number;
+  tps: number;
+  dnf?: boolean;
+  pb?: { single?: boolean; ao5?: boolean; ao12?: boolean };
 }
 
 function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
@@ -66,6 +78,20 @@ export class BoardRenderer {
   chainHintEnabled = false;
   /** 目前懸停格（棋盤座標；可為空格） */
   hoverCell: [number, number] | null = null;
+  /**
+   * 棋盤標記開關（原版 board_marks_enabled，gui/metrics_panel.py）：
+   * 綠色目標框（聚攏度最高窗口）+ 洞（圓圈）/缺口（三角）/凸起（黃菱形）。
+   * 與 F2 調試面板是兩個獨立開關——這裡只畫標記，不移植面板本體。
+   */
+  boardMarksEnabled = false;
+  /**
+   * 復原成功懸浮窗（原版 draw_solved_popup）。null = 未顯示；
+   * t = 已顯示毫秒（彈入/呼吸/淡出都按它算）。公開欄位便于無頭測試直接置位。
+   */
+  solvedPopup: { t: number; result: SolvedPopupResult | null } | null = null;
+  private solvedPopupRect: { x: number; y: number; w: number; h: number } | null = null;
+  private solvedPopupRaf = 0;
+  private solvedPopupT0 = 0;
   private lastBounds: { min_row: number; max_row: number; min_col: number; max_col: number } | null = null;
 
   // ---- 箭頭按鍵（復刻原版 S1-4：選中縫隙 + 選中組後，切片兩端各一個可點箭頭）----
@@ -345,11 +371,263 @@ export class BoardRenderer {
       }
     }
 
+    // 4.5) 棋盤標記（原版 board_marks_enabled；畫在滑塊之上、箭頭之下）
+    this.drawBoardMarks(store);
+
     // 5) 箭頭按鍵（選中縫隙 + 選中組後，切片兩端各一個可點箭頭；動畫中不畫）
     this.drawGapDirectionArrows(store);
 
     // 6) 點擊漣漪反饋（最上層，蓋住所有內容）
     this.drawClickFeedback();
+
+    // 7) 復原成功懸浮窗（最上層，蓋住一切）
+    this.drawSolvedPopup();
+  }
+
+  // ---------- 棋盤標記（原版 board_marks_enabled）----------
+  /**
+   * 目標框 + 洞/缺口/凸起記號。對照原版 metrics_panel._draw_target_window 與
+   * _draw_debug_holes，兩者共用同一個 _compute_target_region——這裡同樣只用一份
+   * findTargetWindow 的結果餵給 detectHoles，保證框與記號嚴格對齊。
+   *
+   * 記號規則（原版）：
+   *   目標窗口內、被方塊包圍的空位（洞）  = 圓圈
+   *   目標窗口內、連通窗口外緣的空位（缺口）= 三角形
+   *   目標窗口外的方塊（凸起）             = 黃色斜方形
+   *   大（邊界盒長或寬 ≥ step）= 紅，小 = 藍；凸起恆黃。
+   */
+  private drawBoardMarks(store: GameStore): void {
+    if (!this.boardMarksEnabled) return;
+    const blocks = store.game.blocks;
+    if (blocks.length === 0) return;
+    const { ctx } = this;
+    const state = stateFromBlocks(blocks.map((b) => [b.row, b.col] as [number, number]));
+    const win = findTargetWindow(state, store.currentM, store.currentN);
+    if (!win || win.overlap <= 0) return;
+    const rep = detectHoles(state, win, store.currentStep);
+
+    ctx.save();
+    // 目標框（無填充、綠色邊框）
+    const [fx, fy] = this.worldToScreen(win.c0 * this.step, win.r0 * this.step);
+    const fw = win.cw * this.scaledCell + (win.cw - 1) * this.scaledGap;
+    const fh = win.rh * this.scaledCell + (win.rh - 1) * this.scaledGap;
+    ctx.strokeStyle = COLORS.mark_target;
+    ctx.lineWidth = Math.max(2, 2 * this.zoom);
+    ctx.strokeRect(fx, fy, fw, fh);
+
+    const radius = Math.max(3, this.scaledCell * 0.35);
+    ctx.lineWidth = Math.max(2, 2 * this.zoom);
+    const centerOf = (r: number, c: number): [number, number] =>
+      this.worldToScreen(c * this.step + CELL / 2, r * this.step + CELL / 2);
+
+    const drawEmpties = (groups: [number, number][][], kind: 'hole' | 'dent'): void => {
+      for (const cells of groups) {
+        let minR = Infinity;
+        let maxR = -Infinity;
+        let minC = Infinity;
+        let maxC = -Infinity;
+        for (const [r, c] of cells) {
+          if (r < minR) minR = r;
+          if (r > maxR) maxR = r;
+          if (c < minC) minC = c;
+          if (c > maxC) maxC = c;
+        }
+        const large = maxR - minR + 1 >= store.currentStep || maxC - minC + 1 >= store.currentStep;
+        ctx.strokeStyle = large ? COLORS.mark_hole_large : COLORS.mark_hole_small;
+        for (const [r, c] of cells) {
+          const [cx, cy] = centerOf(r, c);
+          ctx.beginPath();
+          if (kind === 'hole') {
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          } else {
+            ctx.moveTo(cx, cy - radius);
+            ctx.lineTo(cx - radius, cy + radius);
+            ctx.lineTo(cx + radius, cy + radius);
+            ctx.closePath();
+          }
+          ctx.stroke();
+        }
+      }
+    };
+    drawEmpties(rep.holes, 'hole');
+    drawEmpties(rep.dents, 'dent');
+
+    // 目標窗口外的方塊（凸起）→ 黃色斜方形
+    ctx.strokeStyle = COLORS.mark_protrusion;
+    for (const [r, c] of rep.protrusions) {
+      const [cx, cy] = centerOf(r, c);
+      const d = radius;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - d);
+      ctx.lineTo(cx + d, cy);
+      ctx.lineTo(cx, cy + d);
+      ctx.lineTo(cx - d, cy);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ---------- 復原成功懸浮窗（原版 draw_solved_popup）----------
+  /** 是否正在顯示（供事件層優先攔截點擊/按鍵）。 */
+  get solvedPopupActive(): boolean {
+    return this.solvedPopup !== null;
+  }
+
+  /**
+   * 彈出復原懸浮窗並啟動自帶的動畫迴圈（對照原版 _solved_popup_active/_t）。
+   * 彈入 ≈200ms（0.70→1 立方回彈）→ 輕微呼吸 → 6 秒自動淡出 ≈250ms。
+   */
+  spawnSolvedPopup(result: SolvedPopupResult | null = null): void {
+    this.solvedPopup = { t: 0, result };
+    this.solvedPopupT0 = performance.now();
+    if (typeof requestAnimationFrame === 'undefined') return; // Node 測試環境：只置位不動畫
+    if (!this.solvedPopupRaf) this.solvedPopupRaf = requestAnimationFrame(this.popupFrame);
+  }
+
+  private popupFrame = (now: number): void => {
+    const pop = this.solvedPopup;
+    if (!pop) {
+      this.solvedPopupRaf = 0;
+      return;
+    }
+    pop.t = now - this.solvedPopupT0;
+    if (pop.t > 6000 + 250) {
+      // 超過 6 秒 + 淡出時長：自動關閉
+      this.solvedPopup = null;
+      this.solvedPopupRect = null;
+      this.solvedPopupRaf = 0;
+      this.repaint?.();
+      return;
+    }
+    this.repaint?.();
+    if (typeof requestAnimationFrame === 'undefined') {
+      this.solvedPopupRaf = 0; // Node 測試環境：不排下一幀
+      return;
+    }
+    this.solvedPopupRaf = requestAnimationFrame(this.popupFrame);
+  };
+
+  /** 點擊命中懸浮窗矩形（供控制器攔截，避免穿透到棋盤）。 */
+  hitSolvedPopup(x: number, y: number): boolean {
+    const r = this.solvedPopupRect;
+    return !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  }
+
+  /** 立即關閉（Esc / 點擊 / Enter 保存後）。 */
+  closeSolvedPopup(): void {
+    if (this.solvedPopupRaf && typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(this.solvedPopupRaf);
+    }
+    this.solvedPopupRaf = 0;
+    this.solvedPopup = null;
+    this.solvedPopupRect = null;
+    this.repaint?.();
+  }
+
+  /**
+   * 繪製復原懸浮窗（對照原版 renderer.draw_solved_popup）：
+   * 居中（扣掉右欄寬度）+ 彈入回彈 + 呼吸光暈 + 6 秒自動淡出；
+   * 競速模式附 用时/步数/TPS 與最佳恭喜。
+   */
+  private drawSolvedPopup(): void {
+    const pop = this.solvedPopup;
+    if (!pop) return;
+    const t = pop.t;
+    const { ctx } = this;
+    const W = ctx.canvas.width;
+    const H = ctx.canvas.height;
+    const result = pop.result;
+    const showResult = !!result && !result.dnf;
+    const baseW = 460;
+    const baseH = showResult ? 300 : 200;
+    const cx = (W - GEOMETRY.right_panel_width) / 2;
+    const cy = H / 2;
+
+    // 彈入：前 200ms 由 0.70 立方回彈到 1；之後 1±0.012 呼吸（原版以幁計，此處折算毫秒）
+    const p = Math.min(1, t / 200);
+    const ease = 1 - (1 - p) ** 3;
+    const scale = p < 1 ? 0.70 + 0.30 * ease : 1 + 0.012 * Math.sin(t / 150);
+    const alpha = 240 * Math.min(1, t / 100);
+    // 6 秒自動淡出（最後 250ms）
+    let fade = 1;
+    if (t > 6000) {
+      fade = Math.max(0, (250 - (t - 6000)) / 250);
+      if (fade <= 0) return;
+    }
+    const a = alpha * fade;
+
+    const w = Math.round(baseW * scale);
+    const h = Math.round(baseH * scale);
+    const x = Math.round(cx - w / 2);
+    const y = Math.round(cy - h / 2);
+    this.solvedPopupRect = { x, y, w, h };
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 外圈呼吸光暈（對話框邊框同色，alpha 0.25±0.10，跟隨懸浮窗整體透明）
+    const glowA = Math.max(0, 0.25 + 0.10 * Math.sin(t / 117)) * a;
+    if (glowA > 0.5) {
+      ctx.save();
+      ctx.globalAlpha = glowA / 255;
+      ctx.strokeStyle = COLORS.popup_glow;
+      ctx.lineWidth = 2;
+      this.roundRect(x - 7, y - 7, w + 14, h + 14, 15);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 面板 + 文字（統一 alpha）
+    ctx.globalAlpha = Math.max(0, a) / 240;
+    ctx.fillStyle = COLORS.dialog_bg;
+    this.roundRect(x, y, w, h, 10);
+    ctx.fill();
+    ctx.strokeStyle = COLORS.dialog_border;
+    ctx.lineWidth = 3;
+    this.roundRect(x, y, w, h, 10);
+    ctx.stroke();
+
+    // 標題 + 分隔線
+    ctx.fillStyle = COLORS.dialog_title;
+    ctx.font = `700 24px ${FONT_FAMILY}`;
+    ctx.fillText('复原成功！', cx, y + h * (showResult ? 0.22 : 0.28));
+    ctx.strokeStyle = COLORS.dialog_border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 20, y + h * (showResult ? 0.30 : 0.40));
+    ctx.lineTo(x + w - 20, y + h * (showResult ? 0.30 : 0.40));
+    ctx.stroke();
+
+    // 正文
+    ctx.fillStyle = COLORS.popup_body;
+    ctx.font = `16px ${FONT_FAMILY}`;
+    ctx.fillText('所有滑块已归位', cx, y + h * (showResult ? 0.48 : 0.62));
+
+    // 競速模式：成績 + TPS + 最佳恭喜
+    if (showResult && result) {
+      ctx.fillStyle = COLORS.popup_score;
+      ctx.fillText(
+        `用时 ${formatTime(result.time_ms)} | ${result.moves} 步 | TPS ${result.tps.toFixed(2)}`,
+        cx,
+        y + h * 0.62,
+      );
+      const parts: string[] = [];
+      if (result.pb?.single) parts.push('单次');
+      if (result.pb?.ao5) parts.push('Ao5');
+      if (result.pb?.ao12) parts.push('Ao12');
+      if (parts.length > 0) {
+        ctx.fillStyle = COLORS.popup_pb;
+        ctx.fillText(`恭喜最佳 ${parts.join('/')}！`, cx, y + h * 0.75);
+      }
+    }
+
+    // 操作提示
+    ctx.fillStyle = COLORS.dialog_border;
+    ctx.font = `12px ${FONT_FAMILY}`;
+    ctx.fillText('按 Enter 保存 ｜ 按 Esc 关闭', cx, y + h * 0.92);
+    ctx.restore();
   }
 
   private drawSolutionGhosts(store: GameStore): void {

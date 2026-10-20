@@ -36,6 +36,16 @@ export const COLORS = {
   separator: rgb(80, 80, 80),
   timer_running: rgb(255, 200, 80),
   macro_base_mark: rgb(255, 200, 50),
+  // 棋盤標記（原版 board_marks_enabled：目標框 + 洞/缺口/凸起記號，metrics_panel.py）
+  mark_target: rgb(80, 220, 100),
+  mark_hole_large: rgb(255, 80, 80),
+  mark_hole_small: rgb(80, 160, 255),
+  mark_protrusion: rgb(255, 210, 60),
+  // 復原成功懸浮窗（原版 draw_solved_popup）
+  popup_glow: rgb(130, 130, 140),
+  popup_body: rgb(215, 215, 220),
+  popup_score: rgb(240, 225, 150),
+  popup_pb: rgb(255, 190, 90),
 } as const;
 
 export const GEOMETRY = {

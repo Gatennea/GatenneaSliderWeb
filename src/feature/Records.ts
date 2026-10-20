@@ -84,6 +84,12 @@ export function tpsOf(item: RecordItem): number {
   return item.moves / (item.time_ms / 1000);
 }
 
+/** 取一系列 AoN 裡的最優（最小）有效值；沒有有效值回 null。 */
+function bestAvg(values: (number | 'DNF' | null)[]): number | null {
+  const nums = values.filter((v): v is number => typeof v === 'number');
+  return nums.length > 0 ? Math.min(...nums) : null;
+}
+
 /**
  * 把一組方塊座標畫成等寬文字地圖（開局局面用）。
  * 正常化到左上角為原點，每格兩個字寬（██ / ··），讓 HTML 裡對齊得像棋盤。
@@ -162,10 +168,43 @@ export class Records {
     return item;
   }
 
+  /**
+   * 競速成績錄入 + PB 判定（對照原版 _last_timed_result 的 pb_single/pb_ao5/pb_ao12）。
+   * 先算「加入前」的最優基線，加入後再比對：
+   *   single：本條破歷史最快；ao5/ao12：以本條為結尾的平均創歷史新低。
+   */
+  addTimed(
+    m: number,
+    n: number,
+    step: number,
+    timeMs: number,
+    moves: number,
+    dnf: boolean,
+    numbered = false,
+    initial?: [number, number][],
+  ): { item: RecordItem; pb: { single: boolean; ao5: boolean; ao12: boolean } } {
+    const key = numbered ? `${puzzleKey(m, n, step)}#num` : puzzleKey(m, n, step);
+    const before = this.data[key] ?? [];
+    const bestSingleBefore = stats(before).best;
+    const bestAo5Before = bestAvg(series(before).map((r) => r.ao5));
+    const bestAo12Before = bestAvg(series(before).map((r) => r.ao12));
+    const item = this.add(m, n, step, timeMs, moves, dnf, numbered, initial);
+    const rows = series(this.get(key));
+    const last = rows[rows.length - 1];
+    const ok = !item.dnf;
+    return {
+      item,
+      pb: {
+        single: ok && (bestSingleBefore === null || item.time_ms < bestSingleBefore),
+        ao5: ok && typeof last.ao5 === 'number' && (bestAo5Before === null || last.ao5 < bestAo5Before),
+        ao12: ok && typeof last.ao12 === 'number' && (bestAo12Before === null || last.ao12 < bestAo12Before),
+      },
+    };
+  }
+
   get(key: string): RecordItem[] {
     return this.data[key] ?? [];
   }
-
   delete(key: string, id: string): boolean {
     const list = this.data[key];
     if (!list) return false;

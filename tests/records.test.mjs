@@ -122,4 +122,57 @@ export const cases = [
       if ('initial' in plain) throw new Error('沒給 initial 時不應出現這個欄位');
     },
   },
+  // ---- 復原彈窗的 PB 判定（addTimed） ----
+  {
+    name: 'addTimed：首解只破單次；第 5 條起 Ao5 首次可算即算最佳',
+    run() {
+      globalThis.localStorage._d = {};
+      const r = new Records();
+      const first = r.addTimed(4, 4, 2, 9000, 9, false);
+      if (first.item.time_ms !== 9000) throw new Error('應正常入庫');
+      if (!first.pb.single) throw new Error('首解應破單次');
+      if (first.pb.ao5 || first.pb.ao12) throw new Error('首解不足 5/12 次，不應破 Ao5/Ao12');
+      for (let i = 0; i < 3; i++) r.addTimed(4, 4, 2, 9500, 9, false); // 第 2~4 條
+      const fifth = r.addTimed(4, 4, 2, 9500, 9, false); // 第 5 條：Ao5 首次可算
+      if (fifth.pb.single) throw new Error('9500 未破 9000，不應報單次');
+      if (!fifth.pb.ao5) throw new Error('第 5 條 Ao5 首次可算，應算最佳（原版同語義）');
+      if (fifth.pb.ao12) throw new Error('不足 12 次不應破 Ao12');
+    },
+  },
+  {
+    name: 'addTimed：更慢的成績與 DNF 都不算 PB',
+    run() {
+      globalThis.localStorage._d = {};
+      const r = new Records();
+      r.addTimed(4, 4, 2, 9000, 9, false);
+      const slow = r.addTimed(4, 4, 2, 12000, 10, false);
+      if (slow.pb.single || slow.pb.ao5) throw new Error('更慢不應算 PB');
+      const dnf = r.addTimed(4, 4, 2, 1000, 8, true);
+      if (dnf.pb.single || dnf.pb.ao5 || dnf.pb.ao12) throw new Error('DNF 不應算 PB');
+      if (!dnf.item.dnf) throw new Error('DNF 標記應入庫');
+    },
+  },
+  {
+    name: 'addTimed：Ao5 創新低（單次未破）；第 13 條 Ao12 創新低',
+    run() {
+      globalThis.localStorage._d = {};
+      const r = new Records();
+      // 前 5 條最舊的是最大值 9000 → 第 5 行 Ao5 = 7000；加入 5500 後窗口均値 6166.67
+      for (const ms of [9000, 5000, 6000, 7000, 8000]) r.addTimed(4, 4, 2, ms, 10, false);
+      const a = r.addTimed(4, 4, 2, 5500, 10, false);
+      if (!a.pb.ao5) throw new Error('Ao5 應創新低');
+      if (a.pb.single) throw new Error('5500 未破 5000 的單次，不應報 PB');
+      if (a.pb.ao12) throw new Error('不足 12 次不應破 Ao12');
+
+      // Ao12：前 12 條（最舊 20000 是最大值）第 12 行 Ao12 = 8100；第 13 條 5000 → 7700
+      globalThis.localStorage._d = {};
+      const r2 = new Records();
+      const first12 = [20000, 1000, ...new Array(9).fill(8000), 9000];
+      if (first12.length !== 12) throw new Error('夾具應為 12 條');
+      for (const ms of first12) r2.addTimed(4, 4, 2, ms, 10, false);
+      const b = r2.addTimed(4, 4, 2, 5000, 10, false);
+      if (!b.pb.ao12) throw new Error('Ao12 應創新低');
+      if (b.pb.single) throw new Error('5000 未破 1000，不應報單次 PB');
+    },
+  },
 ];
