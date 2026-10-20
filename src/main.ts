@@ -1395,18 +1395,29 @@ function handleCustomPuzzle(): void {
   app.appendChild(overlay);
 }
 
-function handlePresetPuzzle(label: string): void {
+/**
+ * 套用一個謎題檔位。改成直接傳 (m, n, step)，不再從選單標籤字串反解
+ * ——對照原版後標籤改成了「4×4 等级2」這種人話，反解既脆也沒必要。
+ */
+function handlePresetPuzzle(m: number, n: number, step: number, numbered = store.numbered): void {
   if (gameMode === 'timed' && timer.state === 'running') { showToast('計時中無法切換謎題'); return; }
-  const m = Number(label.split('*')[0].split('~')[1]);
-  const n = Number(label.split('*')[1]);
-  const step = Number(label.split('~')[0]);
-  store.newPuzzle(m, n, step);
+  store.newPuzzle(m, n, step, numbered);
   renderer.animation = null;
   centerCamera();
   autosave(store);
   timer.cancel();
   schedulePaint();
-  showToast(`切換謎題 ${step}~${m}*${n}`);
+  showToast(`切換謎題 ${step}~${m}×${n}${numbered ? '（數字形態）' : ''}`);
+}
+
+/** 目前玩的檔位是不是這一個（選單上畫 ✓）。 */
+function isCurrentPreset(p?: [number, number, number]): boolean {
+  return !!p && p[0] === store.currentM && p[1] === store.currentN && p[2] === store.currentStep;
+}
+
+/** 底部狀態行與命令面板用的檔位名（「4×4 等级2」）。 */
+function currentPuzzleLabel(): string {
+  return `${store.currentM}×${store.currentN} 等级${store.currentStep}`;
 }
 
 function setGameMode(mode: 'practice' | 'timed' | 'creative'): void {
@@ -1423,11 +1434,27 @@ function setGameMode(mode: 'practice' | 'timed' | 'creative'): void {
 
 // ---------- 下拉選單 ----------
 /**
- * 選單項：字串 = 體驗版可用；物件 pro:true = 完整版專屬（灰色 + 角標）；
- * 物件帶 href = 開外部網頁。'---' 是分隔線。
+ * 選單項（對照原版 GUI.puzzle_presets 的幾種特殊條目）：
+ *  - '---'      分隔線
+ *  - 字串       體驗版可用的一般命令
+ *  - pro:true   完整版專屬（灰色 + 角標）；href = 開外部網頁
+ *  - group      分組標題：不可點、不隨懸停高亮（原版 `__group__`，menu_selected 色）
+ *  - current    底部「当前：4×4 等级2」狀態行（原版 `__current__`）
+ *  - preset     謎題檔位 [m, n, step]，與目前檔位相符時畫 ✓（原版 menu_selected + '✓'）
+ *  - sub        二級子菜單 key：畫成「名字 ▸」，懸停/點擊展開（原版 `__sub__`）
  */
-type MenuEntry = '---' | string | { text: string; pro?: boolean; href?: string };
-interface MenuDef { label: string; items: MenuEntry[]; handler?: (item: string) => void }
+interface MenuItemDef {
+  text?: string;
+  pro?: boolean;
+  href?: string;
+  group?: string;
+  current?: boolean;
+  preset?: [number, number, number];
+  numbered?: boolean;
+  sub?: string;
+}
+type MenuEntry = '---' | string | MenuItemDef;
+interface MenuDef { label: string; items: MenuEntry[]; handler?: (item: string, entry?: MenuItemDef) => void }
 
 /** 標成完整版專屬：體驗版保留選單位階，但明確告知做不到，引導去下載。 */
 const pro = (text: string): MenuEntry => ({ text, pro: true });
@@ -1539,7 +1566,27 @@ const menus: MenuDef[] = [
   // 求解器（提示一步 / 自動求解）2026-10-20 起重新標成完整版專屬：網頁版只有聚攏一條
   // 路線、沒有宏接口，動作序列經常亂選（詳見 src/solver/index.ts 頂部關鍵判斷）。
   // 入口暫時置灰；handler 裡的分支保留不刪，日後移植補缺宏時把 pro() 摘掉即恢復。
-  { label: '谜题', items: ['2~4*4','2~5*5','2~6*6','2~7*7','2~8*8','2~9*9','2~10*10','---','3~6*6','3~7*7','3~8*8','3~9*9','3~10*10','---','自定义...','模式:练习','模式:竞速','模式:创造','---', NUMBERED_ITEM_OFF, pro('三角形態...'), pro('米字形態...'),'---', pro('提示一步'), pro('自动求解')], handler: (item) => {
+  // 二級子菜單（對照原版 puzzle_sub_presets）：矩形按等級分組，異形按形態分組。
+  // 網頁版只有矩形與數字形態可玩，三角／米字仍留完整版，故標成 pro 但保留位階。
+  { label: '谜题', items: [
+      { text: '快速开始：6×6 等级2', preset: [6, 6, 2] },
+      { text: '矩形谜题', sub: 'rect' },
+      { text: '异形谜题', sub: 'exotic' },
+      '---',
+      '自定义...',
+      '---',
+      '模式:练习', '模式:竞速', '模式:创造',
+      '---',
+      NUMBERED_ITEM_OFF,
+      '---',
+      pro('提示一步'), pro('自动求解'),
+      '---',
+      { current: true },
+    ], handler: (item, entry) => {
+      if (entry?.preset) {
+        handlePresetPuzzle(entry.preset[0], entry.preset[1], entry.preset[2], entry.numbered ?? store.numbered);
+        return;
+      }
       if (item === '自定义...') handleCustomPuzzle();
       else if (item === '模式:练习') setGameMode('practice');
       else if (item === '模式:竞速') setGameMode('timed');
@@ -1547,7 +1594,6 @@ const menus: MenuDef[] = [
       else if (item === '提示一步') hintOneStep();
       else if (item === '自动求解') void autoSolve();
       else if (item.startsWith('數字形態')) toggleNumbered();
-      else if (item !== '---') handlePresetPuzzle(item);
     }
   },
   { label: '宏定义', items: [pro('开始录制 Ctrl+M'), pro('停止录制 Ctrl+M'), '---', pro('宏列表...'), pro('播放宏...'), pro('逆序播放...')] },
@@ -1557,6 +1603,10 @@ const menus: MenuDef[] = [
       else if (item.includes('控制模式')) openSettingsModal();
     }
   },
+  // 「搜索」對照原版 menu_items：位於「设置」與「帮助」之間，是「找不到功能時先來這裡」
+  // 的直達入口。原版只有一條「命令面板 Ctrl+K」，網頁版照做：叫出可按關鍵字過濾全部
+  // 選單命令的面板（手機上沒有 Ctrl+K，入口就靠這個選單項）。
+  { label: '搜索', items: ['命令面板 Ctrl+K'], handler: () => openCommandPalette() },
   { label: '帮助', items: ['关于', '新手引导', '---', link('玩法詳解', `${HOME_URL}guide.html`), link('更新日誌', `${HOME_URL}update_info.html`)], handler: (item) => {
       if (item.includes('关于')) showToast('貓九的滑塊遊戲 網頁體驗版 v0.1');
       else if (item.includes('新手引导')) startTutorial();
@@ -1568,7 +1618,45 @@ const menus: MenuDef[] = [
   { label: '官网', items: [link('首頁', HOME_URL), link('下載完整版', FULL_VERSION_URL), '---', link('GitHub 源碼', 'https://github.com/Gatennea/GatenneaSlider')] },
 ];
 
+/**
+ * 謎題的二級子菜單（對照原版 GUI.puzzle_sub_presets）。
+ * 難度定位沿原版註解：矩形等级1 最低、等级2 最經典（教程教學目標）、等级3+ 複雜。
+ * 異形裡只有「數字形態」網頁版做得到（矩形底板＋編號），三角／米字仍是完整版。
+ */
+const PUZZLE_SUB: Record<string, MenuEntry[]> = {
+  rect: [
+    { group: '等级1 · 入门' },
+    { text: '4×4 等级1', preset: [4, 4, 1] },
+    { text: '5×5 等级1', preset: [5, 5, 1] },
+    { text: '6×6 等级1', preset: [6, 6, 1] },
+    { group: '等级2 · 经典 ★ 推荐' },
+    { text: '4×4 等级2', preset: [4, 4, 2] },
+    { text: '5×5 等级2', preset: [5, 5, 2] },
+    { text: '6×6 等级2', preset: [6, 6, 2] },
+    { text: '8×8 等级2', preset: [8, 8, 2] },
+    { text: '10×10 等级2', preset: [10, 10, 2] },
+    { group: '等级3 · 复杂' },
+    { text: '6×6 等级3', preset: [6, 6, 3] },
+    { text: '8×8 等级3', preset: [8, 8, 3] },
+    { text: '10×10 等级3', preset: [10, 10, 3] },
+  ],
+  exotic: [
+    { group: '三角形谜题（完整版）' },
+    pro('边长4 等级1'), pro('边长6 等级2'), pro('边长8 等级2'),
+    { group: '米字格谜题（完整版）' },
+    pro('4×4 等级1'), pro('4×4 等级2'), pro('6×6 等级2'), pro('8×8 等级2'),
+    { group: '数字谜题（矩形＋编号）' },
+    { text: '4×4 等级2', preset: [4, 4, 2], numbered: true },
+    { text: '6×6 等级2', preset: [6, 6, 2], numbered: true },
+    { text: '8×8 等级2', preset: [8, 8, 2], numbered: true },
+  ],
+};
+
 let activeMenu: number | null = null;
+/** 二級子菜單的延遲關閉計時器（滑鼠從子菜單移開後才收，避免掠過就消失）。 */
+let subLeaveTimer = 0;
+/** 目前展開的二級子菜單 key（'' = 沒有），用來讓父列在展開期間保持高亮。 */
+let openSubKey = '';
 
 /** 選單列最右側的「下載完整版」入口；buildMenu 每次重建後會把它重新釘到最右。 */
 let ctaEl: HTMLAnchorElement | null = null;
@@ -1618,9 +1706,179 @@ function toggleNumbered(): void {
   schedulePaint();
 }
 
+/**
+ * 統一刷頂欄高亮：hover 那一項 + 展開中那一項（原版 menu_hovered / show_*_menu 同理），
+ * 其餘一律清掉。分散在各處 set/clear 會留下「展開過但已關閉的項還亮著」的殘影。
+ */
+function paintMenuBarHighlight(hoverIdx: number): void {
+  menuBar.querySelectorAll<HTMLElement>('[data-menu-item]').forEach((el, i) => {
+    el.style.background = i === hoverIdx || i === activeMenu ? COLORS.menu_hover : '';
+  });
+}
+
 function closeAllMenus(): void {
+  closeSubMenus();
   app.querySelectorAll('[data-dropdown]').forEach((el) => el.remove());
   activeMenu = null;
+  paintMenuBarHighlight(-1);
+}
+
+/** 關掉二級子菜單（換列懸停、收起整個選單、滑鼠移開時都會呼叫）。 */
+function closeSubMenus(): void {
+  clearTimeout(subLeaveTimer);
+  app.querySelectorAll('[data-subdropdown]').forEach((el) => el.remove());
+  openSubKey = '';
+}
+
+/** 造一個下拉容器：一級與二級共用同一套外觀（對照原版 draw_puzzle_sub_menu）。 */
+function makeDropdown(sub: boolean): HTMLDivElement {
+  const dd = document.createElement('div');
+  dd.dataset[sub ? 'subdropdown' : 'dropdown'] = '1';
+  dd.style.position = 'absolute';
+  dd.style.background = COLORS.menu_bg;
+  dd.style.border = `1px solid ${COLORS.dialog_border}`;
+  // 下拉掛在 #app 下，#app 沒設 color → 文字會繼承瀏覽器預設黑色；
+  // 顯式鎖成 menu_text（淡灰），與選單列一致，避免「一會黑一會白」。
+  dd.style.color = COLORS.menu_text;
+  dd.style.minWidth = sub ? '150px' : '220px';
+  dd.style.zIndex = '1000';
+  dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+  // 窄屏保護：寬度不超過畫面，高度不超過棋盤區，超出就自己捲
+  dd.style.maxWidth = 'calc(100vw - 8px)';
+  dd.style.maxHeight = `calc(100vh - ${GEOMETRY.menu_bar_height + GEOMETRY.status_bar_height + 8}px)`;
+  dd.style.overflowY = 'auto';
+  return dd;
+}
+
+/**
+ * 把一組選單項畫進下拉容器（一級與二級共用同一套渲染）。
+ * 條目語義見 MenuEntry 的註解：分隔線 / 分組標題 / 當前狀態行 / 一般命令 /
+ * 完整版專屬 / 外鏈 / 謎題檔位（畫 ✓）/ 二級子菜單（畫 ▸）。
+ */
+function renderEntries(dd: HTMLElement, menu: MenuDef, items: MenuEntry[]): void {
+  const isSub = dd.hasAttribute('data-subdropdown');
+  items.forEach((mi) => {
+    if (mi === '---') {
+      const sep = document.createElement('div');
+      sep.style.height = '1px';
+      sep.style.background = COLORS.separator;
+      sep.style.margin = '4px 0';
+      dd.appendChild(sep);
+      return;
+    }
+    const opt = typeof mi === 'string' ? null : mi;
+
+    // 分組標題（原版 __group__）：不可點、不隨懸停高亮
+    if (opt && opt.group !== undefined) {
+      const g = document.createElement('div');
+      g.textContent = opt.group;
+      g.style.padding = '6px 12px';
+      g.style.fontSize = '12px';
+      g.style.color = COLORS.menu_selected;
+      dd.appendChild(g);
+      return;
+    }
+
+    // 底部狀態行（原版 __current__）：告訴玩家現在玩的哪一檔
+    if (opt?.current) {
+      const c = document.createElement('div');
+      c.textContent = `当前：${currentPuzzleLabel()}`;
+      c.style.padding = '6px 12px';
+      c.style.fontSize = '12px';
+      c.style.color = COLORS.menu_text;
+      c.style.textAlign = 'center';
+      dd.appendChild(c);
+      return;
+    }
+
+    const text = typeof mi === 'string' ? mi : (opt?.text ?? '');
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '10px';
+    row.style.padding = '6px 12px';
+    row.style.cursor = 'pointer';
+    row.style.fontSize = '13px';
+    const label = document.createElement('span');
+    label.textContent = text;
+    label.style.flex = '1 1 auto';
+    row.appendChild(label);
+
+    // 當前檔位：menu_selected 色 + 右側 ✓（對照原版 _preset_is_current）
+    if (isCurrentPreset(opt?.preset)) {
+      label.style.color = COLORS.menu_selected;
+      const tick = document.createElement('span');
+      tick.textContent = '✓';
+      tick.style.color = COLORS.menu_selected;
+      row.appendChild(tick);
+    }
+
+    // 懸停時額外要做的事（目前只有「展開二級子菜單」一種）
+    let onEnter: (() => void) | null = null;
+
+    if (opt?.pro) {
+      // 完整版專屬：置灰 + 藍色角標，點下開引導下載的說明框
+      label.style.color = '#989898';
+      const tag = document.createElement('span');
+      tag.textContent = '完整版';
+      tag.style.fontSize = '10px';
+      tag.style.color = '#fff';
+      tag.style.background = BRAND_COLOR;
+      tag.style.borderRadius = '3px';
+      tag.style.padding = '1px 5px';
+      row.appendChild(tag);
+      row.addEventListener('click', () => { closeAllMenus(); showFullVersionDialog(text); });
+    }
+    else if (opt?.href) {
+      const href = opt.href;
+      row.addEventListener('click', () => { closeAllMenus(); window.open(href, '_blank', 'noopener'); });
+    }
+    else if (opt?.sub) {
+      // 二級子菜單：名字 + ▸，懸停或點擊展開（手機沒有 hover，故兩者都接）
+      const subKey = opt.sub;
+      const arrow = document.createElement('span');
+      arrow.textContent = '▸';
+      row.appendChild(arrow);
+      const openSub = (): void => {
+        closeSubMenus();
+        const sub = makeDropdown(true);
+        renderEntries(sub, menu, PUZZLE_SUB[subKey] ?? []);
+        app.appendChild(sub);
+        openSubKey = subKey;
+        // 貼在父下拉右側、與該列對齊；右邊界不夠就翻到左側
+        const rowRect = row.getBoundingClientRect();
+        const appRect = app.getBoundingClientRect();
+        sub.style.top = `${rowRect.top - appRect.top}px`;
+        let left = dd.offsetLeft + dd.offsetWidth;
+        if (left + sub.offsetWidth > window.innerWidth - 4) {
+          left = Math.max(4, dd.offsetLeft - sub.offsetWidth);
+        }
+        sub.style.left = `${left}px`;
+        // 滑鼠移開子菜單後再收（掠過箭頭與面板之間的縫隙不會立刻消失）
+        sub.addEventListener('mouseenter', () => clearTimeout(subLeaveTimer));
+        sub.addEventListener('mouseleave', () => {
+          clearTimeout(subLeaveTimer);
+          subLeaveTimer = window.setTimeout(closeSubMenus, 200);
+        });
+      };
+      onEnter = openSub;
+      row.addEventListener('click', (e) => { e.stopPropagation(); openSub(); });
+    }
+    else {
+      row.addEventListener('click', () => { closeAllMenus(); menu.handler?.(text, opt ?? undefined); });
+    }
+
+    row.addEventListener('mouseenter', () => {
+      if (!isSub) closeSubMenus();
+      row.style.background = COLORS.menu_hover;
+      onEnter?.(); // 子菜單列：先關掉別的再開自己的（順序不能反）
+    });
+    row.addEventListener('mouseleave', () => {
+      // 子菜單展開中，父列保持高亮（原版 sub_open 也一樣高亮）
+      if (!(opt?.sub && openSubKey === opt.sub)) row.style.background = '';
+    });
+    dd.appendChild(row);
+  });
 }
 
 function buildMenu(): void {
@@ -1634,81 +1892,27 @@ function buildMenu(): void {
     item.style.cursor = 'pointer';
     item.style.flex = '0 0 auto';
     item.style.whiteSpace = 'nowrap';
+    // 原版：menu_hovered 或該選單展開中，頂欄那一項都要高亮（menu_hover 底）
+    item.addEventListener('mouseenter', () => paintMenuBarHighlight(idx));
+    item.addEventListener('mouseleave', () => paintMenuBarHighlight(-1));
     item.addEventListener('click', (e) => {
       e.stopPropagation();
       if (activeMenu === idx) { closeAllMenus(); return; }
       closeAllMenus();
-      const dd = document.createElement('div');
-      dd.dataset['dropdown'] = '1';
-      dd.style.position = 'absolute';
+      const dd = makeDropdown(false);
       dd.style.top = `${GEOMETRY.menu_bar_height}px`;
-      dd.style.background = COLORS.menu_bg;
-      dd.style.border = `1px solid ${COLORS.dialog_border}`;
-      // 下拉選單掛在 #app 下，#app 沒設 color → 文字會繼承瀏覽器預設黑色；
-      // 顯式鎖成 menu_text（淡灰），與選單列一致，避免「一會黑一會白」。
-      dd.style.color = COLORS.menu_text;
-      dd.style.minWidth = '220px';
-      dd.style.zIndex = '1000';
-      dd.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
-      // 窄屏保護：寬度不超過畫面，高度不超過棋盤區，超出就自己捲
-      dd.style.maxWidth = 'calc(100vw - 8px)';
-      dd.style.maxHeight = `calc(100vh - ${GEOMETRY.menu_bar_height + GEOMETRY.status_bar_height + 8}px)`;
-      dd.style.overflowY = 'auto';
-      menu.items.forEach((mi) => {
-        if (mi === '---') {
-          const sep = document.createElement('div');
-          sep.style.height = '1px';
-          sep.style.background = COLORS.separator;
-          sep.style.margin = '4px 0';
-          dd.appendChild(sep);
-          return;
-        }
-        const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.alignItems = 'center';
-        row.style.gap = '10px';
-        row.style.padding = '6px 12px';
-        row.style.cursor = 'pointer';
-        row.style.fontSize = '13px';
-        const text = typeof mi === 'string' ? mi : mi.text;
-        const opt = typeof mi === 'string' ? null : mi;
-        const label = document.createElement('span');
-        label.textContent = text;
-        label.style.flex = '1 1 auto';
-        row.appendChild(label);
-        if (opt?.pro) {
-          // 完整版專屬：置灰 + 藍色角標，點下開引導下載的說明框
-          label.style.color = '#989898';
-          const tag = document.createElement('span');
-          tag.textContent = '完整版';
-          tag.style.fontSize = '10px';
-          tag.style.color = '#fff';
-          tag.style.background = BRAND_COLOR;
-          tag.style.borderRadius = '3px';
-          tag.style.padding = '1px 5px';
-          row.appendChild(tag);
-          row.addEventListener('click', () => { closeAllMenus(); showFullVersionDialog(text); });
-        }
-        else if (opt?.href) {
-          const href = opt.href;
-          row.addEventListener('click', () => { closeAllMenus(); window.open(href, '_blank', 'noopener'); });
-        }
-        else {
-          row.addEventListener('click', () => { closeAllMenus(); menu.handler?.(text); });
-        }
-        row.addEventListener('mouseenter', () => { row.style.background = COLORS.menu_hover; });
-        row.addEventListener('mouseleave', () => { row.style.background = ''; });
-        dd.appendChild(row);
-      });
+      renderEntries(dd, menu, menu.items);
       app.appendChild(dd);
       // 對齊被點的選單項目，再夾住右邊界：否則窄屏點最右幾個選單，下拉會開在畫面外
       const anchorLeft = item.getBoundingClientRect().left - app.getBoundingClientRect().left;
       const maxLeft = Math.max(4, window.innerWidth - dd.offsetWidth - 4);
       dd.style.left = `${Math.min(anchorLeft, maxLeft)}px`;
       activeMenu = idx;
+      paintMenuBarHighlight(idx);
     });
     menuBar.appendChild(item);
   });
+  paintMenuBarHighlight(-1);
   // 關鍵：重建選單項後要把「下載完整版」入口重新釘在最右側。
   // 選單項是用 appendChild 重新加回的，會被移到 cta 之後，
   // 若不再把它挪到最後，cta 的 margin-left:auto 就會把整列選單推到右對齊。
@@ -1722,18 +1926,153 @@ function buildMenu(): void {
  */
 function applyChromeDensity(): void {
   const narrow = window.innerWidth < 520;
-  const fontSize = narrow ? '12px' : '13px';
+  // 對照原版字號：menu_font = SimHei 16、status_font = SimHei 14；窄屏再各降一檔。
+  const menuFont = narrow ? '13px' : '16px';
+  const statusFont = narrow ? '12px' : '14px';
   const menuPad = narrow ? '0 6px' : '0 14px';
   menuBar.querySelectorAll<HTMLElement>('[data-menu-item]').forEach((el) => {
-    el.style.fontSize = fontSize;
+    el.style.fontSize = menuFont;
     el.style.padding = menuPad;
   });
-  status.style.fontSize = fontSize;
+  status.style.fontSize = statusFont;
   status.style.gap = narrow ? '10px' : '24px';
   status.style.overflowX = 'auto';
 }
 
+// ---------- 命令面板（「搜索」選單；對照原版 命令面板 Ctrl+K）----------
+/** 面板裡的一條命令：文字 + 所屬選單（執行時交回該選單的 handler）。 */
+interface PaletteCmd { text: string; menu: MenuDef; entry?: MenuItemDef }
 
+/**
+ * 攤平一組選單項成命令清單。跳過：分隔線、分組標題、當前狀態行、完整版專屬、
+ * 外鏈、以及子菜單本身（它的子項另外收）。
+ */
+function collectPaletteCommands(menu: MenuDef, items: MenuEntry[], out: PaletteCmd[]): void {
+  for (const mi of items) {
+    if (mi === '---') continue;
+    const opt = typeof mi === 'string' ? null : mi;
+    if (opt && (opt.group !== undefined || opt.current || opt.pro || opt.href || opt.sub)) continue;
+    const text = typeof mi === 'string' ? mi : (opt?.text ?? '');
+    if (!text) continue;
+    out.push({ text, menu, entry: opt ?? undefined });
+  }
+}
+
+/**
+ * 叫出命令面板：輸入關鍵字過濾所有選單命令，回车直達。
+ * 清單完全由 menus / PUZZLE_SUB 生成——日後加選單項不必再維護第二份清單。
+ * 手機沒有 Ctrl+K，靠「搜索」選單項進來，所以是那邊唯一的入口。
+ */
+function openCommandPalette(): void {
+  const cmds: PaletteCmd[] = [];
+  for (const menu of menus) {
+    collectPaletteCommands(menu, menu.items, cmds);
+    // 帶二級子菜單的選單（谜题）：子項也算命令，執行時交回同一個 handler
+    if (menu.items.some((mi) => typeof mi !== 'string' && mi.sub)) {
+      for (const items of Object.values(PUZZLE_SUB)) collectPaletteCommands(menu, items, cmds);
+    }
+  }
+
+  const overlay = document.createElement('div');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = 'rgba(0,0,0,0.55)';
+  overlay.style.zIndex = '2000';
+  overlay.style.display = 'flex';
+  overlay.style.justifyContent = 'center';
+  overlay.style.alignItems = 'flex-start';
+  overlay.style.paddingTop = '12vh';
+  overlay.addEventListener('click', () => overlay.remove());
+
+  const box = document.createElement('div');
+  box.style.background = COLORS.dialog_bg;
+  box.style.border = `1px solid ${COLORS.dialog_border}`;
+  box.style.borderRadius = '8px';
+  box.style.width = 'min(420px, 92vw)';
+  box.style.maxHeight = '70vh';
+  box.style.display = 'flex';
+  box.style.flexDirection = 'column';
+  box.style.overflow = 'hidden';
+  box.style.color = COLORS.dialog_text;
+  box.style.fontSize = '13px';
+  box.addEventListener('click', (e) => e.stopPropagation());
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '輸入指令關鍵字（例：打乱、教程、存档、6×6）';
+  input.style.background = COLORS.input_bg;
+  input.style.border = 'none';
+  input.style.borderBottom = `1px solid ${COLORS.dialog_border}`;
+  input.style.color = COLORS.input_text;
+  input.style.padding = '12px';
+  input.style.fontSize = '14px';
+  input.style.outline = 'none';
+  box.appendChild(input);
+
+  const list = document.createElement('div');
+  list.style.overflowY = 'auto';
+  list.style.flex = '1 1 auto';
+  box.appendChild(list);
+
+  let shown: PaletteCmd[] = [];
+  let sel = 0;
+
+  const run = (c: PaletteCmd): void => { overlay.remove(); c.menu.handler?.(c.text, c.entry); };
+
+  const paint = (): void => {
+    list.textContent = '';
+    if (shown.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = '沒有符合的指令';
+      empty.style.padding = '12px';
+      empty.style.color = COLORS.menu_text;
+      list.appendChild(empty);
+      return;
+    }
+    shown.forEach((c, i) => {
+      const row = document.createElement('div');
+      row.style.padding = '8px 12px';
+      row.style.cursor = 'pointer';
+      row.style.display = 'flex';
+      row.style.justifyContent = 'space-between';
+      row.style.gap = '10px';
+      if (i === sel) row.style.background = COLORS.menu_hover;
+      const t = document.createElement('span');
+      t.textContent = c.text;
+      const from = document.createElement('span');
+      from.textContent = c.menu.label;
+      from.style.color = COLORS.menu_text;
+      from.style.fontSize = '11px';
+      row.appendChild(t);
+      row.appendChild(from);
+      row.addEventListener('mouseenter', () => { sel = i; paint(); });
+      row.addEventListener('click', () => run(c));
+      list.appendChild(row);
+    });
+  };
+
+  const filter = (): void => {
+    const q = input.value.trim().toLowerCase();
+    shown = q
+      ? cmds.filter((c) => c.text.toLowerCase().includes(q) || c.menu.label.includes(q))
+      : cmds.slice();
+    sel = 0;
+    paint();
+  };
+
+  input.addEventListener('input', filter);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); paint(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); paint(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (shown[sel]) run(shown[sel]); }
+    else if (e.key === 'Escape') { e.preventDefault(); overlay.remove(); }
+  });
+
+  overlay.appendChild(box);
+  app.appendChild(overlay);
+  filter();
+  input.focus();
+}
 
 // ---------- 控制模式設定 ----------
 function openSettingsModal(): void {
@@ -2000,6 +2339,8 @@ window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
   const ctrl = e.ctrlKey || e.metaKey;
   if (e.key === 'Escape') { closeAllMenus(); return; }
+  // 命令面板（原版「搜索」選單的 命令面板 Ctrl+K）：任何時候都能叫出來找功能
+  if (ctrl && key === 'k') { e.preventDefault(); openCommandPalette(); return; }
   if (ctrl && key === 'z') { e.preventDefault(); if (e.shiftKey) handleRedo(); else handleUndo(); return; }
   if (ctrl && key === 'y') { e.preventDefault(); handleRedo(); return; }
   if (ctrl && key === 'x') { e.preventDefault(); handleRedo(); return; }
@@ -2021,7 +2362,8 @@ window.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  if (!(e.target as HTMLElement).closest('#menuBar, [data-dropdown]')) closeAllMenus();
+  // 二級子菜單也掛 data-subdropdown：點到別處要跟著一起收
+  if (!(e.target as HTMLElement).closest('#menuBar, [data-dropdown], [data-subdropdown]')) closeAllMenus();
 });
 
 // ---------- 初始化 ----------
