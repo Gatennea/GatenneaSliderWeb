@@ -316,6 +316,31 @@ export const cases = [
     },
   },
   {
+    name: '虛擬鼠標：進入拖拽跟隨後 hover 凍結（不再跟手更新，避免高亮亂跳）',
+    run() {
+      rafQueue.length = 0;
+      const { controller, store, renderer } = makeController();
+      renderer.showVirtualMouse = true;
+      renderer.chainHintEnabled = true;
+      const setup = findMovableSetup(store);
+      ok(setup, '打亂後應至少存在一步可走');
+      const [vx, vy] = DRAG_VEC[setup.dir];
+      const [px, py] = blockCenter(renderer, setup.row, setup.col);
+      controller.onPointerDown(px, py);
+      controller.onPointerMove(px + vx * PITCH * 0.3, py + vy * PITCH * 0.3); // 小移動：設 hover，未進 follow
+      ok(renderer.hoverCell, '進 follow 前應有 hover（虛擬鼠標驅動連鎖）');
+      controller.onPointerMove(px + vx * PITCH, py + vy * PITCH); // 超閾值：進入 follow
+      ok(renderer.dragFollow, '應進入跟隨');
+      const hoverAtEnter = JSON.stringify(renderer.hoverCell);
+      // follow 期間繼續移動：hoverCell 不應改變（凍結在原位）
+      controller.onPointerMove(px + vx * PITCH * 3, py + vy * PITCH * 3);
+      if (JSON.stringify(renderer.hoverCell) !== hoverAtEnter) {
+        throw new Error(`進入 follow 後 hover 應凍結，實從 ${hoverAtEnter} 變成 ${JSON.stringify(renderer.hoverCell)}`);
+      }
+      controller.cancelFollow();
+    },
+  },
+  {
     name: '堵死方向：整組走不動時拖了也不動，明說「推不動」',
     run() {
       rafQueue.length = 0;

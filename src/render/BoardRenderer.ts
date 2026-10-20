@@ -80,6 +80,15 @@ export class BoardRenderer {
   /** 目前懸停格（棋盤座標；可為空格） */
   hoverCell: [number, number] | null = null;
   /**
+   * 虛擬鼠標（手機端）：把觸屏手指位置當作 hover 源，讓連鎖等依賴鼠標位置的
+   * 功能在觸屏上也能觸發；同時在屏幕上畫一個跟隨手指的圓點。電腦端（hover 設備）
+   * 不啟用——走原版 mouse 邏輯。由 main 按 `matchMedia('(hover: none)')` 判定後
+   * 默認開，且設置裡有「虛擬鼠標」開關可關。
+   */
+  showVirtualMouse = false;
+  /** 虛擬鼠標圓點的屏幕座標（canvas 內）；null = 當前無觸屏指針。 */
+  virtualPointer: { x: number; y: number } | null = null;
+  /**
    * 棋盤標記開關（原版 board_marks_enabled，gui/metrics_panel.py）：
    * 綠色目標框（聚攏度最高窗口）+ 洞（圓圈）/缺口（三角）/凸起（黃菱形）。
    * 與 F2 調試面板是兩個獨立開關——這裡只畫標記，不移植面板本體。
@@ -408,6 +417,34 @@ export class BoardRenderer {
 
     // 7) 復原成功懸浮窗（最上層，蓋住一切）
     this.drawSolvedPopup();
+
+    // 8) 虛擬鼠標圓點（觸屏專屬；最上層）
+    this.drawVirtualMouse();
+  }
+
+  /** 虛擬鼠標：跟隨手指的圓點（觸屏專屬，見 showVirtualMouse 欄位註釋）。 */
+  private drawVirtualMouse(): void {
+    const p = this.virtualPointer;
+    if (!this.showVirtualMouse || !p) return;
+    const { ctx } = this;
+    ctx.save();
+    // 外圈：半透明接觸圈，能透出手指輪廓
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.stroke();
+    // 內點：精確指針位置（黑點 + 細白邊，任何背景都看得清）
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.stroke();
+    ctx.restore();
   }
 
   // ---------- 棋盤標記（原版 board_marks_enabled）----------

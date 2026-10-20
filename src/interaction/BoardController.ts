@@ -235,6 +235,8 @@ export class BoardController {
         // 顯示，且這期間不會再收到 touchmove 更新（缺陷 18）
         this.drag.active = false;
         this.clearFollow();
+        // 雙指不是虛擬鼠標：清掉圓點與 hover（避免殘留在縮放中）
+        this.ui.renderer.virtualPointer = null;
         const rect = c.getBoundingClientRect?.() ?? { left: 0, top: 0 };
         this.pinchDist = dist(e.touches[0], e.touches[1]);
         // 錨點 = 起始時兩指中點（canvas 座標）。整段 pinch 保持不動，
@@ -249,7 +251,14 @@ export class BoardController {
       }
       const t = e.touches[0];
       const rect = c.getBoundingClientRect();
-      this.onPointerDown(t.clientX - rect.left, t.clientY - rect.top, 0, true);
+      const px = t.clientX - rect.left;
+      const py = t.clientY - rect.top;
+      // 虛擬鼠標：單指按下即把指針放到按下點（圓點跟手 + 喂 hover 給連鎖），
+      // 見 onPointerMove 與 touchend 的對應清理
+      const r0 = this.ui.renderer;
+      r0.virtualPointer = { x: px, y: py };
+      if (r0.showVirtualMouse) this.updateHover(px, py);
+      this.onPointerDown(px, py, 0, true);
     }, { passive: false });
     c.addEventListener('touchmove', (e) => {
       e.preventDefault();
@@ -290,9 +299,15 @@ export class BoardController {
           this.pinchMid = null;
           this.drag.active = false;
           this.clearFollow();
+          // 抬到單指：虛擬鼠標指針已不在，清掉圓點（等下次 touchstart 再放）
+          this.ui.renderer.virtualPointer = null;
         }
         return;
       }
+      // 單指鬆開：虛擬鼠標指針消失，hover 也隨觸屏結束而清除（觸屏沒有真 hover）
+      this.ui.renderer.virtualPointer = null;
+      this.ui.renderer.hoverCell = null;
+      this.ui.requestPaint?.();
       this.onPointerUp();
     }, { passive: false });
 
@@ -347,6 +362,8 @@ export class BoardController {
 
   private onPointerMove(x: number, y: number): void {
     if (!this.drag.active) return;
+    // 虛擬鼠標圓點跟手（始終更新；與是否拖動無關）
+    this.ui.renderer.virtualPointer = { x, y };
     const dx = x - this.drag.startX;
     const dy = y - this.drag.startY;
     // 判定「這是拖不是點」的位移量：手指抖動比滑鼠大，門檻也跟著放寬
@@ -354,6 +371,12 @@ export class BoardController {
     if (Math.abs(dx) + Math.abs(dy) > slop) this.drag.moved = true;
     this.drag.ax = dx;
     this.drag.ay = dy;
+
+    // 虛擬鼠標的 hover 源：尚未進入拖拽跟隨時，把手指位置當作 hover，
+    // 連鎖等依賴鼠標位置的功能在觸屏上自動生效；跟隨/拖動中凍結（不更新
+    // hoverCell），避免高亮跟著手指亂跳。進入跟隨後圓點照常跟手，只是
+    // 不再驅動 hover。
+    if (this.ui.renderer.showVirtualMouse && !this.follow) this.updateHover(x, y);
 
     // 拖拽跟隨中（缺陷 18）：每帧更新偏移。**不受閾值限制**——拖回起點附近時位移
     // 會小於閾值，若受門控偏移會凍結在舊值，鬆手後仍按舊偏移移動（對照原版註解）

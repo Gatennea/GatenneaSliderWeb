@@ -222,4 +222,68 @@ export const cases = [
       }
     },
   },
+  {
+    name: '虛擬鼠標（觸屏）：單指按下即出圓點 + 開啟時把手指當 hover 源（連鎖亮起）',
+    run() {
+      const { controller, renderer, handlers } = makeController();
+      renderer.showVirtualMouse = true;
+      renderer.chainHintEnabled = true;
+      const px = BLOCK_X, py = BLOCK_Y; // 塊 (0,0) 中心
+      fire(handlers, 'touchstart', touchEvt([[px, py]]));
+      if (!renderer.virtualPointer || renderer.virtualPointer.x !== px || renderer.virtualPointer.y !== py) {
+        throw new Error(`虛擬指針應在按下點 (${px},${py})，實為 ${JSON.stringify(renderer.virtualPointer)}`);
+      }
+      const expectCell = renderer.getCellAtPos(px, py);
+      if (JSON.stringify(renderer.hoverCell) !== JSON.stringify(expectCell)) {
+        throw new Error(`連鎖應因虛擬鼠標亮起於 ${JSON.stringify(expectCell)}，實為 ${JSON.stringify(renderer.hoverCell)}`);
+      }
+    },
+  },
+  {
+    name: '虛擬鼠標（觸屏）：touchmove 圓點跟手、未拖動時 hover 實時跟隨',
+    run() {
+      const { controller, renderer, handlers } = makeController();
+      renderer.showVirtualMouse = true;
+      renderer.chainHintEnabled = true;
+      fire(handlers, 'touchstart', touchEvt([[BLOCK_X, BLOCK_Y]]));
+      // 小幅移動（不超拖動門檻，不進入跟隨），圓點應跟到新點
+      const nx = BLOCK_X + 5, ny = BLOCK_Y + 5;
+      fire(handlers, 'touchmove', touchEvt([[nx, ny]]));
+      if (!renderer.virtualPointer || renderer.virtualPointer.x !== nx || renderer.virtualPointer.y !== ny) {
+        throw new Error('圓點應跟手到新座標');
+      }
+      // 仍在同一格內（小移動不跨格），hover 應持續為該格
+      const expectCell = renderer.getCellAtPos(nx, ny);
+      if (JSON.stringify(renderer.hoverCell) !== JSON.stringify(expectCell)) {
+        throw new Error('未拖動時 hover 應實時跟隨手指');
+      }
+    },
+  },
+  {
+    name: '虛擬鼠標（觸屏）：單指鬆開清除圓點與 hover',
+    run() {
+      const { controller, renderer, handlers } = makeController();
+      renderer.showVirtualMouse = true;
+      renderer.chainHintEnabled = true;
+      fire(handlers, 'touchstart', touchEvt([[BLOCK_X, BLOCK_Y]]));
+      if (!renderer.virtualPointer) throw new Error('按下後應有圓點');
+      if (!renderer.hoverCell) throw new Error('按下後應有 hover');
+      fire(handlers, 'touchend', touchEvt([[BLOCK_X, BLOCK_Y]]));
+      if (renderer.virtualPointer !== null) throw new Error('鬆開後圓點應消失');
+      if (renderer.hoverCell !== null) throw new Error('鬆開後 hover 應清除（觸屏無真 hover）');
+    },
+  },
+  {
+    name: '虛擬鼠標關閉時：觸屏不驅動連鎖（圓點資料仍記但繪製不顯示）',
+    run() {
+      const { controller, renderer, handlers } = makeController();
+      renderer.showVirtualMouse = false;
+      renderer.chainHintEnabled = true;
+      fire(handlers, 'touchstart', touchEvt([[BLOCK_X, BLOCK_Y]]));
+      // 關閉時不調 updateHover → hoverCell 不變（保持 null），連鎖不觸發
+      if (renderer.hoverCell !== null) throw new Error('關閉虛擬鼠標時觸屏不應驅動連鎖');
+      // 圓點座標仍被記錄（便宜），但繪製時由 showVirtualMouse 攔掉，不影響行為
+      if (!renderer.virtualPointer) throw new Error('按下點仍記入 virtualPointer（供繪製判斷）');
+    },
+  },
 ];

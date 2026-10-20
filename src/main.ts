@@ -383,11 +383,17 @@ function showToast(text: string): void {
 }
 
 // ---------- 遊戲狀態 ----------
+// 是否觸屏設備（粗指針/無 hover）。用來決定是否默認開啟虛擬鼠標，以及設置裡
+// 「虛擬鼠標」開關是否顯示（電腦端根本不需要，且沒有 touch 事件去驅動它）。
+const isTouchDevice =
+  typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(hover: none)').matches;
 // 初始謎題：6×6 等級2（原 4×4 等級2）
 const store = new GameStore(6, 6, 2);
 const renderer = new BoardRenderer(canvas.getContext('2d')!, 1);
 // 點擊漣漪存活期間需要連續重繪；schedulePaint 是函式聲明（已提升），此處可直接引用
 renderer.repaint = schedulePaint;
+// 觸屏設備默認開虛擬鼠標（電腦端走原版 mouse 邏輯，不啟用）
+if (isTouchDevice) renderer.showVirtualMouse = true;
 
 let gameMode: 'practice' | 'timed' | 'creative' = 'practice';
 const timer = new Timer();
@@ -792,7 +798,7 @@ let twoTouch = true;
 let keyboardMouse = true;
 
 // ---------- 右側面板開關 ----------
-type SwitchState = { key: string; label: string; get: () => boolean; set: (v: boolean) => void; el?: HTMLDivElement };
+type SwitchState = { key: string; label: string; get: () => boolean; set: (v: boolean) => void; el?: HTMLDivElement; touchOnly?: boolean };
 const switchStates: SwitchState[] = [
   { key: 'animation_enabled', label: '滑动动画', get: () => controller.animationEnabled, set: (v) => { controller.animationEnabled = v; } },
   { key: 'selection_animation_enabled', label: '选中动画', get: () => selectionAnimationEnabled, set: (v) => { selectionAnimationEnabled = v; } },
@@ -803,6 +809,9 @@ const switchStates: SwitchState[] = [
   // 與原版 F2 調試面板是兩個獨立開關——面板本體未移植（體驗版不需要），
   // 但標記屬於視覺強化，單獨可用。
   { key: 'board_marks_enabled', label: '标记', get: () => renderer.boardMarksEnabled, set: (v) => { renderer.boardMarksEnabled = v; schedulePaint(); } },
+  // 虛擬鼠標（手機端）：把觸屏手指位置當作 hover 源 + 畫跟隨圓點，讓連鎖等
+  // 依賴鼠標位置的功能在觸屏可用。電腦端（hover 設備）不需要也不顯示。
+  { key: 'show_virtual_mouse', label: '虚拟鼠标', touchOnly: true, get: () => renderer.showVirtualMouse, set: (v) => { renderer.showVirtualMouse = v; if (!v) { renderer.virtualPointer = null; renderer.hoverCell = null; } schedulePaint(); } },
   { key: 'game_mode', label: '模式', get: () => gameMode === 'timed', set: (v) => { if (timer.state === 'running') { showToast('计时中无法切换模式'); return; } gameMode = v ? 'timed' : 'practice'; timer.cancel(); showToast(v ? '计时模式：打乱后需按空格开始' : '练习模式：可自由滑动，不计时'); schedulePaint(); } },
   // 對照原版右欄：滑動動畫/選中動畫/著色/連鎖/標記/模式/成績。
   // 網頁版多一個「箭頭」（復刻原版箭頭按鍵）；「成績」對應成績面板開關。
@@ -839,6 +848,8 @@ switchStates.forEach((s) => {
   s.el = el;
   renderSwitch(s);
   el.addEventListener('click', () => { s.set(!s.get()); renderSwitch(s); });
+  // 觸屏專屬開關（如虛擬鼠標）在電腦端不顯示——電腦沒有 touch 事件去驅動它
+  if (s.touchOnly && !isTouchDevice) return;
   rightPanel.appendChild(el);
 });
 
