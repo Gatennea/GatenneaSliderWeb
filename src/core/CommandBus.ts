@@ -82,6 +82,13 @@ export function move(ctx: CommandContext, direction: Direction): Reply {
     const g = ctx.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s';
     return { ok: false, message: `移動方向非法（${g}）` };
   }
+  // 禁止整體滑動：合法縫隙（is_valid_*_line）兩側必有方塊，選中組不可能等於全體；
+  // 相等只可能是繞過 selectGap 校驗的邊界縫。整盤剛體平移不改變形狀，而判勝只看
+  // 形狀——零進度的無意義操作，命令層直接拒絕。
+  // （引擎層 try_move 對此放行，與原版一致；規則屬於「網站不給這麼玩」，不是遊戲規則。）
+  if (ctx.game.selected.size > 0 && ctx.game.selected.size === ctx.game.blocks.length) {
+    return { ok: false, message: '整盤平移沒有意義：過關只看形狀，不看絕對位置' };
+  }
 
   const finalPositions = ctx.game.try_move(direction, ctx.step);
   if (!finalPositions) {

@@ -4,6 +4,7 @@
  */
 import { BoardRenderer } from '../dist/render/BoardRenderer.js';
 import { GameStore } from '../dist/store/GameStore.js';
+import { directGestureFromDrag } from '../dist/interaction/BoardController.js';
 
 const CELL = 60;
 const GAP = 4;
@@ -106,6 +107,46 @@ export const cases = [
       const vgap = r.getGapAtPos(gapX, 30 + r.cameraY, store);
       if (!vgap || vgap.type !== 'v' || vgap.line !== 0) {
         throw new Error(`camera 偏移後應命中 v 0，實為 ${JSON.stringify(vgap)}`);
+      }
+    },
+  },
+  {
+    name: '手勢 8 區映射在整盤外沿會算出邊界縫（禁止整體滑動：必須靠 selectGap 校驗攔掉）',
+    run() {
+      const store = new GameStore(4, 4, 2);
+      const b = store.game.get_boundaries();
+
+      // ① 起點在最底行、向左上拖（135°→第 3 區→'d'→line=row=max_row）：縫在整盤下外沿
+      const g1 = directGestureFromDrag(b.max_row, 1, -30, -30);
+      if (!g1 || g1.gap.type !== 'h' || g1.gap.line !== b.max_row) {
+        throw new Error(`應算出 h 縫 line=${b.max_row}，實為 ${JSON.stringify(g1?.gap)}`);
+      }
+      if (store.game.is_valid_h_line(g1.gap.line)) {
+        throw new Error('該縫應是邊界縫（不合法）——否則整體滑動攔不住');
+      }
+
+      // ② 起點在最頂行、向右下拖（315°→第 7 區→'u'→line=row-1=min_row-1）：上外沿
+      const g2 = directGestureFromDrag(b.min_row, 1, 30, 30);
+      if (!g2 || g2.gap.type !== 'h' || g2.gap.line !== b.min_row - 1) {
+        throw new Error(`應算出 h 縫 line=${b.min_row - 1}，實為 ${JSON.stringify(g2?.gap)}`);
+      }
+      if (store.game.is_valid_h_line(g2.gap.line)) {
+        throw new Error('該縫應是邊界縫（不合法）');
+      }
+
+      // ③ 起點在最左列、向右上拖（45°→第 1 區→'l'→line=col-1=min_col-1）：左外沿
+      const g3 = directGestureFromDrag(1, b.min_col, 30, -30);
+      if (!g3 || g3.gap.type !== 'v' || g3.gap.line !== b.min_col - 1) {
+        throw new Error(`應算出 v 縫 line=${b.min_col - 1}，實為 ${JSON.stringify(g3?.gap)}`);
+      }
+      if (store.game.is_valid_v_line(g3.gap.line)) {
+        throw new Error('該縫應是邊界縫（不合法）');
+      }
+
+      // ④ 對照：內側方塊同一角度拖拽，得到的是合法縫（校驗不會誤傷正常手勢）
+      const g4 = directGestureFromDrag(1, 1, -30, -30);
+      if (!g4 || !store.game.is_valid_h_line(g4.gap.line)) {
+        throw new Error('內側方塊的縫應合法');
       }
     },
   },

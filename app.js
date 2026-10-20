@@ -5786,7 +5786,11 @@ return { ARROW_IMAGE_DATA_URI };
  * - 點縫隙 → selectGap（再點同縫隙 = 取消）
  * - 點方塊（已選縫隙）→ selectBlock（DFS 選中組）
  * - 鍵盤/方向鍵/拖動 → move（先 try_move 再 commit；非法則閃紅提示）
- * - 空白拖拽 → 平移鏡頭（camera）
+ * - 空白拖拽 → 平移鏡頭（camera）；**按在滑塊上不平移**（對照原版：點滑塊不能拖動地圖）
+ * - **禁止整體滑動**：合法縫隙（is_valid_*_line）兩側必有方塊，選中組不可能是全體；
+ *   手勢 8 區映射遇到整盤外沿會算出邊界縫，必須過 selectGap 校驗。命令層
+ *   （CommandBus.move）與本層（animateMove）雙重攔截「把所有方塊作為一個剛體平移」；
+ *   引擎層 try_move 對此放行，與原版語義一致——這是「網站不給這麼玩」，不是遊戲規則。
  */
 const { selectBlock, selectGap } = require("../core/CommandBus.js");
 const { isValidDirectionForGap } = require("../core/rules.js");
@@ -5807,6 +5811,14 @@ const DIRECTION_KEYS = {
 };
 const GAP_ABBR = ['d', 'l', 'r', 'd', 'u', 'r', 'l', 'u'];
 const DIR_ABBR = ['r', 'u', 'u', 'l', 'l', 'd', 'd', 'r'];
+/** 直接拖拽 8 區對應：0~45° 為第 0 區，每區 45°。
+ * 縫隙順序：d l r d u r l u（d=下沿 h, l=左沿 v, r=右沿 v, u=上沿 h）
+ * 移動順序：r u u l l d d r
+ *
+ * ⚠️ 起點方塊在整盤外沿時，這個映射會算出「邊界縫」（line = max_row / max_col），
+ * 縫隙兩側只有一側有方塊——直接賦值 selectedGap 會讓整盤被一起拖走。呼叫方必須
+ * 把結果交回 selectGap 校驗（is_valid_*_line 會否掉邊界縫）。
+ */
 function directGestureFromDrag(row, col, dx, dy) {
     const angle = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360; // y 向上：0°=右、90°=上
     const sector = Math.floor(angle / 45) % 8;
@@ -6031,7 +6043,15 @@ class BoardController {
                 // 無縫隙時：依拖拽角度直接判定縫隙/方向（8 區）；單次觸控完成後清空選中
                 const gesture = directGestureFromDrag(startBlock.row, startBlock.col, dx, dy);
                 if (gesture) {
-                    store.cmd.selectedGap = gesture.gap;
+                    // 手勢算出的縫隙必須過 selectGap 校驗：起點方塊在整盤外沿時，8 區映射會算出
+                    // 「邊界縫」（所有方塊都在縫的同一側），直接賦值會讓整盤被一起拖走——那是
+                    // 零進度的無意義操作（判勝只看形狀，不看絕對坐標）。原版 is_valid_*_line
+                    // 同樣不把邊界縫算作合法縫，這裡只是把該有的校驗補回手勢路徑。
+                    const gapReply = selectGap(store.cmd, gesture.gap.type, gesture.gap.line);
+                    if (!gapReply.ok) {
+                        this.notify('這個方向沒有可推的縫隙（別拖整盤外沿）');
+                        return;
+                    }
                     const reply = selectBlock(store.cmd, startBlock.row, startBlock.col);
                     if (reply.ok)
                         this.animateMove(gesture.direction, true);
@@ -6109,6 +6129,15 @@ class BoardController {
             return;
         }
         this.clearSelectionAfterMove = clearAfter;
+        // 禁止整體滑動（攔截層）：合法縫隙兩側必有方塊，選中組不可能等於全體；相等只可能是
+        // 繞過校驗的邊界縫。整盤剛體平移不改變形狀，而判勝只看形狀——零進度操作，直接拒絕。
+        // 引擎層（SliderMatrix.try_move）有同樣的護欄，這裡負責給出人話提示。
+        if (store.game.selected.size > 0 && store.game.selected.size === store.game.blocks.length) {
+            this.clearSelectionAfterMove = false;
+            this.flashInvalid();
+            this.notify('整盤平移沒有意義：過關只看形狀，不看絕對位置');
+            return;
+        }
         if (!cmd.selectedGap) {
             this.clearSelectionAfterMove = false;
             this.notify('請先選中縫隙');
@@ -6203,7 +6232,7 @@ class BoardController {
     }
 }
 
-return { BoardController };
+return { directGestureFromDrag, BoardController };
 },
     "m6": function (require) {
 /**
@@ -6261,6 +6290,13 @@ function move(ctx, direction) {
     if (!isValidDirectionForGap(ctx.selectedGap.type, direction)) {
         const g = ctx.selectedGap.type === 'h' ? 'h→a/d' : 'v→w/s';
         return { ok: false, message: `移動方向非法（${g}）` };
+    }
+    // 禁止整體滑動：合法縫隙（is_valid_*_line）兩側必有方塊，選中組不可能等於全體；
+    // 相等只可能是繞過 selectGap 校驗的邊界縫。整盤剛體平移不改變形狀，而判勝只看
+    // 形狀——零進度的無意義操作，命令層直接拒絕。
+    // （引擎層 try_move 對此放行，與原版一致；規則屬於「網站不給這麼玩」，不是遊戲規則。）
+    if (ctx.game.selected.size > 0 && ctx.game.selected.size === ctx.game.blocks.length) {
+        return { ok: false, message: '整盤平移沒有意義：過關只看形狀，不看絕對位置' };
     }
     const finalPositions = ctx.game.try_move(direction, ctx.step);
     if (!finalPositions) {

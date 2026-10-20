@@ -106,4 +106,47 @@ export const cases = [
       if (!good.ok) throw new Error('h 縫隙 + 左右方向應可移動');
     },
   },
+
+  {
+    name: 'selectGap 拒絕邊界縫（整盤外沿）——合法縫兩側必有方塊',
+    run() {
+      const ctx = createContext(new SliderMatrix(4, 4), 2);
+      const b = ctx.game.get_boundaries();
+      // h：合法區間 [min_row, max_row)；上下外沿各越界一個都應被拒
+      if (selectGap(ctx, 'h', b.min_row - 1).ok) throw new Error('h 上外沿縫不應合法');
+      if (selectGap(ctx, 'h', b.max_row).ok) throw new Error('h 下外沿縫不應合法');
+      if (selectGap(ctx, 'v', b.min_col - 1).ok) throw new Error('v 左外沿縫不應合法');
+      if (selectGap(ctx, 'v', b.max_col).ok) throw new Error('v 右外沿縫不應合法');
+      // 區間內部的縫照常合法（迴歸對照：不是把門焊死）
+      if (!selectGap(ctx, 'h', b.min_row).ok) throw new Error('區間內的 h 縫應合法');
+      if (!selectGap(ctx, 'v', b.min_col).ok) throw new Error('區間內的 v 縫應合法');
+    },
+  },
+
+  {
+    name: '禁止整體滑動：繞過校驗的邊界縫一旦選中全體方塊，命令層必須拒絕（引擎層與原版一致放行）',
+    run() {
+      const ctx = createContext(new SliderMatrix(4, 4), 2);
+      const b = ctx.game.get_boundaries();
+      // 先證明 hazard 真實存在：邊界縫下 opt 的連通分量就是全體（縫的同一側）
+      const seed = ctx.game.blocks[0];
+      ctx.selectedGap = { type: 'h', line: b.max_row }; // 繞過 selectGap 直接賦值（複現手勢路徑的漏洞）
+      ctx.selectedBlock = [seed.row, seed.col];
+      ctx.game.opt('h', b.max_row, seed);
+      if (ctx.game.selected.size !== ctx.game.blocks.length) {
+        throw new Error('邊界縫下選中組應為全體（測試前提不成立）');
+      }
+      // 引擎層與原版一致：剛體平移本身是合法移動（放行）——規則屬於「網站不給這麼玩」
+      if (ctx.game.try_move('d', 2) === null) throw new Error('引擎層應放行（與原版語義一致）');
+      // 命令層攔截：CommandBus.move 拒絕，且局面不變
+      const before = JSON.stringify(ctx.game.export_map());
+      const m = move(ctx, 'd');
+      if (m.ok) throw new Error('CommandBus 放行了整盤平移');
+      if (JSON.stringify(ctx.game.export_map()) !== before) throw new Error('拒絕後局面不應變化');
+      // 對照：換成合法縫隙後同方向就能動（攔截沒有誤傷正常操作）
+      selectGap(ctx, 'h', 1);
+      selectBlock(ctx, 0, 0);
+      if (!move(ctx, 'd').ok) throw new Error('合法縫隙應照常可移動');
+    },
+  },
 ];
