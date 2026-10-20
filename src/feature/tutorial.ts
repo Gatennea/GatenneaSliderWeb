@@ -339,7 +339,7 @@ export class TutorialController {
     this.currentSub = subId;
     this.replaying = false;
     this.completed = false;
-    this.challengeStep = false;
+    this.challengeStep = !sub.teaching;
     this.teaching = false;
 
     const pz = archive.puzzle;

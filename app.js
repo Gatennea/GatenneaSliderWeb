@@ -4593,7 +4593,7 @@ class TutorialController {
         this.currentSub = subId;
         this.replaying = false;
         this.completed = false;
-        this.challengeStep = false;
+        this.challengeStep = !sub.teaching;
         this.teaching = false;
         const pz = archive.puzzle;
         const blocks = snapshotBlocks(archive.history.snapshots[0]);
