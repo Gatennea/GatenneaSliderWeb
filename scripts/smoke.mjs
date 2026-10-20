@@ -200,6 +200,17 @@ try {
     fire(input, 'keydown', { key: 'Enter' });
     check(true, '命令面板 ↑↓/Enter 未拋錯');
   }
+
+  // ---- 常駐撤銷/重做條（手機端不必調出虛擬鍵盤也能用） ----
+  const allBtns = findAll((e) => e.tagName === 'BUTTON');
+  const quickUndo = allBtns.find((e) => String(e.textContent).includes('撤销'));
+  const quickRedo = allBtns.find((e) => String(e.textContent).includes('重做'));
+  check(!!quickUndo && !!quickRedo, '常駐條有「撤销」「重做」');
+  check(quickUndo?._h?.click === true || !!quickUndo?._h?.click, '常駐撤销接上了 click');
+  if (quickUndo) {
+    fire(quickUndo, 'click');
+    check(true, '點常駐撤销未拋錯');
+  }
 } catch (e) {
   console.error('✘ 拋錯：', e && e.stack ? e.stack.split('\n').slice(0, 6).join('\n') : e);
   process.exitCode = 1;

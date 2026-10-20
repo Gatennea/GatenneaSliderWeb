@@ -14,6 +14,10 @@ import { Timer, formatTime } from './feature/Timer.js';
 import { Records, stats, series, tpsOf, blocksToMap } from './feature/Records.js';
 import { TutorialController } from './feature/tutorial.js';
 import { CreativeController } from './feature/create.js';
+import {
+  VK, StickyPlayer, resolveJumpTarget, vkDefaultPosition, vkClampPosition, vkPanelSize,
+  vkDirectionRows, type VkViewport, type VkChrome,
+} from './feature/virtualKeyboard.js';
 import type { Block } from './core/Block.js';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -127,6 +131,9 @@ vkPanel.style.zIndex = '500';
 vkPanel.style.display = 'none';
 vkPanel.style.padding = '0';
 vkPanel.style.overflow = 'hidden';
+// 寬度對齊原版 `_vk_panel_size()`（動作列決定：8*2 + 62*2 + 54 + 6*2 = 206）
+vkPanel.style.boxSizing = 'border-box';
+vkPanel.style.width = `${vkPanelSize(vkDirectionRows()).w}px`;
 app.appendChild(vkPanel);
 
 const vkHeader = document.createElement('div');
@@ -143,6 +150,7 @@ vkTitle.style.color = '#fff';
 vkTitle.style.fontSize = '13px';
 const vkClose = document.createElement('span');
 vkClose.textContent = '×';
+vkClose.dataset['panelClose'] = '1'; // 拖動時要排掉它：點 × 不是要拖面板
 vkClose.style.color = '#fff';
 vkClose.style.cursor = 'pointer';
 vkClose.style.padding = '0 4px';
@@ -183,6 +191,7 @@ recordsTitle.style.color = '#fff';
 recordsTitle.style.fontSize = '13px';
 const recordsClose = document.createElement('span');
 recordsClose.textContent = '×';
+recordsClose.dataset['panelClose'] = '1';
 recordsClose.style.color = '#fff';
 recordsClose.style.cursor = 'pointer';
 recordsClose.style.padding = '0 4px';
@@ -195,26 +204,46 @@ recordsBody.style.overflowY = 'auto';
 recordsPanel.appendChild(recordsBody);
 recordsClose.addEventListener('click', () => { recordsPanel.style.display = 'none'; });
 
-function makeDraggable(panel: HTMLElement, header: HTMLElement): void {
+/**
+ * 面板拖動（對照原版 `_vk_clamp_position`）。
+ *
+ * 兩點與舊實作不同：① 用 **pointer** 事件而非 mouse——舊版在觸屏上根本拖不動；
+ * ② 拖到哪都夾在可視範圍內，不壓住選單列與狀態列（原版會 clamp，網頁版舊碼不會）。
+ */
+function makeDraggable(panel: HTMLElement, header: HTMLElement, onMoved?: () => void): void {
   let dragging = false;
   let ox = 0;
   let oy = 0;
-  header.addEventListener('mousedown', (e) => {
-    if ((e.target as HTMLElement) === header.querySelector('span:last-child')) return;
-    dragging = true;
+  header.addEventListener('pointerdown', (e) => {
+    // 點在關閉鈕上不算拖動（原版也是先判 close_rect 才判 title_rect）
+    if ((e.target as HTMLElement).closest('[data-panel-close]')) return;
+    // 先固化 left 再取消 right，否則 offsetLeft 會在切換定位方式時跳位
+    panel.style.left = `${panel.offsetLeft}px`;
+    panel.style.right = 'auto';
     ox = e.clientX - panel.offsetLeft;
     oy = e.clientY - panel.offsetTop;
+    dragging = true;
+    // 觸屏：不 capture 的話手指滑出標題欄就收不到後續事件
+    header.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
-  window.addEventListener('mousemove', (e) => {
+  header.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    panel.style.left = `${e.clientX - ox}px`;
-    panel.style.top = `${e.clientY - oy}px`;
-    panel.style.right = 'auto';
+    const p = vkClampPosition(
+      { x: e.clientX - ox, y: e.clientY - oy },
+      vkViewport(),
+      { w: panel.offsetWidth, h: panel.offsetHeight },
+      vkChrome(),
+    );
+    panel.style.left = `${p.x}px`;
+    panel.style.top = `${p.y}px`;
+    onMoved?.();
   });
-  window.addEventListener('mouseup', () => { dragging = false; });
+  const stop = (): void => { dragging = false; };
+  header.addEventListener('pointerup', stop);
+  header.addEventListener('pointercancel', stop);
 }
-makeDraggable(vkPanel, vkHeader);
+makeDraggable(vkPanel, vkHeader, () => { vkMoved = true; saveUiPrefs(); });
 makeDraggable(recordsPanel, recordsHeader);
 
 
@@ -392,6 +421,23 @@ function updateStatus(): void {
             : '竞速模式 DNF';
   stTimer.textContent = timerText;
   stTimer.style.color = timer.state === 'running' ? COLORS.timer_running : COLORS.status_text;
+  syncQuickBar();
+}
+
+/**
+ * 常駐撤銷/重做的可用性。
+ *
+ * 教程解法回放中也鎖住（原版 `_vk_trigger_action` 開頭就 `_tut_board_locked()`）：
+ * 正在播示範時按撤銷會把回放與歷史攪在一起。
+ */
+function syncQuickBar(): void {
+  const locked = tutorial.isReplaying();
+  const canUndo = store.cmd.history.canUndo && !locked;
+  const canRedo = store.cmd.history.canRedo && !locked;
+  undoQuick.disabled = !canUndo;
+  redoQuick.disabled = !canRedo;
+  undoQuick.style.opacity = canUndo ? '1' : '0.45';
+  redoQuick.style.opacity = canRedo ? '1' : '0.45';
 }
 
 let needsPaint = true;
@@ -571,6 +617,7 @@ function startTutorial(): void {
   else timer.cancel();
   tutorialStep = 0;
   tutorialBar.style.display = 'flex';
+  syncQuickBarBottom(); // 引導條佔住底部，常駐撤銷/重做條抬上去讓位
   renderTutorialBar();
   applyTutorialHighlight();
   centerCamera();
@@ -582,6 +629,7 @@ function endTutorial(): void {
   tutorialStep = -1;
   renderer.highlightCells = null;
   tutorialBar.style.display = 'none';
+  syncQuickBarBottom();
   try {
     localStorage.setItem(TUTORIAL_DONE_KEY, '1');
   } catch {
@@ -863,103 +911,214 @@ syncSpeedSlider();
 requestAnimationFrame(() => { syncZoomSlider(); syncSpeedSlider(); });
 
 // ---------- 虛擬鍵盤浮動面板 ----------
-let stickyOn = false;
+/**
+ * 粘滯連播（原版 `_toggle_continuous`）。開關語義：再按一次同一顆鍵就停。
+ *
+ * 舊實作是 `setInterval` 一路跑到不能再撤銷為止，中途**沒有任何停法**
+ * （連把粘滯關掉也停不下來）。現改成狀態機（feature/virtualKeyboard.ts）。
+ */
+const stickyPlayer = new StickyPlayer(
+  (kind) => { if (kind === 'undo') handleUndo(); else handleRedo(); },
+  (kind) => (kind === 'undo' ? store.cmd.history.canUndo : store.cmd.history.canRedo),
+);
+
+/** 拖過面板就別再用默認位置，免得每次開關都跳回原處 */
+let vkMoved = false;
+/** 面板尺寸隨方向鍵行數定，網頁版恆為矩形形態 */
+const vkViewport = (): VkViewport => ({ width: window.innerWidth, height: window.innerHeight });
+/** 面板不得壓住上一層選單列與下一層狀態列 */
+const vkChrome = (): VkChrome => ({ top: GEOMETRY.menu_bar_height, bottom: GEOMETRY.status_bar_height });
 
 function buildVK(): void {
   vkBody.innerHTML = '';
-  const btn = (t: string, cb: () => void) => {
+  const btn = (t: string, cb: () => void, w?: number, h?: number) => {
     const b = document.createElement('button');
     b.textContent = t;
     b.style.background = COLORS.button_bg;
     b.style.color = '#fff';
     b.style.border = 'none';
     b.style.borderRadius = '4px';
-    b.style.padding = '5px 0';
+    b.style.padding = '0';
     b.style.cursor = 'pointer';
     b.style.fontSize = '13px';
     b.style.fontFamily = 'inherit';
     b.style.fontWeight = 'normal';
+    b.style.flex = '0 0 auto';
+    if (w !== undefined) b.style.width = `${w}px`;
+    if (h !== undefined) b.style.height = `${h}px`;
     b.addEventListener('click', cb);
     return b;
   };
 
-  // 方向鍵區（原版十字排列）
+  // 方向鍵區（原版十字排列：上 / 左下右；44×44、間距 6）
   const pad = document.createElement('div');
   pad.style.display = 'grid';
-  pad.style.gridTemplateColumns = 'repeat(3, 44px)';
-  pad.style.gap = '4px';
+  pad.style.gridTemplateColumns = `repeat(3, ${VK.btn}px)`;
+  pad.style.gap = `${VK.btn_gap}px`;
+  pad.style.justifyContent = 'center';
   const padEmpty = document.createElement('span');
   padEmpty.textContent = '';
   pad.appendChild(padEmpty);
-  pad.appendChild(btn('↑', () => controller.move('w')));
+  pad.appendChild(btn('↑', () => controller.move('w'), VK.btn, VK.btn));
   pad.appendChild(padEmpty.cloneNode(false));
-  pad.appendChild(btn('←', () => controller.move('a')));
-  pad.appendChild(btn('↓', () => controller.move('s')));
-  pad.appendChild(btn('→', () => controller.move('d')));
+  pad.appendChild(btn('←', () => controller.move('a'), VK.btn, VK.btn));
+  pad.appendChild(btn('↓', () => controller.move('s'), VK.btn, VK.btn));
+  pad.appendChild(btn('→', () => controller.move('d'), VK.btn, VK.btn));
 
-  // 動作列（粘滞 / 撤銷 / 重做）
+  // 動作列（粘滞 / 撤銷 / 重做）：尺寸對齊原版 54 / 62 / 62 × 32
   const actionRow = document.createElement('div');
   actionRow.style.display = 'flex';
-  actionRow.style.gap = '4px';
+  actionRow.style.gap = `${VK.btn_gap}px`;
   actionRow.style.marginTop = '6px';
-  const stickyBtn = btn('粘滞:单步', () => {
-    stickyOn = !stickyOn;
-    stickyBtn.textContent = stickyOn ? '粘滞:连续' : '粘滞:单步';
-    showToast(stickyOn ? '粘滞：连续' : '粘滞：单步');
-  });
-  const undoBtn = btn('撤销', () => {
-    if (stickyOn) {
-      const iv = window.setInterval(() => {
-        if (!store.cmd.history.canUndo) { window.clearInterval(iv); return; }
-        handleUndo();
-      }, 200);
-    } else handleUndo();
-  });
-  const redoBtn = btn('重做', () => {
-    if (stickyOn) {
-      const iv = window.setInterval(() => {
-        if (!store.cmd.history.canRedo) { window.clearInterval(iv); return; }
-        handleRedo();
-      }, 200);
-    } else handleRedo();
-  });
+  actionRow.style.justifyContent = 'center';
+  const stickyBtn = btn('粘滞关', () => {
+    const on = stickyPlayer.toggleSticky();
+    syncStickyBtn();
+    showToast(on ? '粘滞：连续' : '粘滞：单步');
+  }, VK.sticky_w, VK.action_btn_h);
+  /** 原版：粘滯開啟時按鈕套一圈黃框（255,205,60），一眼看出「現在是連播」 */
+  function syncStickyBtn(): void {
+    const on = stickyPlayer.sticky;
+    stickyBtn.textContent = on ? '粘滞开' : '粘滞关';
+    stickyBtn.style.border = on ? '2px solid rgb(255,205,60)' : 'none';
+  }
+  syncStickyBtn();
+  const undoBtn = btn('撤销', () => { stickyPlayer.press('undo'); }, VK.action_btn_w, VK.action_btn_h);
+  const redoBtn = btn('重做', () => { stickyPlayer.press('redo'); }, VK.action_btn_w, VK.action_btn_h);
   actionRow.append(stickyBtn, undoBtn, redoBtn);
 
-  // 跳到某步（輸入步數 + 跳到）
+  // 跳到某步（輸入步數 + 跳到）：原版超範圍不是報錯，而是夾到最後一步並說跳到哪
   const jumpRow = document.createElement('div');
   jumpRow.style.display = 'flex';
-  jumpRow.style.gap = '4px';
+  jumpRow.style.gap = `${VK.btn_gap}px`;
   jumpRow.style.marginTop = '6px';
+  jumpRow.style.justifyContent = 'center';
   const jumpInput = document.createElement('input');
   jumpInput.type = 'number';
   jumpInput.min = '0';
   jumpInput.value = String(store.cmd.stepCount);
-  jumpInput.style.width = '52px';
+  jumpInput.style.width = `${VK.jump_input_w}px`;
+  jumpInput.style.height = `${VK.jump_h}px`;
   jumpInput.style.background = COLORS.input_bg;
   jumpInput.style.color = COLORS.input_text;
   jumpInput.style.border = '1px solid ' + COLORS.border;
   jumpInput.style.borderRadius = '4px';
-  jumpInput.style.padding = '4px';
+  jumpInput.style.padding = '0 4px';
+  jumpInput.style.boxSizing = 'border-box';
   const jumpBtn = btn('跳到', () => {
-    const idx = Number(jumpInput.value);
-    if (!Number.isInteger(idx)) { showToast('請輸入步數'); return; }
-    if (store.cmd.history.jumpTo(store.game, idx)) {
-      store.cmd.stepCount = idx;
+    const res = resolveJumpTarget(jumpInput.value, store.cmd.history.length);
+    if (!res.ok) { if (res.message) showToast(res.message); return; }
+    if (store.cmd.history.jumpTo(store.game, res.target)) {
+      store.cmd.stepCount = res.target;
       autosave(store);
       schedulePaint();
-      showToast('已跳到第 ' + idx + ' 步');
+      showToast(res.message);
     } else showToast('步數超出範圍');
-  });
+  }, VK.jump_btn_w, VK.jump_h);
   jumpRow.append(jumpInput, jumpBtn);
 
   vkBody.append(pad, actionRow, jumpRow);
 }
 
-function toggleVK(): void {
-  const vis = vkPanel.style.display === 'none';
-  vkPanel.style.display = vis ? '' : 'none';
-  if (vis) buildVK();
-  showToast(vis ? '已開啟虛擬鍵盤' : '已關閉虛擬鍵盤');
+function toggleVK(force?: boolean): void {
+  const willShow = force ?? vkPanel.style.display === 'none';
+  vkPanel.style.display = willShow ? '' : 'none';
+  if (willShow) {
+    buildVK();
+    if (!vkMoved) {
+      // 原版默認在右上角（screen_width - 200, menu_bar_height + 60）
+      const p = vkDefaultPosition(vkViewport(), vkChrome());
+      vkPanel.style.left = `${p.x}px`;
+      vkPanel.style.top = `${p.y}px`;
+    }
+  } else {
+    stickyPlayer.stop(); // 關面板就別讓連播繼續跑
+  }
+  saveUiPrefs();
+  if (force === undefined) showToast(willShow ? '已开启虚拟键盘' : '已关闭虚拟键盘');
+}
+
+// ---------- 常駐撤銷／重做條（缺陷清單第 13 項） ----------
+/**
+ * 撤銷/重做「必須調出虛擬鍵盤才點得到」是手機端最大的不方便：面板默認收著，
+ * 而這兩個動作又是玩錯一步就想按的。故另做一條常駐的，與虛擬鍵盤互不干涉。
+ *
+ * 放在底部狀態列上方左側——右下角要留給 toast，正上方要留給新手引導條，
+ * 引導條出現時這條會自動上移讓位（見 syncQuickBarBottom）。
+ */
+const quickBar = document.createElement('div');
+quickBar.style.position = 'fixed';
+quickBar.style.left = '12px';
+quickBar.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
+quickBar.style.display = 'flex';
+quickBar.style.gap = '8px';
+quickBar.style.zIndex = '900';
+
+function quickButton(text: string, cb: () => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.textContent = text;
+  b.style.minWidth = '62px';
+  // 38px 高：手機上單手拇指夠得著，又不像 44px 那樣吃掉太多棋盤
+  b.style.height = '38px';
+  b.style.padding = '0 10px';
+  b.style.background = COLORS.button_bg;
+  b.style.color = '#fff';
+  b.style.border = 'none';
+  b.style.borderRadius = '6px';
+  b.style.cursor = 'pointer';
+  b.style.fontSize = '14px';
+  b.style.fontFamily = 'inherit';
+  b.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
+  b.addEventListener('click', cb);
+  return b;
+}
+const undoQuick = quickButton('↶ 撤销', () => handleUndo());
+const redoQuick = quickButton('↷ 重做', () => handleRedo());
+quickBar.append(undoQuick, redoQuick);
+app.appendChild(quickBar);
+
+/** 新手引導條與這條都在底部，引導出現時把這條抬上去，免得疊在一起 */
+function syncQuickBarBottom(): void {
+  const raised = tutorialBar.style.display !== 'none';
+  quickBar.style.bottom = `${GEOMETRY.status_bar_height + (raised ? 62 : 12)}px`;
+}
+
+// ---------- 介面偏好（虛擬鍵盤開關與位置） ----------
+const UI_PREFS_KEY = 'gatennea.ui.v1';
+
+function saveUiPrefs(): void {
+  try {
+    localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
+      vk: vkPanel.style.display !== 'none',
+      vkPos: { x: vkPanel.offsetLeft, y: vkPanel.offsetTop },
+    }));
+  } catch {
+    // 隱私模式寫不進 localStorage：只影響「下次還開著」，不影響遊戲
+  }
+}
+
+/**
+ * 讀回上次的開關與位置。
+ *
+ * 沒存過時：觸屏設備默認**開**（對照原版 `show_virtual_keyboard = True`，
+ * 且手機沒有實體方向鍵，不開就沒法走）；桌面默認關，免得一上來就擋住棋盤。
+ */
+function loadUiPrefs(): void {
+  let saved: { vk?: boolean; vkPos?: { x: number; y: number } } | null = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(UI_PREFS_KEY) ?? 'null');
+  } catch {
+    saved = null;
+  }
+  if (saved?.vkPos) {
+    vkPanel.style.left = `${saved.vkPos.x}px`;
+    vkPanel.style.top = `${saved.vkPos.y}px`;
+    vkMoved = true; // 有存過位置就別再用默認角，尊重玩家上次擺的地方
+  }
+  const touch = typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+  const show = saved?.vk ?? touch;
+  if (show) toggleVK(true);
 }
 
 // ---------- 成績面板 ----------
@@ -1275,6 +1434,7 @@ function handleShuffle(): void {
   if (gameMode === 'timed' && timer.state === 'running') { showToast('計時中無法打亂'); return; }
   const r = shuffle(store.cmd, store.currentM * store.currentN * 10);
   showToast(r.message);
+  stickyPlayer.stop(); // 換了整局，連播中的撤銷/重做沒有意義（原版換局也重置歷史）
   renderer.animation = null;
   store.solvedPopupTracker.reset(store.solved); // 打亂換了整局，同步過關基線
   centerCamera();
@@ -1287,6 +1447,7 @@ function handleReset(): void {
   if (gameMode === 'timed' && timer.state === 'running') { showToast('計時中無法重置'); return; }
   const r = reset(store.cmd);
   showToast(r.message);
+  stickyPlayer.stop();
   renderer.animation = null;
   store.solvedPopupTracker.reset(store.solved); // 重設回到初始態，不算「過關」
   centerCamera();
@@ -2371,7 +2532,25 @@ buildMenu();
 
 buildVK();
 layoutCanvas();
-window.addEventListener('resize', () => { closeAllMenus(); applyChromeDensity(); layoutCanvas(); syncZoomSlider(); syncSpeedSlider(); schedulePaint(); });
+window.addEventListener('resize', () => {
+  closeAllMenus();
+  applyChromeDensity();
+  layoutCanvas();
+  syncZoomSlider();
+  syncSpeedSlider();
+  // 視窗變小後浮動面板可能被擠出畫面（原版每次重繪都 `_vk_clamp_position`）
+  if (vkPanel.style.display !== 'none') {
+    const p = vkClampPosition(
+      { x: vkPanel.offsetLeft, y: vkPanel.offsetTop },
+      vkViewport(),
+      { w: vkPanel.offsetWidth, h: vkPanel.offsetHeight },
+      vkChrome(),
+    );
+    vkPanel.style.left = `${p.x}px`;
+    vkPanel.style.top = `${p.y}px`;
+  }
+  schedulePaint();
+});
 
 // ---------- 首頁玩法演示模式（?demo=存檔路徑） ----------
 const demoFile = new URLSearchParams(window.location.search).get('demo');
@@ -2468,6 +2647,9 @@ if (demoFile) {
   // 第一次來、又沒有舊進度：打開章節教程（新手教程）選關，帶著由淺入深地玩
   tutorial.openLevelSelect();
 }
+// 虛擬鍵盤的開關與位置：觸屏設備默認開著（手機沒有實體方向鍵，不開就沒法走）
+loadUiPrefs();
+syncQuickBarBottom();
 schedulePaint();
 
 setInterval(() => {
