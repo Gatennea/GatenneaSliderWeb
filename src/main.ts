@@ -592,10 +592,12 @@ const creative = new CreativeController({
     store.cmd.selectedGap = null;
     store.cmd.selectedBlock = null;
     store.game.selected.clear();
+    syncSwitches(); // 右欄「模式」按鍵同步（它只認 gameMode==='timed'，創造=關）
   },
   exitCreative: () => {
     gameMode = 'practice';
     timer.cancel();
+    syncSwitches();
   },
 });
 
@@ -1537,6 +1539,9 @@ function renderRecordsPanel(): void {
           map.style.fontSize = '9px';
           map.style.lineHeight = '1.05';
           map.style.marginTop = '4px';
+          // 初始局面用白色：不設色會繼承成黑色，與成績面板的深灰底色幾乎分不清
+          // （原版是 (160,210,255) 淺藍，按用戶要求用白；█ 與 · 同色、靠字形疏密區分，與原版同法）
+          map.style.color = '#ffffff';
           map.textContent = blocksToMap(row.item.initial).join('\n');
           map.style.whiteSpace = 'pre';
           detail.appendChild(map);
@@ -1941,6 +1946,9 @@ function setGameMode(mode: 'practice' | 'timed' | 'creative'): void {
   if (mode === 'timed') showToast('计时模式：打乱后需按空格开始');
   else if (mode === 'creative') showToast('创造模式：生成谜题后自由还原');
   else showToast('练习模式：可自由滑动，不计时');
+  // 右欄「模式」按鍵也要跟著變（菜單/載入練習/教程都會走到這裡；
+  // 不同步的話狀態欄已是練習模式、按鍵還顯示競速——2026-10-21 用戶報的 bug）
+  syncSwitches();
   schedulePaint();
 }
 

@@ -259,6 +259,25 @@ try {
         const all = Object.values(saved).flat();
         check(all.length === 1 && all[0].dnf === true,
           `DNF 已寫入 localStorage（實為 ${all.length} 條，dnf=${all[0]?.dnf}）`);
+
+        // ---- 載入練習後右欄「模式」按鍵要同步（bug：狀態欄已練習、按鍵還顯示競速） ----
+        const modeSwitch = (t) => findAll((e) => e.style?.minWidth === '62px' && e.textContent === t);
+        check(modeSwitch('模式:竞速').length === 1, '右欄「模式」按鍵顯示 模式:竞速');
+        const recBody = findAll((e) => e.style?.maxHeight === 'calc(70vh - 28px)')[0];
+        const rowMain = recBody?.children.find((c) => c._h?.click);
+        check(!!rowMain, '成績面板裡能找到成績行');
+        if (rowMain) {
+          fire(rowMain, 'click'); // 展開詳情
+          const loadBtn = findAll((e) => e.textContent === '载入练习')[0];
+          check(!!loadBtn, '詳情裡有「载入练习」');
+          if (loadBtn) {
+            fire(loadBtn, 'click'); // 載入為練習謎題 → setGameMode('practice')
+            check(modeSwitch('模式:练习').length === 1 && modeSwitch('模式:竞速').length === 0,
+              '載入練習後右欄「模式」按鍵同步成 模式:练习（狀態欄與按鍵不再各說各話）');
+            const whiteMaps = findAll((e) => e.style?.whiteSpace === 'pre' && e.style?.color === '#ffffff');
+            check(whiteMaps.length > 0, '初始局面矩陣為白色（不再黑色糊在深灰底上）');
+          }
+        }
       }
     }
   }
