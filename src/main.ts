@@ -12,9 +12,15 @@ import type { SolverAction } from './solver/index.js';
 import { autosave, autoload, downloadSave, saveAs, importData, listSaves, saveSlot, loadSlot, deleteSlot, updateSlot } from './io/SaveManager.js';
 import { Timer, formatTime } from './feature/Timer.js';
 import { Records, stats, series, tpsOf, blocksToMap, type RecordItem } from './feature/Records.js';
-import { TutorialController } from './feature/tutorial.js';
+import { TutorialController, applyTutorialTextPatch, currentTutorialTexts } from './feature/tutorial.js';
 import { CreativeController } from './feature/create.js';
 import { APP_VERSION, entryFor, shouldShowChangelog } from './feature/changelog.js';
+import {
+  login as apiLogin, logout as apiLogout, me as apiMe, getToken,
+  getConfig, putConfig,
+  type AccountInfo, type SiteConfig, type PresetEntry,
+} from './io/ApiClient.js';
+import { mkPencil } from './feature/pencil.js';
 import {
   VK, StickyPlayer, resolveJumpTarget, vkDefaultPosition, vkClampPosition, vkPanelSize,
   vkDirectionRows, type VkViewport, type VkChrome,
@@ -574,6 +580,9 @@ const tutorial = new TutorialController({
     if (gameMode !== 'practice') setGameMode('practice');
     else timer.cancel();
   },
+  // owner 就地編輯（鉤子在本文件下方定義；函數聲明提升，此處引用不會 TDZ）
+  isOwner,
+  editTutorialText,
 });
 
 const creative = new CreativeController({
@@ -882,6 +891,596 @@ switchStates.forEach((s) => {
   if (s.touchOnly && !isTouchDevice) return;
   rightPanel.appendChild(el);
 });
+
+// ---------- 賬號與遠程配置（owner 就地編輯的基礎設施） ----------
+// 三級角色：owner（唯一，站長）/ admin（成員申請後由 owner 建號）/ user。
+// 註冊現階段關閉（後端 register 僅空庫自舉第一個 owner），普通玩家用不到賬號；
+// owner 登錄後頁面浮出就地編輯鉛筆，保存走 /api/admin/config/:key。
+// ⚠️ isOwner / editTutorialText 必須是 function 聲明（hoisted）——上面的
+// TutorialController 在這些狀態聲明之前就實例化，const 箭頭會 TDZ。
+let currentUser: AccountInfo | null = null;
+let remoteConfig: SiteConfig = {};
+function isOwner(): boolean { return currentUser?.role === 'owner'; }
+
+/** 右欄賬號按鍵：未登錄顯示「登錄」，owner 登錄後顯示身份（點擊可退出）。 */
+const accountBtn = document.createElement('div');
+accountBtn.style.height = '24px';
+accountBtn.style.display = 'flex';
+accountBtn.style.alignItems = 'center';
+accountBtn.style.justifyContent = 'center';
+accountBtn.style.cursor = 'pointer';
+accountBtn.style.fontSize = '12px';
+accountBtn.style.borderRadius = '4px';
+accountBtn.style.flex = '0 0 auto';
+accountBtn.style.minWidth = '62px';
+accountBtn.style.padding = '0 6px';
+accountBtn.style.marginTop = '6px';
+accountBtn.style.background = COLORS.input_bg;
+accountBtn.style.color = '#969696';
+accountBtn.textContent = '登录';
+rightPanel.appendChild(accountBtn);
+
+function refreshAccountButton(): void {
+  if (currentUser) {
+    accountBtn.textContent = currentUser.role === 'owner' ? `✦ ${currentUser.username}` : currentUser.username;
+    accountBtn.style.background = currentUser.role === 'owner' ? COLORS.button_bg : COLORS.input_bg;
+    accountBtn.style.color = currentUser.role === 'owner' ? '#fff' : '#c8c8c8';
+    accountBtn.title = `${currentUser.username}（${currentUser.role}）· 點擊退出登錄`;
+  } else {
+    accountBtn.textContent = '登录';
+    accountBtn.style.background = COLORS.input_bg;
+    accountBtn.style.color = '#969696';
+    accountBtn.title = '登錄所有者賬號以解鎖就地編輯';
+  }
+}
+refreshAccountButton();
+
+accountBtn.addEventListener('click', () => {
+  if (currentUser) {
+    // 已登錄：點擊退出
+    void apiLogout();
+    currentUser = null;
+    refreshAccountButton();
+    showToast('已退出登录');
+    schedulePaint();
+    return;
+  }
+  openLoginDialog();
+});
+
+/** 登錄對話框（現階段只有 owner 用得上的編輯入口；普通註冊未開放）。 */
+function openLoginDialog(): void {
+  const overlay = document.createElement('div');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = 'rgba(0,0,0,0.55)';
+  overlay.style.zIndex = '2000';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+  overlay.addEventListener('click', () => overlay.remove());
+  const box = document.createElement('div');
+  box.style.background = COLORS.dialog_bg;
+  box.style.border = `1px solid ${COLORS.dialog_border}`;
+  box.style.borderRadius = '8px';
+  box.style.padding = '16px';
+  box.style.width = 'min(300px, 90vw)';
+  box.style.color = COLORS.dialog_text;
+  box.style.fontSize = '13px';
+  box.addEventListener('click', (e) => e.stopPropagation());
+
+  const title = document.createElement('div');
+  title.textContent = '登录';
+  title.style.fontWeight = 'bold';
+  title.style.color = COLORS.dialog_title;
+  title.style.marginBottom = '10px';
+  box.appendChild(title);
+
+  const mkField = (label: string, pw: boolean): HTMLInputElement => {
+    const row = document.createElement('div');
+    row.style.marginBottom = '8px';
+    const lb = document.createElement('div');
+    lb.textContent = label;
+    lb.style.opacity = '0.75';
+    lb.style.marginBottom = '3px';
+    const inp = document.createElement('input');
+    inp.type = pw ? 'password' : 'text';
+    inp.style.width = '100%';
+    inp.style.boxSizing = 'border-box';
+    inp.style.background = COLORS.input_bg;
+    inp.style.color = COLORS.dialog_text;
+    inp.style.border = `1px solid ${COLORS.border}`;
+    inp.style.borderRadius = '4px';
+    inp.style.padding = '6px 8px';
+    inp.style.fontSize = '13px';
+    inp.style.fontFamily = 'inherit';
+    inp.dataset[pw ? 'loginPass' : 'loginUser'] = '1';
+    row.append(lb, inp);
+    box.appendChild(row);
+    return inp;
+  };
+  const userInp = mkField('用户名', false);
+  const passInp = mkField('密码', true);
+  const err = document.createElement('div');
+  err.style.color = '#e06060';
+  err.style.minHeight = '16px';
+  err.style.marginBottom = '6px';
+  box.appendChild(err);
+
+  const row = document.createElement('div');
+  row.style.display = 'flex';
+  row.style.gap = '8px';
+  row.style.marginTop = '4px';
+  const ok = document.createElement('button');
+  ok.textContent = '登录';
+  ok.style.background = COLORS.button_bg;
+  ok.style.color = '#fff';
+  ok.style.border = 'none';
+  ok.style.borderRadius = '4px';
+  ok.style.padding = '6px 14px';
+  ok.style.cursor = 'pointer';
+  ok.style.fontSize = '12px';
+  ok.style.fontFamily = 'inherit';
+  const cancel = document.createElement('button');
+  cancel.textContent = '取消';
+  cancel.style.background = COLORS.input_bg;
+  cancel.style.color = '#fff';
+  cancel.style.border = `1px solid ${COLORS.border}`;
+  cancel.style.borderRadius = '4px';
+  cancel.style.padding = '6px 14px';
+  cancel.style.cursor = 'pointer';
+  cancel.style.fontSize = '12px';
+  cancel.style.fontFamily = 'inherit';
+  cancel.style.marginLeft = 'auto';
+  cancel.addEventListener('click', () => overlay.remove());
+  row.append(ok, cancel);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  app.appendChild(overlay);
+  userInp.focus();
+
+  const submit = (): void => {
+    const u = userInp.value.trim();
+    const p = passInp.value;
+    if (!u || !p) { err.textContent = '请输入用户名和密码'; return; }
+    ok.disabled = true;
+    err.textContent = '登录中…';
+    void apiLogin(u, p)
+      .then((r) => {
+        currentUser = { id: r.userId, username: r.username, role: r.role };
+        refreshAccountButton();
+        overlay.remove();
+        showToast(r.role === 'owner' ? `所有者 ${r.username} 已登录，编辑入口已解锁` : `已登录：${r.username}`);
+        schedulePaint();
+        // 登錄後刷新一次遠程配置：既讓編輯入口拿到最新現值，也保證此時配置已就緒
+        void getConfig().then(applyConfig).catch(() => { /* 後端不可達：保持現狀 */ });
+      })
+      .catch((e) => {
+        ok.disabled = false;
+        err.textContent = e instanceof Error ? e.message : '登录失败';
+      });
+  };
+  ok.addEventListener('click', submit);
+  passInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+}
+
+/**
+ * 應用遠程配置（site_config）。遠程值覆蓋本地默認；後端不可達時根本不會走到
+ * 這裡，遊戲用代碼內默認照常啟動——遠程是增強，不是依賴。
+ */
+function applyConfig(cfg: SiteConfig): void {
+  remoteConfig = cfg;
+  // ① 公告：覆蓋 changelog 當前條目的 date/items（結構不變，只換內容）
+  const n = cfg.notice;
+  if (n && (n.date !== undefined || n.items !== undefined)) {
+    const entry = entryFor(APP_VERSION);
+    if (entry) {
+      if (n.date !== undefined) entry.date = n.date;
+      if (Array.isArray(n.items)) entry.items = n.items.slice(0, 50);
+    }
+  }
+  // ② 教程文本補丁（guidance / 第 1 關 steps）
+  if (cfg.tutorial_texts) applyTutorialTextPatch(cfg.tutorial_texts);
+  // ③ 謎題檔位表（就地保存後立刻刷新菜單顯示）
+  if (cfg.puzzle_presets) applyPuzzlePresets(cfg.puzzle_presets);
+}
+
+  /** 用遠程檔位表替換本地 PUZZLE_SUB 的兩組內容（數組引用不變，菜單構建時讀到新值）。 */
+  function applyPuzzlePresets(p: { rect?: PresetEntry[]; exotic?: PresetEntry[] }): void {
+    if (Array.isArray(p.rect)) {
+      PUZZLE_SUB.rect.length = 0;
+      PUZZLE_SUB.rect.push(...(p.rect as MenuEntry[]));
+    }
+    if (Array.isArray(p.exotic)) {
+      PUZZLE_SUB.exotic.length = 0;
+      PUZZLE_SUB.exotic.push(...(p.exotic as MenuEntry[]));
+    }
+    // 菜單下拉是按 PUZZLE_SUB 建的：換了值且當時開著，就重建（關著就等下次開）
+    if (activeMenu !== null || openSubKey) {
+      closeAllMenus();
+      buildMenu();
+    }
+  }
+
+/**
+ * 啟動時恢復登錄態 + 拉遠程配置。兩步都盡靜默失敗：玩家無 token 跳過 me；
+ * 後端不可達（國內直連未通等）時配置拉取失敗也不彈錯、不擋遊戲。
+ */
+async function initAccountAndConfig(): Promise<void> {
+  try {
+    if (getToken()) {
+      const r = await apiMe();
+      if (r.user) {
+        currentUser = r.user as AccountInfo;
+        refreshAccountButton();
+      }
+    }
+  } catch {
+    /* 未登錄或後端不可達：靜默 */
+  }
+  try {
+    applyConfig(await getConfig());
+  } catch {
+    /* 後端不可達：用本地默認 */
+  }
+  syncSwitches();
+  schedulePaint();
+}
+
+/**
+ * 就地編輯的統一保存：PUT 到後端 → 成功後調用方本地應用。
+ * 失敗給明確 toast（owner 的主動操作，不能靜默）；斷網/後端掛都走這裡。
+ */
+async function saveConfigKey(key: string, value: unknown): Promise<boolean> {
+  try {
+    await putConfig(key, value);
+    showToast('已保存并生效');
+    return true;
+  } catch (e) {
+    showToast(`保存失败：${e instanceof Error ? e.message : '未知错误'}`);
+    return false;
+  }
+}
+
+/** 公告編輯框（owner）：改當前版本的 date 與要點列表（一行一條）。 */
+function openNoticeEditor(): void {
+  const entry = entryFor(APP_VERSION);
+  if (!entry) { showToast('当前版本没有公告条目可编辑'); return; }
+  const overlay = document.createElement('div');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = 'rgba(0,0,0,0.55)';
+  overlay.style.zIndex = '2000';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+  overlay.addEventListener('click', () => overlay.remove());
+  const box = document.createElement('div');
+  box.style.background = COLORS.dialog_bg;
+  box.style.border = `1px solid ${COLORS.dialog_border}`;
+  box.style.borderRadius = '8px';
+  box.style.padding = '16px';
+  box.style.width = 'min(420px, 92vw)';
+  box.style.color = COLORS.dialog_text;
+  box.style.fontSize = '13px';
+  box.addEventListener('click', (e) => e.stopPropagation());
+  const title = document.createElement('div');
+  title.textContent = '编辑公告';
+  title.style.fontWeight = 'bold';
+  title.style.color = COLORS.dialog_title;
+  title.style.marginBottom = '10px';
+  box.appendChild(title);
+  const mkInput = (multi: boolean, value: string): HTMLInputElement | HTMLTextAreaElement => {
+    const el = document.createElement(multi ? 'textarea' : 'input');
+    if (!multi) (el as HTMLInputElement).type = 'text';
+    el.value = value;
+    el.style.width = '100%';
+    el.style.boxSizing = 'border-box';
+    el.style.background = COLORS.input_bg;
+    el.style.color = COLORS.dialog_text;
+    el.style.border = `1px solid ${COLORS.border}`;
+    el.style.borderRadius = '4px';
+    el.style.padding = '6px 8px';
+    el.style.fontSize = '13px';
+    el.style.fontFamily = 'inherit';
+    if (multi) { el.style.minHeight = '160px'; el.style.lineHeight = '1.5'; el.style.resize = 'vertical'; }
+    return el;
+  };
+  const dateInp = mkInput(false, entry.date);
+  const itemsInp = mkInput(true, entry.items.join('\n'));
+  const lbl1 = document.createElement('div');
+  lbl1.textContent = '日期（显示用）';
+  lbl1.style.opacity = '0.75';
+  lbl1.style.margin = '8px 0 3px';
+  const lbl2 = document.createElement('div');
+  lbl2.textContent = '要点（每行一条）';
+  lbl2.style.opacity = '0.75';
+  lbl2.style.margin = '8px 0 3px';
+  box.append(lbl1, dateInp, lbl2, itemsInp);
+  const row = document.createElement('div');
+  row.style.display = 'flex';
+  row.style.gap = '8px';
+  row.style.marginTop = '12px';
+  const ok = document.createElement('button');
+  ok.textContent = '保存';
+  ok.style.background = COLORS.button_bg;
+  ok.style.color = '#fff';
+  ok.style.border = 'none';
+  ok.style.borderRadius = '4px';
+  ok.style.padding = '6px 14px';
+  ok.style.cursor = 'pointer';
+  ok.style.fontSize = '12px';
+  ok.style.fontFamily = 'inherit';
+  const cancel = document.createElement('button');
+  cancel.textContent = '取消';
+  cancel.style.background = COLORS.input_bg;
+  cancel.style.color = '#fff';
+  cancel.style.border = `1px solid ${COLORS.border}`;
+  cancel.style.borderRadius = '4px';
+  cancel.style.padding = '6px 14px';
+  cancel.style.cursor = 'pointer';
+  cancel.style.fontSize = '12px';
+  cancel.style.fontFamily = 'inherit';
+  cancel.style.marginLeft = 'auto';
+  cancel.addEventListener('click', () => overlay.remove());
+  row.append(ok, cancel);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  app.appendChild(overlay);
+  ok.addEventListener('click', () => {
+    const date = (dateInp.value ?? '').trim() || entry.date;
+    const items = String(itemsInp.value ?? '').split('\n').map((s) => s.trim()).filter(Boolean);
+    if (items.length === 0) { showToast('要点不能为空'); return; }
+    void saveConfigKey('notice', { date, items }).then((ok2) => {
+      if (!ok2) return;
+      remoteConfig.notice = { date, items };
+      applyConfig(remoteConfig); // 本地立即生效（公告框下次打開就是新內容）
+    });
+    overlay.remove();
+  });
+}
+
+/** 小關文本編輯框（owner）：引導語 guidance；第 1 關額外可編輯 7 條教學 steps。 */
+function editTutorialText(subId: string): void {
+  const cur = currentTutorialTexts()[subId] ?? { guidance: null, steps: null };
+  const overlay = document.createElement('div');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = 'rgba(0,0,0,0.55)';
+  overlay.style.zIndex = '2000';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+  overlay.addEventListener('click', () => overlay.remove());
+  const box = document.createElement('div');
+  box.style.background = COLORS.dialog_bg;
+  box.style.border = `1px solid ${COLORS.dialog_border}`;
+  box.style.borderRadius = '8px';
+  box.style.padding = '16px';
+  box.style.width = 'min(480px, 92vw)';
+  box.style.maxHeight = '86vh';
+  box.style.overflowY = 'auto';
+  box.style.color = COLORS.dialog_text;
+  box.style.fontSize = '13px';
+  box.addEventListener('click', (e) => e.stopPropagation());
+  const title = document.createElement('div');
+  title.textContent = `编辑教程文本 · ${subId}`;
+  title.style.fontWeight = 'bold';
+  title.style.color = COLORS.dialog_title;
+  title.style.marginBottom = '10px';
+  box.appendChild(title);
+  const mkArea = (value: string, h = '60px'): HTMLTextAreaElement => {
+    const el = document.createElement('textarea');
+    el.value = value;
+    el.style.width = '100%';
+    el.style.boxSizing = 'border-box';
+    el.style.background = COLORS.input_bg;
+    el.style.color = COLORS.dialog_text;
+    el.style.border = `1px solid ${COLORS.border}`;
+    el.style.borderRadius = '4px';
+    el.style.padding = '6px 8px';
+    el.style.fontSize = '13px';
+    el.style.fontFamily = 'inherit';
+    el.style.minHeight = h;
+    el.style.lineHeight = '1.5';
+    el.style.resize = 'vertical';
+    return el;
+  };
+  const mkLbl = (t: string): HTMLDivElement => {
+    const d = document.createElement('div');
+    d.textContent = t;
+    d.style.opacity = '0.75';
+    d.style.margin = '8px 0 3px';
+    return d;
+  };
+  box.appendChild(mkLbl('引导语（进入小关时底部显示）'));
+  const guidanceInp = mkArea(cur.guidance ?? '', '48px');
+  box.appendChild(guidanceInp);
+  const stepInputs: [string, HTMLTextAreaElement][] = [];
+  if (cur.steps) {
+    for (const k of Object.keys(cur.steps)) {
+      box.appendChild(mkLbl(`教学步骤 ${k}`));
+      const ta = mkArea(cur.steps[k] ?? '', '48px');
+      stepInputs.push([k, ta]);
+      box.appendChild(ta);
+    }
+  }
+  const row = document.createElement('div');
+  row.style.display = 'flex';
+  row.style.gap = '8px';
+  row.style.marginTop = '12px';
+  const ok = document.createElement('button');
+  ok.textContent = '保存';
+  ok.style.background = COLORS.button_bg;
+  ok.style.color = '#fff';
+  ok.style.border = 'none';
+  ok.style.borderRadius = '4px';
+  ok.style.padding = '6px 14px';
+  ok.style.cursor = 'pointer';
+  ok.style.fontSize = '12px';
+  ok.style.fontFamily = 'inherit';
+  const cancel = document.createElement('button');
+  cancel.textContent = '取消';
+  cancel.style.background = COLORS.input_bg;
+  cancel.style.color = '#fff';
+  cancel.style.border = `1px solid ${COLORS.border}`;
+  cancel.style.borderRadius = '4px';
+  cancel.style.padding = '6px 14px';
+  cancel.style.cursor = 'pointer';
+  cancel.style.fontSize = '12px';
+  cancel.style.fontFamily = 'inherit';
+  cancel.style.marginLeft = 'auto';
+  cancel.addEventListener('click', () => overlay.remove());
+  row.append(ok, cancel);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  app.appendChild(overlay);
+  ok.addEventListener('click', () => {
+    // 補丁要合併現有其他小關的修改，不能只存這一關（否則遠程只有一條，別的被清）
+    const patch = { ...(remoteConfig.tutorial_texts ?? {}) };
+    const entryPatch: { guidance: string; steps?: Record<string, string> } = {
+      guidance: String(guidanceInp.value ?? ''),
+    };
+    if (stepInputs.length > 0) {
+      const stepsOut: Record<string, string> = {};
+      for (const [k, ta] of stepInputs) stepsOut[k] = String(ta.value ?? '');
+      entryPatch.steps = stepsOut;
+    }
+    patch[subId] = entryPatch;
+    void saveConfigKey('tutorial_texts', patch).then((ok2) => {
+      if (!ok2) return;
+      remoteConfig.tutorial_texts = patch;
+      applyTutorialTextPatch({ [subId]: entryPatch }); // 本地立即生效
+    });
+    overlay.remove();
+  });
+}
+
+/** 謎題檔位編輯框（owner）：改顯示名與 m/n/step；保存後重建菜單。 */
+function openPresetEditor(opt: MenuItemDef): void {
+  const [m0, n0, s0] = opt.preset ?? [4, 4, 2];
+  const overlay = document.createElement('div');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = 'rgba(0,0,0,0.55)';
+  overlay.style.zIndex = '2000';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+  overlay.addEventListener('click', () => overlay.remove());
+  const box = document.createElement('div');
+  box.style.background = COLORS.dialog_bg;
+  box.style.border = `1px solid ${COLORS.dialog_border}`;
+  box.style.borderRadius = '8px';
+  box.style.padding = '16px';
+  box.style.width = 'min(320px, 92vw)';
+  box.style.color = COLORS.dialog_text;
+  box.style.fontSize = '13px';
+  box.addEventListener('click', (e) => e.stopPropagation());
+  const title = document.createElement('div');
+  title.textContent = '编辑档位';
+  title.style.fontWeight = 'bold';
+  title.style.color = COLORS.dialog_title;
+  title.style.marginBottom = '10px';
+  box.appendChild(title);
+  const mkField = (label: string, value: string): HTMLInputElement => {
+    const d = document.createElement('div');
+    d.style.marginBottom = '8px';
+    const lb = document.createElement('div');
+    lb.textContent = label;
+    lb.style.opacity = '0.75';
+    lb.style.marginBottom = '3px';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = value;
+    inp.style.width = '100%';
+    inp.style.boxSizing = 'border-box';
+    inp.style.background = COLORS.input_bg;
+    inp.style.color = COLORS.dialog_text;
+    inp.style.border = `1px solid ${COLORS.border}`;
+    inp.style.borderRadius = '4px';
+    inp.style.padding = '6px 8px';
+    inp.style.fontSize = '13px';
+    inp.style.fontFamily = 'inherit';
+    d.append(lb, inp);
+    box.appendChild(d);
+    return inp;
+  };
+  const nameInp = mkField('显示名', opt.text ?? '');
+  const mInp = mkField('行数 m', String(m0));
+  const nInp = mkField('列数 n', String(n0));
+  const sInp = mkField('步长 step', String(s0));
+  const numRow = document.createElement('label');
+  numRow.style.display = 'flex';
+  numRow.style.alignItems = 'center';
+  numRow.style.gap = '6px';
+  numRow.style.margin = '4px 0 8px';
+  const numChk = document.createElement('input');
+  numChk.type = 'checkbox';
+  numChk.checked = !!opt.numbered;
+  const numLbl = document.createElement('span');
+  numLbl.textContent = '数字形态（矩形底板＋编号）';
+  numRow.append(numChk, numLbl);
+  box.appendChild(numRow);
+  const err = document.createElement('div');
+  err.style.color = '#e06060';
+  err.style.minHeight = '16px';
+  box.appendChild(err);
+  const row = document.createElement('div');
+  row.style.display = 'flex';
+  row.style.gap = '8px';
+  row.style.marginTop = '4px';
+  const ok = document.createElement('button');
+  ok.textContent = '保存';
+  ok.style.background = COLORS.button_bg;
+  ok.style.color = '#fff';
+  ok.style.border = 'none';
+  ok.style.borderRadius = '4px';
+  ok.style.padding = '6px 14px';
+  ok.style.cursor = 'pointer';
+  ok.style.fontSize = '12px';
+  ok.style.fontFamily = 'inherit';
+  const cancel = document.createElement('button');
+  cancel.textContent = '取消';
+  cancel.style.background = COLORS.input_bg;
+  cancel.style.color = '#fff';
+  cancel.style.border = `1px solid ${COLORS.border}`;
+  cancel.style.borderRadius = '4px';
+  cancel.style.padding = '6px 14px';
+  cancel.style.cursor = 'pointer';
+  cancel.style.fontSize = '12px';
+  cancel.style.fontFamily = 'inherit';
+  cancel.style.marginLeft = 'auto';
+  cancel.addEventListener('click', () => overlay.remove());
+  row.append(ok, cancel);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  app.appendChild(overlay);
+  ok.addEventListener('click', () => {
+    const m = parseInt(mInp.value, 10);
+    const n = parseInt(nInp.value, 10);
+    const s = parseInt(sInp.value, 10);
+    if (![m, n, s].every((x) => Number.isFinite(x) && x >= 1)) {
+      err.textContent = 'm/n/step 必须是 ≥1 的整数';
+      return;
+    }
+    // 整兩份檔位表序列化保存（遠程值即全量真理，本地默認被覆蓋）
+    const mapOne = (e: MenuEntry): MenuEntry =>
+      e === opt
+        ? { ...(typeof e === 'string' ? { text: e } : e), text: nameInp.value.trim() || opt.text || '', preset: [m, n, s], numbered: numChk.checked }
+        : e;
+    const rectOut = PUZZLE_SUB.rect.map(mapOne);
+    const exoticOut = PUZZLE_SUB.exotic.map(mapOne);
+    void saveConfigKey('puzzle_presets', { rect: rectOut, exotic: exoticOut }).then((ok2) => {
+      if (!ok2) return;
+      remoteConfig.puzzle_presets = { rect: rectOut as PresetEntry[], exotic: exoticOut as PresetEntry[] };
+      applyPuzzlePresets(remoteConfig.puzzle_presets);
+      closeAllMenus();
+      buildMenu(); // 菜單 DOM 是按 PUZZLE_SUB 建的，換了值要重建
+    });
+    overlay.remove();
+  });
+}
 
 // ---------- 右側面板垂直滑條：縮放 / 速度 ----------
 // 原版：缩放條在左、速度條在右，兩條並排於面板上方
@@ -1247,6 +1846,14 @@ function showChangelog(force = false): void {
   title.style.fontWeight = 'bold';
   title.style.color = COLORS.dialog_title;
   title.style.marginBottom = '10px';
+  title.style.display = 'flex';
+  title.style.alignItems = 'center';
+  // owner：標題旁的鉛筆（就地改公告；普通玩家不渲染）
+  if (isOwner()) {
+    const pen = mkPencil(() => { overlay.remove(); openNoticeEditor(); });
+    pen.style.marginLeft = 'auto';
+    title.appendChild(pen);
+  }
   box.appendChild(title);
 
   const list = document.createElement('div');
@@ -2336,6 +2943,12 @@ function renderEntries(dd: HTMLElement, menu: MenuDef, items: MenuEntry[]): void
       row.appendChild(tick);
     }
 
+    // 就地鉛筆（僅 owner 渲染）：改這個檔位的顯示名與 m/n/step。
+    // 放在 ✓ 之後，普通玩家看不到。
+    if (isOwner() && opt?.preset) {
+      row.appendChild(mkPencil(() => openPresetEditor(opt)));
+    }
+
     // 懸停時額外要做的事（目前只有「展開二級子菜單」一種）
     let onEnter: (() => void) | null = null;
 
@@ -3096,6 +3709,9 @@ if (demoFile) {
 }
 // 虛擬鍵盤的開關與位置：觸屏設備默認開著（手機沒有實體方向鍵，不開就沒法走）
 loadUiPrefs();
+// 賬號與遠程配置：異步、靜默失敗——後端不可達也不擋啟動（玩家用本地默認照常玩）。
+// owner 登錄態在這裡恢復，之後各處鉛筆編輯按 isOwner() 決定渲不渲染。
+void initAccountAndConfig();
 // 成績面板：桌面端默認展開（對照原版 show_records_panel=True）；手機/窄屏收起。
 // 定位在 applyChromeDensity 裡按右欄寬調整（不擋右欄）；這裡只管顯隱與首次渲染。
 recordsPanel.style.display = recordsVisible ? '' : 'none';

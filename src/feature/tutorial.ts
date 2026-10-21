@@ -17,6 +17,7 @@ import type { BoardRenderer } from '../render/BoardRenderer.js';
 import type { BoardController } from '../interaction/BoardController.js';
 import { TUTORIAL_LEVELS, TUTORIAL_ORDER, TUTORIAL_ARCHIVES, TUTORIAL_TEXTS } from '../tutorial/tutorialData.js';
 import { COLORS, GEOMETRY } from '../render/theme.js';
+import { mkPencil } from './pencil.js';
 
 // 生成的資料是「字面值鍵」型別，直接用 string 索引會報錯；統一以 any 視之最省事
 const ARCHIVES: Record<string, any> = TUTORIAL_ARCHIVES as any;
@@ -43,6 +44,39 @@ interface LevelMeta {
   sublevels: SublevelMeta[];
 }
 
+/**
+ * 合併遠程教程文本補丁（owner 就地編輯的結果，來自 site_config.tutorial_texts）。
+ * 補丁結構：{ 小關id: { guidance?, steps? } }——只覆蓋提到的字段，其餘保持
+ * tutorialData 原值（生成文件不動，運行時覆蓋；steps 是第 1 關的 7 條教學文本）。
+ */
+export function applyTutorialTextPatch(
+  patch: Record<string, { guidance?: string; steps?: Record<string, string> }>,
+): void {
+  for (const [subId, p] of Object.entries(patch)) {
+    for (const lv of LEVELS) {
+      const sub = lv.sublevels.find((x) => x.id === subId);
+      if (sub && p.guidance !== undefined) sub.guidance = p.guidance;
+    }
+    const steps = TEXTS.levels?.[subId]?.steps;
+    if (steps && p.steps) {
+      for (const [k, v] of Object.entries(p.steps)) {
+        if (steps[k] !== undefined) steps[k] = v;
+      }
+    }
+  }
+}
+
+/** 當前教程文本（供 owner 編輯框讀現值）：{ 小關id: { guidance, steps } } */
+export function currentTutorialTexts(): Record<string, { guidance: string | null; steps: Record<string, string> | null }> {
+  const out: Record<string, { guidance: string | null; steps: Record<string, string> | null }> = {};
+  for (const lv of LEVELS) {
+    for (const sub of lv.sublevels) {
+      out[sub.id] = { guidance: sub.guidance ?? null, steps: TEXTS.levels?.[sub.id]?.steps ?? null };
+    }
+  }
+  return out;
+}
+
 type WaitKind = 'gap' | 'block' | 'move' | 'undo' | 'redo' | 'solved' | 'final';
 
 interface TeachingStep {
@@ -62,6 +96,10 @@ export interface TutorialHost {
   frameBounds: (minRow: number, minCol: number, maxRow: number, maxCol: number) => void;
   /** 進入練習模式（教程不計時）；main 負責在必要時切換並歸位計時器。 */
   ensurePractice: () => void;
+  /** owner 就地編輯：是否在選關面板渲染鉛筆（main 的全域登錄態）。 */
+  isOwner: () => boolean;
+  /** owner 就地編輯：打開某個小關的文本編輯框（guidance + 第 1 關 steps）。 */
+  editTutorialText: (subId: string) => void;
 }
 
 function snapshotBlocks(snap: any): [number, number][] {
@@ -276,7 +314,19 @@ export class TutorialController {
       grid.style.flexDirection = 'column';
       grid.style.gap = '8px';
       for (const sub2 of lv.sublevels) {
-        grid.appendChild(this.makeLevelButton(sub2));
+        const btn = this.makeLevelButton(sub2);
+        if (this.host.isOwner()) {
+          // owner：鉛筆掛在按鍵右側（不塞進按鍵裡，免得點鉛筆順便進關）
+          const rowEl = document.createElement('div');
+          rowEl.style.display = 'flex';
+          rowEl.style.alignItems = 'center';
+          rowEl.style.gap = '6px';
+          btn.style.flex = '1 1 auto';
+          rowEl.append(btn, mkPencil(() => this.host.editTutorialText(sub2.id)));
+          grid.appendChild(rowEl);
+        } else {
+          grid.appendChild(btn);
+        }
       }
       box.appendChild(grid);
     }

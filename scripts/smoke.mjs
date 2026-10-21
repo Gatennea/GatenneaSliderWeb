@@ -119,6 +119,10 @@ globalThis.window = {
 };
 globalThis.requestAnimationFrame = () => 1;
 globalThis.cancelAnimationFrame = noop;
+// Node 22+ 有真 fetch：app.js 啟動時會拉 /api/config（與登錄態 me()）。
+// 樁成立即失敗——既避免沙箱裡真連 workers.dev 拖超時，又順便覆蓋
+// 「後端不可達 → 靜默用本地默認、不擋啟動」這條兜底路徑。
+globalThis.fetch = () => Promise.reject(new Error('smoke: no net'));
 // Node 22 的 navigator 是唯讀 getter，只能用 defineProperty 蓋
 Object.defineProperty(globalThis, 'navigator', {
   value: { userAgent: 'node-smoke', language: 'zh-CN' },
@@ -301,6 +305,69 @@ try {
       const lvBtns = findAll((e) => e.tagName === 'BUTTON' && e.style?.fontSize === '18px');
       check(lvBtns.length >= 2, `關卡/操作按鈕 18px（實為 ${lvBtns.length} 個）`);
     }
+  }
+
+  // ---- 賬號與就地編輯（owner 基礎設施） ----
+  // ① 未登錄：右欄有「登录」按鍵；謎題子菜單不渲染鉛筆（普通玩家視角）
+  const acctBtn = findAll((e) => e.textContent === '登录').at(-1);
+  check(!!acctBtn, '右欄有「登录」按鍵（未登錄態）');
+  fire(menuItems[2], 'click'); // 謎題
+  const ddAnon = findAll((e) => e.dataset?.dropdown === '1').at(-1);
+  fire(ddAnon?.children.find((c) => (c.children[0]?.textContent ?? '') === '矩形谜题'), 'mouseenter');
+  const subAnon = findEl((e) => e.dataset?.subdropdown === '1');
+  const pensAnon = subAnon ? walk(subAnon).filter((e) => e.textContent === '✎') : [];
+  check(pensAnon.length === 0, `未登錄時子菜單無鉛筆（普通玩家視角，實為 ${pensAnon.length}）`);
+
+  // ② 換成「假後端」樁：登錄 owner + 遠程配置（遠程檔位表 + 公告）
+  const jsonResp = (obj) => ({
+    ok: true, status: 200,
+    json: () => Promise.resolve(obj),
+  });
+  globalThis.fetch = (url, init) => {
+    const u = String(url);
+    if (u.includes('/api/account/me')) return Promise.resolve(jsonResp({ user: { id: 1, username: 'cat9', role: 'owner' } }));
+    if (u.includes('/api/account/login')) return Promise.resolve(jsonResp({ token: 'a.b.c', userId: 1, username: 'cat9', role: 'owner' }));
+    if (u.includes('/api/config')) return Promise.resolve(jsonResp({
+      notice: { date: '10月22日', items: ['远程公告：第一条'] },
+      puzzle_presets: {
+        rect: [{ group: '远程组' }, { text: '9×9 等级9', preset: [9, 9, 9] }],
+        exotic: [],
+      },
+    }));
+    if (u.includes('/api/admin/config/')) return Promise.resolve(jsonResp({ ok: true }));
+    return Promise.reject(new Error(`smoke: unexpected ${u}`));
+  };
+
+  // ③ 登錄流程：點右欄「登录」→ 填號 → 提交
+  fire(acctBtn, 'click');
+  const userInp = findEl((e) => e.dataset?.loginUser === '1');
+  const passInp = findEl((e) => e.dataset?.loginPass === '1');
+  check(!!userInp && !!passInp, '登錄對話框有用戶名/密碼兩個輸入');
+  if (userInp && passInp) {
+    userInp.value = 'cat9';
+    passInp.value = 'pw';
+    const okBtn = findAll((e) => e.tagName === 'BUTTON' && e.textContent === '登录').at(-1);
+    fire(okBtn, 'click');
+    // 登錄是異步鏈（apiLogin → then → getConfig → applyConfig）；等微任務衝刷完再斷言
+    await new Promise((r) => setTimeout(r, 20));
+    check(findAll((e) => e.textContent === '✦ cat9').length > 0,
+      '登錄成功後右欄顯示所有者身份（✦ cat9）');
+    // 登錄成功回調會刷新遠程配置 → 遠程檔位表覆蓋本地默認。
+    // 注意：stub 的 remove 是 noop，舊下拉/舊子菜單還掛在 DOM 裡——
+    // 一律用 .at(-1) 取最新開的那個，別用 findEl（會取到登錄前的舊面板）。
+    fire(menuItems[2], 'click'); // 謎題（菜單已重建）
+    const ddOwner = findAll((e) => e.dataset?.dropdown === '1').at(-1);
+    fire(ddOwner?.children.find((c) => (c.children[0]?.textContent ?? '') === '矩形谜题'), 'mouseenter');
+    const subOwner = findAll((e) => e.dataset?.subdropdown === '1').at(-1);
+    const subTexts = subOwner ? walk(subOwner).map((e) => e.textContent) : [];
+    check(subTexts.includes('9×9 等级9'), '遠程檔位表覆蓋生效（子菜單出現 9×9 等级9）');
+    const pensOwner = subOwner ? walk(subOwner).filter((e) => e.textContent === '✎') : [];
+    check(pensOwner.length > 0, `owner 登錄後檔位列渲染鉛筆（實為 ${pensOwner.length} 個）`);
+    // 鉛筆不冒泡到行：點鉛筆只開編輯框，不切換謎題
+    const pen = pensOwner[0];
+    fire(pen, 'click');
+    check(findEl((e) => e.children?.some((c) => c.textContent === '编辑档位')) !== null,
+      '點鉛筆彈出「编辑档位」框（未冒泡觸發檔位切換）');
   }
 } catch (e) {
   console.error('✘ 拋錯：', e && e.stack ? e.stack.split('\n').slice(0, 6).join('\n') : e);

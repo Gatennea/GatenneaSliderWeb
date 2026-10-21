@@ -48,20 +48,43 @@ export function setToken(t: string | null): void {
 }
 
 // ---------------- 類型 ----------------
+export type UserRole = 'owner' | 'admin' | 'user';
+
 export interface AccountInfo {
   id: number;
   username: string;
+  role: UserRole;
   created_at?: number;
 }
 export interface RegisterResult {
   token: string;
   userId: number;
   username: string;
+  role: UserRole;
 }
 export interface LoginResult {
   token: string;
   userId: number;
   username: string;
+  role: UserRole;
+}
+/** 站點配置（owner 就地編輯的內容；缺的鍵前端用本地默認兜底） */
+export interface SiteConfig {
+  /** 公告：覆蓋 changelog 當前條目的 date/items */
+  notice?: { date?: string; items?: string[] };
+  /** 教程文本補丁：{ 關id: { guidance?, steps? } } */
+  tutorial_texts?: Record<string, { guidance?: string; steps?: Record<string, string> }>;
+  /** 謎題檔位表（rect/exotic 兩組，覆蓋本地 PUZZLE_SUB） */
+  puzzle_presets?: { rect?: PresetEntry[]; exotic?: PresetEntry[] };
+  /** 開關默認值（UI prefs 的初始值） */
+  ui_defaults?: Record<string, boolean>;
+}
+export interface PresetEntry {
+  group?: string;
+  text?: string;
+  preset?: [number, number, number];
+  numbered?: boolean;
+  pro?: boolean;
 }
 export interface ScoreRow {
   username: string;
@@ -184,4 +207,32 @@ export async function relayChat(messages: ChatMessage[], model?: string): Promis
     { method: 'POST', body: JSON.stringify(body) },
   );
   return data.choices?.[0]?.message?.content ?? '';
+}
+
+// ---------------- 站點配置 ----------------
+/**
+ * 拉取遠程配置（公開）。失敗由調用方兜底——後端不可達時遊戲必須照常啟動，
+ * 只是「這次沒拿到遠程配置」。
+ */
+export async function getConfig(): Promise<SiteConfig> {
+  return request<SiteConfig>('/api/config', { method: 'GET' });
+}
+
+/** owner 保存一個配置鍵（就地編輯的保存端點）。 */
+export async function putConfig(key: string, value: unknown): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/api/admin/config/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  });
+}
+
+// ---------------- owner 建號（成員申請審批） ----------------
+/** 僅 owner 可調；role 只接受 'admin' | 'user'（owner 唯一，不可複製）。 */
+export async function createUser(
+  username: string, password: string, role: 'admin' | 'user' = 'user',
+): Promise<{ ok: boolean; userId: number; role: string }> {
+  return request<{ ok: boolean; userId: number; role: string }>('/api/account/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, role }),
+  });
 }
