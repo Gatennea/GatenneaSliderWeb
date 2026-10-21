@@ -281,6 +281,27 @@ try {
       }
     }
   }
+
+  // ---- 教程選關面板字號（對照原版 dialog_title_font 22 / dialog_font 18） ----
+  const tutItem = menuItems.find((e) => e.textContent === '教程');
+  fire(tutItem, 'click');
+  const tutDd = findAll((e) => e.dataset?.dropdown === '1').at(-1);
+  const tutRow = tutDd?.children.find((c) => (c.children[0]?.textContent ?? '') === '教程关卡...');
+  check(!!tutRow, '「教程」下拉有「教程关卡...」');
+  if (tutRow) {
+    fire(tutRow, 'click'); // → tutorial.openLevelSelect()
+    const tutBox = findAll((e) => e.children?.some((c) => c.textContent === '选择关卡')).at(-1);
+    check(!!tutBox, '點「教程关卡...」打開選關面板');
+    if (tutBox) {
+      const tutTitle = tutBox.children.find((c) => c.textContent === '选择关卡');
+      check(tutTitle?.style?.fontSize === '22px',
+        `選關面板標題 22px（對照原版 dialog_title_font，實為 ${tutTitle?.style?.fontSize}）`);
+      check(tutBox.style.fontSize === '18px',
+        `選關面板正文 18px（對照原版 dialog_font，實為 ${tutBox.style.fontSize}）`);
+      const lvBtns = findAll((e) => e.tagName === 'BUTTON' && e.style?.fontSize === '18px');
+      check(lvBtns.length >= 2, `關卡/操作按鈕 18px（實為 ${lvBtns.length} 個）`);
+    }
+  }
 } catch (e) {
   console.error('✘ 拋錯：', e && e.stack ? e.stack.split('\n').slice(0, 6).join('\n') : e);
   process.exitCode = 1;

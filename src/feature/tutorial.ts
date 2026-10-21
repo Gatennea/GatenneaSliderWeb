@@ -166,19 +166,23 @@ export class TutorialController {
     this.bar.style.display = 'none';
     this.bar.style.alignItems = 'center';
     this.bar.style.gap = '10px';
-    this.bar.style.maxWidth = 'calc(100vw - 24px)';
+    this.bar.style.maxWidth = 'min(560px, calc(100vw - 24px))';
     this.bar.style.background = COLORS.dialog_bg;
     this.bar.style.border = `1px solid ${COLORS.dialog_border}`;
     this.bar.style.borderRadius = '8px';
-    this.bar.style.padding = '8px 12px';
+    this.bar.style.padding = '10px 14px';
     this.bar.style.color = COLORS.dialog_text;
-    this.bar.style.fontSize = '13px';
+    // 對照原版：正文/按鈕用 dialog_font(SimHei 18)
+    this.bar.style.fontSize = '18px';
     this.bar.style.lineHeight = '1.5';
     this.bar.style.zIndex = '800';
     this.bar.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
     this.barText = document.createElement('span');
     this.barText.style.flex = '1';
     this.barText.style.whiteSpace = 'pre-line';
+    // 對照原版教程面板封頂 300px：超出滾動，不無限增高遮棋盤
+    this.barText.style.maxHeight = '30vh';
+    this.barText.style.overflowY = 'auto';
     this.barBtns = document.createElement('span');
     this.barBtns.style.display = 'flex';
     this.barBtns.style.gap = '8px';
@@ -241,14 +245,16 @@ export class TutorialController {
     box.style.maxHeight = '86vh';
     box.style.overflowY = 'auto';
     box.style.color = COLORS.dialog_text;
-    box.style.fontSize = '13px';
+    // 對照原版：面板正文 dialog_font(18)
+    box.style.fontSize = '18px';
     box.style.boxShadow = '0 6px 24px rgba(0,0,0,0.5)';
     box.addEventListener('click', (e) => e.stopPropagation());
 
     const title = document.createElement('div');
     title.textContent = TEXTS.level_select?.title ?? '选择关卡';
     title.style.fontWeight = 'bold';
-    title.style.fontSize = '15px';
+    // 對照原版：面板標題 dialog_title_font(SimHei 22, bold)
+    title.style.fontSize = '22px';
     title.style.marginBottom = '4px';
     box.appendChild(title);
     const sub = document.createElement('div');
@@ -264,9 +270,10 @@ export class TutorialController {
       lvHead.style.margin = '12px 0 6px';
       lvHead.style.color = BRAND;
       box.appendChild(lvHead);
+      // 對照原版選關列表：全寬單列按鈕（dialog_font 18 的字在窄網格列裡會溢出）
       const grid = document.createElement('div');
-      grid.style.display = 'grid';
-      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(150px, 1fr))';
+      grid.style.display = 'flex';
+      grid.style.flexDirection = 'column';
       grid.style.gap = '8px';
       for (const sub2 of lv.sublevels) {
         grid.appendChild(this.makeLevelButton(sub2));
@@ -296,9 +303,10 @@ export class TutorialController {
     btn.style.color = COLORS.dialog_text;
     btn.style.border = `1px solid ${COLORS.border}`;
     btn.style.borderRadius = '6px';
-    btn.style.padding = '8px 10px';
+    btn.style.padding = '10px 12px';
     btn.style.cursor = 'pointer';
-    btn.style.fontSize = '12px';
+    // 對照原版：小關按鈕文字 dialog_font(18)
+    btn.style.fontSize = '18px';
 
     const hasArchive = !!ARCHIVES[sub.archiveId];
     const completed = this.isCompleted(sub.id);
@@ -632,9 +640,10 @@ function mkBtn(label: string, primary: boolean, onClick: () => void): HTMLElemen
   b.style.color = '#fff';
   b.style.border = primary ? 'none' : `1px solid ${COLORS.border}`;
   b.style.borderRadius = '4px';
-  b.style.padding = '5px 12px';
+  b.style.padding = '8px 14px';
   b.style.cursor = 'pointer';
-  b.style.fontSize = '12px';
+  // 對照原版：對話框按鈕（含「回到練習模式」）dialog_font(18)
+  b.style.fontSize = '18px';
   b.style.whiteSpace = 'nowrap';
   b.addEventListener('click', (e) => {
     e.stopPropagation();

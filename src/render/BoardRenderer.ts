@@ -679,9 +679,9 @@ export class BoardRenderer {
     this.roundRect(x, y, w, h, 10);
     ctx.stroke();
 
-    // 標題 + 分隔線
+    // 標題 + 分隔線（對照原版：dialog_title_font 22 粗體）
     ctx.fillStyle = COLORS.dialog_title;
-    ctx.font = `700 24px ${FONT_FAMILY}`;
+    ctx.font = `700 22px ${FONT_FAMILY}`;
     ctx.fillText('复原成功！', cx, y + h * (showResult ? 0.22 : 0.28));
     ctx.strokeStyle = COLORS.dialog_border;
     ctx.lineWidth = 1;
@@ -690,9 +690,9 @@ export class BoardRenderer {
     ctx.lineTo(x + w - 20, y + h * (showResult ? 0.30 : 0.40));
     ctx.stroke();
 
-    // 正文
+    // 正文（對照原版：dialog_font 18；成績/恭喜行同用正文字號）
     ctx.fillStyle = COLORS.popup_body;
-    ctx.font = `16px ${FONT_FAMILY}`;
+    ctx.font = `18px ${FONT_FAMILY}`;
     ctx.fillText('所有滑块已归位', cx, y + h * (showResult ? 0.48 : 0.62));
 
     // 競速模式：成績 + TPS + 最佳恭喜
@@ -713,9 +713,9 @@ export class BoardRenderer {
       }
     }
 
-    // 操作提示
+    // 操作提示（對照原版：status_font 14）
     ctx.fillStyle = COLORS.dialog_border;
-    ctx.font = `12px ${FONT_FAMILY}`;
+    ctx.font = `14px ${FONT_FAMILY}`;
     ctx.fillText('按 Enter 保存 ｜ 按 Esc 关闭', cx, y + h * 0.92);
     ctx.restore();
   }

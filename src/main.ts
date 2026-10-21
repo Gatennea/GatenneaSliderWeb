@@ -272,7 +272,8 @@ toast.style.position = 'fixed';
 toast.style.right = `${GEOMETRY.right_panel_width + 12}px`;
 toast.style.bottom = `${GEOMETRY.status_bar_height + 12}px`;
 toast.style.color = COLORS.timer_running;
-toast.style.fontSize = '13px';
+// 對照原版 macro_notify：status_font(SimHei 14)
+toast.style.fontSize = '14px';
 toast.style.pointerEvents = 'none';
 app.appendChild(toast);
 let toastTimer = 0;
