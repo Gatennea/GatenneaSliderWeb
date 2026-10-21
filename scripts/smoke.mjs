@@ -227,6 +227,41 @@ try {
     fire(swBtns[0], 'click');
     check(true, '切換控制開關未拋錯');
   }
+
+  // ---- 成績錄入：DNF 後面板應即時出現新行 ----
+  // 回歸測試：入庫原本只寫 localStorage，面板（桌面端默認展開）不刷新，
+  // 玩家 DNF 後看面板還是舊的，等於「沒有及時計入成績」。
+  // 路徑全走 UI：謎題選單切競速 → 編輯選單打亂（計時器進就緒）→ 點計時區兩次（開始→放棄）
+  fire(menuItems[2], 'click'); // 謎題
+  const pzDd2 = findAll((e) => e.dataset?.dropdown === '1').at(-1);
+  const timedRow = pzDd2?.children.find((c) => (c.children[0]?.textContent ?? '') === '模式:竞速');
+  check(!!timedRow, '「谜题」有「模式:竞速」');
+  if (timedRow) {
+    fire(timedRow, 'click');
+    const editItem = menuItems.find((e) => e.textContent === '编辑');
+    fire(editItem, 'click');
+    const edDd = findAll((e) => e.dataset?.dropdown === '1').at(-1);
+    const shuffleRow = edDd?.children.find((c) => (c.children[0]?.textContent ?? '') === '打乱 Alt+S');
+    check(!!shuffleRow, '「编辑」有「打乱 Alt+S」');
+    if (shuffleRow) {
+      fire(shuffleRow, 'click'); // 競速下打亂 → 計時器進入就緒
+      // 狀態列：高 28px、剛好五個子元素（狀態/步數/計時/謎題/縮放）的那個；第三個是計時區
+      const statusBar = walk(root).find((e) => e.children.length === 5 && e.style?.height === '28px');
+      const stTimerEl = statusBar?.children[2];
+      check(!!stTimerEl && (stTimerEl._h?.click?.length ?? 0) > 0,
+        '計時區接上了 click（手機端 DNF 入口，對照原版 _timer_bar_rect）');
+      if (stTimerEl) {
+        fire(stTimerEl, 'click'); // 就緒 → 開始計時
+        fire(stTimerEl, 'click'); // 計時中 → 放棄(DNF)
+        const dnfCells = findAll((e) => e.textContent === 'DNF');
+        check(dnfCells.length > 0, 'DNF 後成績面板即時出現 DNF 行（不用手動開關面板）');
+        const saved = JSON.parse(store['gatennea-slider-web:records'] ?? '{}');
+        const all = Object.values(saved).flat();
+        check(all.length === 1 && all[0].dnf === true,
+          `DNF 已寫入 localStorage（實為 ${all.length} 條，dnf=${all[0]?.dnf}）`);
+      }
+    }
+  }
 } catch (e) {
   console.error('✘ 拋錯：', e && e.stack ? e.stack.split('\n').slice(0, 6).join('\n') : e);
   process.exitCode = 1;

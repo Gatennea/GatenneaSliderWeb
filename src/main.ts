@@ -132,6 +132,8 @@ stPuzzle.style.position = 'absolute';
 stPuzzle.style.left = '50%';
 stPuzzle.style.transform = 'translateX(-50%)';
 stZoom.style.marginLeft = 'auto';
+// 計時區可點（對照原版點狀態欄計時區 = 按空格）：就緒→開始、計時中→放棄(DNF)
+stTimer.addEventListener('click', onTimerBarClick);
 
 // ---------- 浮動面板 ----------
 // ---------- 浮動面板（可拖動） ----------
@@ -442,6 +444,13 @@ function updateStatus(): void {
             : '竞速模式 DNF';
   stTimer.textContent = timerText;
   stTimer.style.color = timer.state === 'running' ? COLORS.timer_running : COLORS.status_text;
+  // 計時區可點（對照原版 _timer_bar_rect：競速下 就緒→開始、計時中→放棄/DNF）。
+  // 手機沒有實體空格鍵，點擊是那裡唯一的 DNF 入口，故加手型光標與提示。
+  const timerClickable = gameMode === 'timed' && (timer.state === 'ready' || timer.state === 'running');
+  stTimer.style.cursor = timerClickable ? 'pointer' : 'default';
+  stTimer.title = timerClickable
+    ? (timer.state === 'ready' ? '计时区：点击开始计时' : '计时区：点击放弃（DNF）')
+    : '';
   syncQuickBar();
 }
 
@@ -521,6 +530,7 @@ const controller = new BoardController({
           store.currentM, store.currentN, store.currentStep, Math.round(ms),
           store.cmd.stepCount, false, store.numbered, raceInitialBlocks(),
         );
+        refreshRecordsPanel(); // 面板默認展開著：不入庫刷新會被當成「沒計入」
         showToast(`完成 ${formatTime(ms)}`);
         result = { time_ms: item.time_ms, moves: item.moves, tps: tpsOf(item), pb };
       }
@@ -785,8 +795,23 @@ function recordDnf(): void {
     store.currentM, store.currentN, store.currentStep, Math.round(timer.elapsedMs),
     store.cmd.stepCount, true, store.numbered, raceInitialBlocks(),
   );
-  showToast('DNF');
+  // 對照原版 macro_notify_msg：DNF（用時） | 最好 x | Ao5 y——順便讓玩家確認「這筆計進去了」
+  const st = stats(records.get(store.puzzleKey));
+  const fmtStat = (v: number | 'DNF' | null): string => (v === null ? '-' : v === 'DNF' ? 'DNF' : formatTime(v));
+  showToast(`DNF（${formatTime(Math.round(timer.elapsedMs))}） | 最好 ${fmtStat(st.best)} | Ao5 ${fmtStat(st.ao5)}`);
+  refreshRecordsPanel();
   schedulePaint();
+}
+
+/**
+ * 計時區點擊（對照原版狀態欄 _timer_bar_rect 點擊 = 按空格）：競速下
+ * 就緒→開始、計時中→放棄(DNF)。手機沒有實體空格鍵，點擊是那裡唯一的 DNF 入口。
+ */
+function onTimerBarClick(): void {
+  if (gameMode !== 'timed') return;
+  if (timer.state === 'idle') showToast('请先使用打乱功能');
+  else if (timer.state === 'ready') { timer.start(); showToast('计时开始'); schedulePaint(); }
+  else if (timer.state === 'running') recordDnf();
 }
 
 // 右側開關狀態
@@ -1448,16 +1473,25 @@ function renderRecordsPanel(): void {
       main.style.alignItems = 'center';
       main.style.padding = '3px 0';
       main.style.cursor = 'pointer';
-      main.innerHTML =
-        `<span style="width:28px;color:#888">${i + 1}</span>`
-        + `<span style="width:74px">${row.item.dnf ? 'DNF' : formatTime(row.item.time_ms)}</span>`
-        + `<span style="width:74px">${fmt(row.ao5)}</span>`
-        + `<span style="width:74px">${fmt(row.ao12)}</span>`
-        + '<span style="flex:1"></span>';
-      const spans = main.querySelectorAll('span');
-      spans[1].style.color = cellColor(row.item.dnf ? 'DNF' : row.item.time_ms, bestT, worstT, row.item.dnf);
-      spans[2].style.color = cellColor(row.ao5, bestA5, worstA5, row.item.dnf);
-      spans[3].style.color = cellColor(row.ao12, bestA12, worstA12, row.item.dnf);
+      // 顯式建元素而不是 innerHTML + querySelectorAll：著色要持有引用，
+      // 且拼字符串再解析的寫法在 DOM stub 環境裡根本觸及不到（冒煙測不到這行）。
+      const cell = (text: string, width?: string, color?: string): HTMLSpanElement => {
+        const s = document.createElement('span');
+        s.textContent = text;
+        if (width) s.style.width = width;
+        if (color) s.style.color = color;
+        return s;
+      };
+      main.append(
+        cell(String(i + 1), '28px', '#888'),
+        cell(row.item.dnf ? 'DNF' : formatTime(row.item.time_ms), '74px',
+          cellColor(row.item.dnf ? 'DNF' : row.item.time_ms, bestT, worstT, row.item.dnf)),
+        cell(fmt(row.ao5), '74px', cellColor(row.ao5, bestA5, worstA5, row.item.dnf)),
+        cell(fmt(row.ao12), '74px', cellColor(row.ao12, bestA12, worstA12, row.item.dnf)),
+      );
+      const spacer = cell('');
+      spacer.style.flex = '1'; // 右側留白，把刪除列頂到最右（對照原版）
+      main.appendChild(spacer);
       if (recordsDetailId === row.item.id) main.style.background = 'rgba(62,82,118,0.55)';
       recordsBody.appendChild(main);
 
@@ -1554,6 +1588,15 @@ function toggleRecords(): void {
   syncSwitches();
   saveUiPrefs();
   showToast(vis ? '已开启成绩面板' : '已关闭成绩面板');
+}
+
+/**
+ * 寫入成績後刷新面板。
+ * 桌面端默認展開成績面板，而入庫後不重畫的話，新的一條（含 DNF）要等手動開關
+ * 面板才看得見——原版每幀從頭重畫故無此問題，網頁版是 DOM 面板，必須顯式刷新。
+ */
+function refreshRecordsPanel(): void {
+  if (recordsVisible) renderRecordsPanel();
 }
 
 /** 詳情操作：複製該筆開局局面為文本（對照原版「複製到剪貼板」）。 */
@@ -2892,11 +2935,8 @@ window.addEventListener('keydown', (e) => {
   if (e.altKey && key === 's') { e.preventDefault(); handleShuffle(); return; }
   if (e.code === 'Space' || e.key === ' ') {
     e.preventDefault();
-    if (gameMode === 'timed') {
-      if (timer.state === 'idle') { showToast('请先使用打乱功能'); }
-      else if (timer.state === 'ready') { timer.start(); showToast('计时开始'); schedulePaint(); }
-      else if (timer.state === 'running') { recordDnf(); }
-    }
+    // 與「點計時區」同一個入口（對照原版：空格與 _timer_bar_rect 都走 _timer_on_space）
+    if (gameMode === 'timed') onTimerBarClick();
     return;
   }
   if (e.key === 'F1') { e.preventDefault(); toggleVK(); return; }
@@ -3056,11 +3096,10 @@ syncRotateHint();
 maybeShowChangelogOnBoot();
 schedulePaint();
 
+// 計時中的秒錶：補幀之間也要走字。直接改 textContent 會寫成「計時：xx」、
+// 與 updateStatus 的「競速模式 xx」兩種格式來回跳，故統一走 updateStatus。
 setInterval(() => {
-  if (timer.isRunning) {
-    stTimer.textContent = `计时：${formatTime(timer.elapsedMs)}`;
-    stTimer.style.color = COLORS.timer_running;
-  }
+  if (timer.isRunning) updateStatus();
 }, 100);
 
 console.log('[web] 初始 solved =', store.solved);
